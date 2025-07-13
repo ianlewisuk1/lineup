@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { db, auth } from "../firebase/firebase";
 import { collection, getDocs, doc, updateDoc, query, where } from "firebase/firestore";
+import { getDoc } from "firebase/firestore"; // Make sure this is at the top
+
 
 const allTeams = [
   "Alabama", "Georgia", "Michigan", "Ohio State", "Texas", "LSU", "Florida State", "Oregon",
@@ -17,8 +19,9 @@ function AssignTeams() {
       if (!currentUser) return;
 
       // Get current user's leagueId
-      const userDoc = await (await doc(db, "users", currentUser.uid)).get();
-      const leagueId = userDoc.data().leagueId;
+      const userDocRef = doc(db, "users", currentUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+      const leagueId = userDocSnap.data().leagueId;
 
       // Query users in that league
       const q = query(collection(db, "users"), where("leagueId", "==", leagueId));

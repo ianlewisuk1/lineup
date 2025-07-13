@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { db } from "../firebase/firebase";
 import { collection, addDoc } from "firebase/firestore";
 import { auth } from "../firebase/firebase";
+import { doc, updateDoc } from "firebase/firestore";
 
 function CreateLeague() {
   const [leagueName, setLeagueName] = useState("");
@@ -21,7 +22,7 @@ function CreateLeague() {
       });
 
       // Optional: update user's leagueId
-      await db.collection("users").doc(user.uid).update({
+      await updateDoc(doc(db, "users", user.uid), {
         leagueId: leagueRef.id
       });
 
