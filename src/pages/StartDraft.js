@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { db, auth } from "../firebase/firebase";
 import { doc, setDoc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 
@@ -35,7 +35,10 @@ function StartDraft() {
       });
 
       const teamsSnapshot = await getDocs(collection(db, "teams"));
-      const availableTeams = teamsSnapshot.docs.map(doc => doc.data().School); // or use doc.id if you want the Firestore ID
+      const availableTeams = teamsSnapshot.docs
+        .map(doc => doc.data())
+        .filter(team => team.Classification?.toLowerCase() === "fbs")
+        .map(team => team.School);
 
 
       const draftData = {
