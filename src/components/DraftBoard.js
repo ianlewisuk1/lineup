@@ -21,10 +21,20 @@ function DraftBoard({ draftData, userMap }) {
     slotMap[uid] = new Array(totalRounds).fill(null);
   });
 
+  // ✅ Generate flat picks in snake order
   const flatPicks = [];
-  Object.entries(draftData.selectedTeams).forEach(([uid, teams]) => {
-    teams.forEach(team => flatPicks.push({ uid, team }));
-  });
+  for (let i = 0; i < snakeOrder.length; i++) {
+    const uid = snakeOrder[i];
+    const round = Math.floor(i / numManagers);
+    const userTeams = draftData.selectedTeams[uid] || [];
+    const team = userTeams[round];
+
+    if (team) {
+      flatPicks.push({ uid, team });
+    } else {
+      flatPicks.push(null); // keep alignment
+    }
+  }
 
   let pickNumber = 1;
   for (let i = 0; i < snakeOrder.length; i++) {
@@ -44,11 +54,16 @@ function DraftBoard({ draftData, userMap }) {
   return (
     <div className="draft-board">
       <div className="row header-row">
-        {draftOrder.map(uid => (
-          <div key={uid} className="cell header-cell">
-            {userMap[uid] || uid}
-          </div>
-        ))}
+        {draftOrder.map(uid => {
+          const teamName = userMap[uid]?.teamName || "Unnamed Team";
+          const displayName = userMap[uid]?.displayName || "Unknown";
+          return (
+            <div key={uid} className="cell header-cell">
+              <div className="team-name">{teamName}</div>
+              <div className="display-name">{displayName}</div>
+            </div>
+          );
+        })}
       </div>
 
       <div className="row body-row">
