@@ -6,7 +6,8 @@ import {
   updateDoc,
   onSnapshot,
   collection,
-  getDocs
+  getDocs,
+  arrayUnion
 } from "firebase/firestore";
 import DraftBoard from "../components/DraftBoard";
 
@@ -17,6 +18,20 @@ function DraftRoom() {
   const [userId, setUserId] = useState(null);
   const [teamPick, setTeamPick] = useState("");
   const [userMap, setUserMap] = useState({});
+
+  const handleDraftSummary = async () => {
+    if (!draftData || !leagueId || !draftData.selectedTeams) return;
+
+    const updates = Object.entries(draftData.selectedTeams).map(async ([uid, teams]) => {
+      const memberRef = doc(db, "leagues", leagueId, "members", uid);
+      await updateDoc(memberRef, {
+        "lineup.drafted": teams  // 👈 overwrites instead of union (for accuracy)
+      });
+    });
+
+    await Promise.all(updates);
+    alert("Lineups updated based on final draft!");
+  };
 
   useEffect(() => {
     const fetchDraft = async () => {
@@ -77,7 +92,7 @@ function DraftRoom() {
 
     // ✅ Draft completion logic
     const totalPicks = Object.values(newSelected).reduce((sum, picks) => sum + picks.length, 0);
-    const totalRequiredPicks = 3; //draftData.draftOrder.length * 7;
+    const totalRequiredPicks = 4; //draftData.draftOrder.length * 7;
     const draftComplete = totalPicks >= totalRequiredPicks;
 
     const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
@@ -87,6 +102,11 @@ function DraftRoom() {
       availableTeams: newAvailable,
       currentPickIndex: newIndex,
       draftComplete
+    });
+
+    const memberRef = doc(db, "leagues", leagueId, "members", userId);
+    await updateDoc(memberRef, {
+      "lineup.drafted": arrayUnion(teamPick)
     });
 
     setTeamPick("");
@@ -111,7 +131,10 @@ function DraftRoom() {
       <p><strong>League ID:</strong> {leagueId}</p>
 
       {draftData.draftComplete && (
-        <p style={{ color: "green", fontWeight: "bold" }}>✅ Draft Complete!</p>
+        <>
+          <p style={{ color: "green", fontWeight: "bold" }}>✅ Draft Complete!</p>
+          <button onClick={handleDraftSummary}>Show Me Draft Summary</button>
+        </>
       )}
 
       {isMyTurn ? (
