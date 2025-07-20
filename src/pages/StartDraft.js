@@ -1,6 +1,14 @@
 import React, { useState } from "react";
 import { db, auth } from "../firebase/firebase";
-import { doc, setDoc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import {
+  doc,
+  setDoc,
+  getDoc,
+  collection,
+  query,
+  where,
+  getDocs
+} from "firebase/firestore";
 
 function StartDraft() {
   const [message, setMessage] = useState("");
@@ -13,7 +21,7 @@ function StartDraft() {
     }
 
     try {
-      // Get user's league ID
+      // Step 1: Get user's league ID
       const userRef = doc(db, "users", currentUser.uid);
       const userSnap = await getDoc(userRef);
       const leagueId = userSnap.data().leagueId;
@@ -23,29 +31,39 @@ function StartDraft() {
         return;
       }
 
-      // Get all users in the league
+      // Step 2: Get all users in the league
       const q = query(collection(db, "users"), where("leagueId", "==", leagueId));
       const snapshot = await getDocs(q);
       const draftOrder = snapshot.docs.map((doc) => doc.id);
 
-      // Snake draft prep (will be used later)
+      // Step 3: Get member info from league/members
+      const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
+      const teamNames = {};
+      membersSnap.forEach((doc) => {
+        const data = doc.data();
+        teamNames[doc.id] = data.teamName || "Unnamed Team";
+      });
+
+      // Step 4: Prep selectedTeams map
       const selectedTeams = {};
       draftOrder.forEach((uid) => {
         selectedTeams[uid] = [];
       });
 
+      // Step 5: Get list of available FBS teams
       const teamsSnapshot = await getDocs(collection(db, "teams"));
       const availableTeams = teamsSnapshot.docs
-        .map(doc => doc.data())
-        .filter(team => team.Classification?.toLowerCase() === "fbs")
-        .map(team => team.School);
+        .map((doc) => doc.data())
+        .filter((team) => team.Classification?.toLowerCase() === "fbs")
+        .map((team) => team.School);
 
-
+      // Step 6: Write draft data
       const draftData = {
         draftOrder,
         currentPickIndex: 0,
         selectedTeams,
-        availableTeams
+        availableTeams,
+        teamNames // ✅ newly added
       };
 
       await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), draftData);
