@@ -55,6 +55,7 @@ function JoinLeague() {
       await setDoc(doc(db, "leagues", leagueId, "members", user.uid), {
         displayName: displayName.trim(),
         teamName: teamName.trim(),
+        email: user.email || "", // safe fallback
         lineup: [],
         joinedAt: new Date()
       }, { merge: true });

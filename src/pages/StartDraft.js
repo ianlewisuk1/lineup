@@ -53,9 +53,15 @@ function StartDraft() {
       // Step 5: Get list of available FBS teams
       const teamsSnapshot = await getDocs(collection(db, "teams"));
       const availableTeams = teamsSnapshot.docs
-        .map((doc) => doc.data())
-        .filter((team) => team.Classification?.toLowerCase() === "fbs")
-        .map((team) => team.School);
+        .map(doc => doc.data())
+        .filter(team => {
+          if (!team || typeof team !== "object") return false;
+          if (!team.classification) return false;
+          return team.classification.toLowerCase() === "fbs";
+        })
+        .map(team => team.school || "Unnamed Team");
+
+
 
       // Step 6: Write draft data
       const draftData = {

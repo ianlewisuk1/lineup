@@ -19,7 +19,6 @@ function SignUp() {
       await setDoc(doc(db, "users", user.uid), {
         email: user.email,
         createdAt: new Date(),
-        lineup: [],      // empty lineup array to start
         leagueId: null,  // placeholder until they join or create a league
       });
 
