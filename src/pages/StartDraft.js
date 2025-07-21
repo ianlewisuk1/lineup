@@ -31,12 +31,21 @@ function StartDraft() {
         return;
       }
 
-      // Step 2: Get all users in the league
+      // ✅ Step 2: Check if draft already exists
+      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
+      const draftSnap = await getDoc(draftRef);
+
+      if (draftSnap.exists()) {
+        setMessage("⚠️ Draft has already been initialized for this league.");
+        return;
+      }
+
+      // Step 3: Get all users in the league
       const q = query(collection(db, "users"), where("leagueId", "==", leagueId));
       const snapshot = await getDocs(q);
       const draftOrder = snapshot.docs.map((doc) => doc.id);
 
-      // Step 3: Get member info from league/members
+      // Step 4: Get member info from league/members
       const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
       const teamNames = {};
       membersSnap.forEach((doc) => {
@@ -44,13 +53,13 @@ function StartDraft() {
         teamNames[doc.id] = data.teamName || "Unnamed Team";
       });
 
-      // Step 4: Prep selectedTeams map
+      // Step 5: Prep selectedTeams map
       const selectedTeams = {};
       draftOrder.forEach((uid) => {
         selectedTeams[uid] = [];
       });
 
-      // Step 5: Get list of available FBS teams
+      // Step 6: Get list of available FBS teams
       const teamsSnapshot = await getDocs(collection(db, "teams"));
       const availableTeams = teamsSnapshot.docs
         .map(doc => doc.data())
@@ -61,18 +70,16 @@ function StartDraft() {
         })
         .map(team => team.school || "Unnamed Team");
 
-
-
-      // Step 6: Write draft data
+      // Step 7: Write draft data
       const draftData = {
         draftOrder,
         currentPickIndex: 0,
         selectedTeams,
         availableTeams,
-        teamNames // ✅ newly added
+        teamNames
       };
 
-      await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), draftData);
+      await setDoc(draftRef, draftData);
       setMessage("✅ Draft initialized!");
     } catch (err) {
       console.error(err);
