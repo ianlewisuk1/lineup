@@ -3,6 +3,7 @@ import { db } from "../firebase/firebase";
 import { collection, addDoc } from "firebase/firestore";
 import { auth } from "../firebase/firebase";
 import { doc, updateDoc } from "firebase/firestore";
+import { arrayUnion } from "firebase/firestore"; // if not already imported
 
 function CreateLeague() {
   const [leagueName, setLeagueName] = useState("");
@@ -21,9 +22,8 @@ function CreateLeague() {
         createdAt: new Date()
       });
 
-      // Optional: update user's leagueId
       await updateDoc(doc(db, "users", user.uid), {
-        leagueId: leagueRef.id
+        leagueIds: arrayUnion(leagueRef.id) // ✅ appends league to user's list
       });
 
       alert("League created!");

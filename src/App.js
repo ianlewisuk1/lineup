@@ -11,6 +11,9 @@ import JoinLeague from "./pages/JoinLeague";
 import DraftRoom from "./pages/DraftRoom";
 import Home from "./pages/Home";
 import Landing from "./pages/Landing";
+import LeagueLandingPage from "./pages/LeagueLandingPage";
+import MyLineup from "./pages/MyLineup";
+import FreeAgents from "./pages/FreeAgents";
 
 function AppWrapper() {
   return (
@@ -81,7 +84,10 @@ function App() {
         <Route path="/home" element={<Home />} />
         <Route path="/create-league" element={<CreateLeague />} />
         <Route path="/join-league" element={<JoinLeague />} />
-        <Route path="/draft" element={<DraftRoom />} />
+        <Route path="/league/:leagueId" element={<LeagueLandingPage />} />
+        <Route path="/:leagueId/my-lineup" element={<MyLineup />} />
+        <Route path="/:leagueId/free-agents" element={<FreeAgents />} />
+        <Route path="/:leagueId/draft-room" element={<DraftRoom />} />
       </Routes>
     </>
   );
