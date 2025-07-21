@@ -11,14 +11,16 @@ import {
   setDoc
 } from "firebase/firestore";
 import DraftBoard from "../components/DraftBoard";
+import { useParams } from "react-router-dom";
 
 function DraftRoom() {
+  const { leagueId } = useParams();
   const [draftData, setDraftData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [leagueId, setLeagueId] = useState(null);
   const [userId, setUserId] = useState(null);
   const [teamPick, setTeamPick] = useState("");
   const [userMap, setUserMap] = useState({});
+  const [isLeagueAdmin, setIsLeagueAdmin] = useState(false); // 🆕 new state
 
   useEffect(() => {
     const fetchDraft = async () => {
@@ -27,11 +29,13 @@ function DraftRoom() {
 
       setUserId(currentUser.uid);
 
-      const userRef = doc(db, "users", currentUser.uid);
-      const userSnap = await getDoc(userRef);
-      const leagueId = userSnap.data()?.leagueId;
-      setLeagueId(leagueId);
-      if (!leagueId) return;
+      // 🆕 Get league and check admin
+      const leagueRef = doc(db, "leagues", leagueId);
+      const leagueSnap = await getDoc(leagueRef);
+      if (leagueSnap.exists()) {
+        const leagueData = leagueSnap.data();
+        setIsLeagueAdmin(leagueData.admin === currentUser.uid);
+      }
 
       // Get league members
       const membersRef = collection(db, "leagues", leagueId, "members");
@@ -52,61 +56,49 @@ function DraftRoom() {
       const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
       onSnapshot(draftRef, (snap) => {
         const data = snap.data();
-        if (data) {
-          setDraftData(data);
-          setLoading(false);
-        } else {
-          setDraftData(null);
-          setLoading(false);
-        }
+        setDraftData(data || null);
+        setLoading(false);
       });
     };
 
     fetchDraft();
-  }, []);
+  }, [leagueId]);
 
-const handleStartDraft = async () => {
-  if (!leagueId || Object.keys(userMap).length === 0) return;
+  const handleStartDraft = async () => {
+    if (!leagueId || Object.keys(userMap).length === 0) return;
 
-  const draftOrder = Object.keys(userMap).filter(Boolean);
+    const draftOrder = Object.keys(userMap).filter(Boolean);
 
-  const allTeamsSnap = await getDocs(collection(db, "teams"));
+    const allTeamsSnap = await getDocs(collection(db, "teams"));
+    const allTeams = allTeamsSnap.docs.map(doc => doc.data());
 
-  // Full raw team data for debugging
-  const allTeams = allTeamsSnap.docs.map(doc => doc.data());
-  console.log("📄 All Fetched Teams:", allTeams);
+    const availableTeams = allTeams
+      .filter(team => team.classification === "FBS" && typeof team.school === "string")
+      .map(team => team.school);
 
-  // Filter to valid FBS teams with defined names
-  const availableTeams = allTeams
-    .filter(team => team.classification === "FBS" && typeof team.school === "string")
-    .map(team => team.school);
+    if (availableTeams.length === 0) {
+      alert("⚠️ No valid FBS teams with names found.");
+      return;
+    }
 
-  if (availableTeams.length === 0) {
-    alert("⚠️ No valid FBS teams with names found.");
-    return;
-  }
+    const draftPayload = {
+      draftOrder,
+      currentPickIndex: 0,
+      availableTeams,
+      selectedTeams: {},
+      draftComplete: false
+    };
 
-  const draftPayload = {
-    draftOrder,
-    currentPickIndex: 0,
-    availableTeams,
-    selectedTeams: {},
-    draftComplete: false
+    const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
+
+    try {
+      await setDoc(draftRef, draftPayload);
+      alert("Draft started!");
+    } catch (err) {
+      console.error("❌ Failed to set draft:", err);
+      alert("Error creating draft: " + err.message);
+    }
   };
-
-  console.log("📦 Final Draft Payload:", draftPayload);
-
-  const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-
-  try {
-    await setDoc(draftRef, draftPayload);
-    alert("Draft started!");
-  } catch (err) {
-    console.error("❌ Failed to set draft:", err);
-    alert("Error creating draft: " + err.message);
-  }
-};
-
 
   const handleDraftSummary = async () => {
     if (!draftData || !leagueId || !draftData.selectedTeams) return;
@@ -161,7 +153,9 @@ const handleStartDraft = async () => {
       <div>
         <h2>Draft Room</h2>
         <p>No draft has been started yet.</p>
-        <button onClick={handleStartDraft}>Start Draft</button>
+        {isLeagueAdmin && (
+          <button onClick={handleStartDraft}>Start Draft</button>
+        )}
       </div>
     );
   }
@@ -179,7 +173,9 @@ const handleStartDraft = async () => {
       {draftData.draftComplete && (
         <>
           <p style={{ color: "green", fontWeight: "bold" }}>✅ Draft Complete!</p>
-          <button onClick={handleDraftSummary}>Complete Draft</button>
+          {isLeagueAdmin && (
+            <button onClick={handleDraftSummary}>Complete Draft</button>
+          )}
         </>
       )}
 

@@ -48,7 +48,7 @@ function JoinLeague() {
 
       // Update user's leagueId
       await updateDoc(doc(db, "users", user.uid), {
-        leagueId: leagueId
+        leagueIds: arrayUnion(leagueId)
       });
 
       // Set league-specific member info
