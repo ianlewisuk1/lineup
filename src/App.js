@@ -60,7 +60,6 @@ function App() {
           <>
             | <Link to="/create-league">Create League</Link>{" "}
             | <Link to="/join-league">Join League</Link>{" "}
-            | <Link to="/draft">Draft Room</Link>{" "}
             | <button onClick={handleLogout}>Logout</button>
           </>
         ) : (
