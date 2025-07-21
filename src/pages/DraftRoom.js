@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 import DraftBoard from "../components/DraftBoard";
 import { useParams } from "react-router-dom";
+import { deleteDoc } from "firebase/firestore";
 
 function DraftRoom() {
   const { leagueId } = useParams();
@@ -144,6 +145,21 @@ function DraftRoom() {
     setTeamPick("");
   };
 
+    const handleRestartDraft = async () => {
+    const confirm = window.confirm("Are you sure you want to delete and restart the draft?");
+    if (!confirm) return;
+
+    try {
+      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
+      await deleteDoc(draftRef);
+      alert("Draft has been reset. You can now start a new draft.");
+    } catch (err) {
+      console.error("Failed to delete draft:", err);
+      alert("Error resetting draft: " + err.message);
+    }
+    };
+
+
   if (loading || Object.keys(userMap).length === 0) {
     return <p>Loading draft room...</p>;
   }
@@ -169,6 +185,12 @@ function DraftRoom() {
     <div>
       <h2>Draft Room</h2>
       <p><strong>League ID:</strong> {leagueId}</p>
+
+      {isLeagueAdmin && draftData && (
+        <button onClick={handleRestartDraft} style={{ marginTop: "1rem", color: "red" }}>
+          Restart Draft
+        </button>
+      )}
 
       {draftData.draftComplete && (
         <>
