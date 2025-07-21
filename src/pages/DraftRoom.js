@@ -132,8 +132,7 @@ const handleStartDraft = async () => {
     const newIndex = draftData.currentPickIndex + 1;
 
     const totalPicks = Object.values(newSelected).reduce((sum, picks) => sum + picks.length, 0);
-    // const totalRequiredPicks = draftData.draftOrder.length * 7;
-    const totalRequiredPicks = 2;
+    const totalRequiredPicks = draftData.draftOrder.length * 7;
     const draftComplete = totalPicks >= totalRequiredPicks;
 
     const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
