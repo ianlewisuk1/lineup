@@ -4,10 +4,12 @@ import { auth } from "../firebase/firebase";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 
-
 function SignUp() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [dob, setDob] = useState(""); // yyyy-mm-dd
 
   const handleSignUp = async (e) => {
     e.preventDefault();
@@ -15,11 +17,13 @@ function SignUp() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Add user data to Firestore
+      // Save user doc with empty leagueIds
       await setDoc(doc(db, "users", user.uid), {
+        firstName,
+        lastName,
         email: user.email,
-        createdAt: new Date(),
-        leagueId: null,  // placeholder until they join or create a league
+        dob,
+        leagueIds: [] // starts empty, updated when they join a league
       });
 
       alert("Signup successful and user document created!");
@@ -31,8 +35,40 @@ function SignUp() {
   return (
     <form onSubmit={handleSignUp}>
       <h2>Sign Up</h2>
-      <input type="email" placeholder="Email" onChange={e => setEmail(e.target.value)} />
-      <input type="password" placeholder="Password" onChange={e => setPassword(e.target.value)} />
+      <input
+        type="text"
+        placeholder="First Name"
+        value={firstName}
+        onChange={(e) => setFirstName(e.target.value)}
+        required
+      />
+      <input
+        type="text"
+        placeholder="Last Name"
+        value={lastName}
+        onChange={(e) => setLastName(e.target.value)}
+        required
+      />
+      <input
+        type="date"
+        value={dob}
+        onChange={(e) => setDob(e.target.value)}
+        required
+      />
+      <input
+        type="email"
+        placeholder="Email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        required
+      />
+      <input
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        required
+      />
       <button type="submit">Create Account</button>
     </form>
   );
