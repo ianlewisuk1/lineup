@@ -118,8 +118,16 @@ function DraftRoom() {
   const handlePick = async () => {
     if (!teamPick || !draftData) return;
 
-    const newSelected = { ...draftData.selectedTeams };
-    newSelected[userId] = [...(newSelected[userId] || []), teamPick];
+    const alreadyPicked = draftData.selectedTeams[userId] || [];
+    if (alreadyPicked.length >= 7) {
+      alert("You already have 7 teams drafted.");
+      return;
+    }
+
+    const newSelected = {
+      ...draftData.selectedTeams,
+      [userId]: [...alreadyPicked, teamPick]
+    };
 
     const newAvailable = draftData.availableTeams.filter(t => t !== teamPick);
     const newIndex = draftData.currentPickIndex + 1;
