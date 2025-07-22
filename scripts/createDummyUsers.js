@@ -3,7 +3,10 @@ const admin = require("firebase-admin");
 const { v4: uuidv4 } = require("uuid");
 const args = require("minimist")(process.argv.slice(2));
 
-const serviceAccount = require("../serviceAccountKey.json");
+const fs = require("fs");
+const path = require("path");
+const serviceAccountPath = path.resolve(__dirname, "serviceAccountKey.json");
+const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -32,11 +35,20 @@ const createDummyLeagueWithUsers = async (count) => {
     maxManagers: count
   });
 
-  // Create dummy users and add them to Firestore and league's subcollection
+    // Create dummy users and add them to Firestore and league's subcollection
   for (let i = 1; i <= count; i++) {
     const uid = `user${i}`;
     const email = `user${i}@users.com`;
 
+    // ✅ Create actual Firebase Auth user
+    await admin.auth().createUser({
+      uid,
+      email,
+      password: "test123", // set a default password
+      displayName: `User${i}`,
+    });
+
+    // Create Firestore user doc
     await db.collection("users").doc(uid).set({
       email,
       firstName: `User`,
@@ -45,6 +57,7 @@ const createDummyLeagueWithUsers = async (count) => {
       leagueIds: [leagueId],
     });
 
+    // Add to league's members subcollection
     await db
       .collection("leagues")
       .doc(leagueId)
@@ -62,6 +75,7 @@ const createDummyLeagueWithUsers = async (count) => {
         joinedAt: new Date(),
       });
   }
+
 
   console.log(`✅ League created with ${count} dummy users. League ID: ${leagueId}`);
 };
