@@ -8,11 +8,11 @@ import {
   collection,
   getDocs,
   arrayUnion,
-  setDoc
+  setDoc,
+  deleteDoc
 } from "firebase/firestore";
 import DraftBoard from "../components/DraftBoard";
 import { useParams } from "react-router-dom";
-import { deleteDoc } from "firebase/firestore";
 
 function DraftRoom() {
   const { leagueId } = useParams();
@@ -21,7 +21,8 @@ function DraftRoom() {
   const [userId, setUserId] = useState(null);
   const [teamPick, setTeamPick] = useState("");
   const [userMap, setUserMap] = useState({});
-  const [isLeagueAdmin, setIsLeagueAdmin] = useState(false); // 🆕 new state
+  const [isLeagueAdmin, setIsLeagueAdmin] = useState(false);
+  const [maxManagers, setMaxManagers] = useState(null);
 
   useEffect(() => {
     const fetchDraft = async () => {
@@ -30,12 +31,13 @@ function DraftRoom() {
 
       setUserId(currentUser.uid);
 
-      // 🆕 Get league and check admin
+      // Get league info
       const leagueRef = doc(db, "leagues", leagueId);
       const leagueSnap = await getDoc(leagueRef);
       if (leagueSnap.exists()) {
         const leagueData = leagueSnap.data();
         setIsLeagueAdmin(leagueData.admin === currentUser.uid);
+        setMaxManagers(leagueData.maxManagers);
       }
 
       // Get league members
@@ -68,36 +70,65 @@ function DraftRoom() {
   const handleStartDraft = async () => {
     if (!leagueId || Object.keys(userMap).length === 0) return;
 
-    const draftOrder = Object.keys(userMap).filter(Boolean);
-
-    const allTeamsSnap = await getDocs(collection(db, "teams"));
-    const allTeams = allTeamsSnap.docs.map(doc => doc.data());
-
-    const availableTeams = allTeams
-      .filter(team => team.classification === "FBS" && typeof team.school === "string")
-      .map(team => team.school);
-
-    if (availableTeams.length === 0) {
-      alert("⚠️ No valid FBS teams with names found.");
-      return;
-    }
-
-    const draftPayload = {
-      draftOrder,
-      currentPickIndex: 0,
-      availableTeams,
-      selectedTeams: {},
-      draftComplete: false
-    };
-
-    const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-
     try {
+      const leagueRef = doc(db, "leagues", leagueId);
+      const leagueSnap = await getDoc(leagueRef);
+      if (!leagueSnap.exists()) {
+        alert("League not found.");
+        return;
+      }
+
+      const leagueData = leagueSnap.data();
+      const expectedManagers = leagueData.maxManagers;
+      const currentManagers = Object.keys(userMap).length;
+
+      if (currentManagers < expectedManagers) {
+        alert(`You need ${expectedManagers} managers to start the draft. Currently: ${currentManagers}`);
+        return;
+      }
+
+      const draftOrder = Object.keys(userMap).filter(Boolean);
+      const allTeamsSnap = await getDocs(collection(db, "teams"));
+      const allTeams = allTeamsSnap.docs.map(doc => doc.data());
+
+      const availableTeams = allTeams
+        .filter(team => team.classification === "FBS" && typeof team.school === "string")
+        .map(team => team.school);
+
+      if (availableTeams.length === 0) {
+        alert("⚠️ No valid FBS teams with names found.");
+        return;
+      }
+
+      const draftPayload = {
+        draftOrder,
+        currentPickIndex: 0,
+        availableTeams,
+        selectedTeams: {},
+        draftComplete: false
+      };
+
+      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
       await setDoc(draftRef, draftPayload);
       alert("Draft started!");
+
     } catch (err) {
-      console.error("❌ Failed to set draft:", err);
-      alert("Error creating draft: " + err.message);
+      console.error("❌ Failed to start draft:", err);
+      alert("Error starting draft: " + err.message);
+    }
+  };
+
+  const handleRestartDraft = async () => {
+    const confirm = window.confirm("Are you sure you want to delete and restart the draft?");
+    if (!confirm) return;
+
+    try {
+      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
+      await deleteDoc(draftRef);
+      alert("Draft has been reset. You can now start a new draft.");
+    } catch (err) {
+      console.error("Failed to delete draft:", err);
+      alert("Error resetting draft: " + err.message);
     }
   };
 
@@ -153,20 +184,9 @@ function DraftRoom() {
     setTeamPick("");
   };
 
-    const handleRestartDraft = async () => {
-    const confirm = window.confirm("Are you sure you want to delete and restart the draft?");
-    if (!confirm) return;
-
-    try {
-      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-      await deleteDoc(draftRef);
-      alert("Draft has been reset. You can now start a new draft.");
-    } catch (err) {
-      console.error("Failed to delete draft:", err);
-      alert("Error resetting draft: " + err.message);
-    }
-    };
-
+  const currentCount = Object.keys(userMap).length;
+  const missing = maxManagers ? maxManagers - currentCount : 0;
+  const isFull = missing === 0;
 
   if (loading || Object.keys(userMap).length === 0) {
     return <p>Loading draft room...</p>;
@@ -177,7 +197,20 @@ function DraftRoom() {
       <div>
         <h2>Draft Room</h2>
         <p>No draft has been started yet.</p>
-        {isLeagueAdmin && (
+
+        {!isFull && (
+          <div style={{ color: "orange", marginBottom: "1rem" }}>
+            <p>🟡 Waiting for {missing} more user(s) to join.</p>
+            <p>Current members:</p>
+            <ul>
+              {Object.values(userMap).map((user, i) => (
+                <li key={i}>{user.displayName}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {isLeagueAdmin && isFull && (
           <button onClick={handleStartDraft}>Start Draft</button>
         )}
       </div>

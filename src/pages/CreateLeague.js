@@ -14,6 +14,7 @@ function CreateLeague() {
   const [scoringType, setScoringType] = useState("head_to_head");
   const [displayName, setDisplayName] = useState("");
   const [teamName, setTeamName] = useState("");
+  const [maxManagers, setMaxManagers] = useState(8); // ✅ new state
   const [loading, setLoading] = useState(false);
 
   const handleCreateLeague = async (e) => {
@@ -35,7 +36,8 @@ function CreateLeague() {
         members: [user.uid],
         createdAt: new Date(),
         createdBy: user.uid,
-        admin: user.uid
+        admin: user.uid,
+        maxManagers: maxManagers // ✅ saved to Firestore
       });
 
       await updateDoc(doc(db, "users", user.uid), {
@@ -81,6 +83,19 @@ function CreateLeague() {
         <option value="head_to_head">Head-to-Head</option>
         <option value="cumulative">Cumulative</option>
       </select>
+
+      {/* ✅ New dropdown for max managers */}
+      <label>
+        Max Managers:
+        <select
+          value={maxManagers}
+          onChange={(e) => setMaxManagers(Number(e.target.value))}
+        >
+          <option value={8}>8</option>
+          <option value={10}>10</option>
+          <option value={12}>12</option>
+        </select>
+      </label>
 
       <input
         type="text"
