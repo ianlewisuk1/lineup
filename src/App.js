@@ -14,6 +14,7 @@ import Landing from "./pages/Landing";
 import LeagueLandingPage from "./pages/LeagueLandingPage";
 import MyLineup from "./pages/MyLineup";
 import FreeAgents from "./pages/FreeAgents";
+import MyLeague from "./pages/MyLeague";
 
 function AppWrapper() {
   return (
@@ -87,6 +88,7 @@ function App() {
         <Route path="/:leagueId/my-lineup" element={<MyLineup />} />
         <Route path="/:leagueId/free-agents" element={<FreeAgents />} />
         <Route path="/:leagueId/draft-room" element={<DraftRoom />} />
+        <Route path="/league/:leagueId/my-league" element={<MyLeague />} />
       </Routes>
     </>
   );
