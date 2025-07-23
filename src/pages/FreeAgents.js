@@ -12,7 +12,7 @@ function FreeAgents() {
   const [teamsByConference, setTeamsByConference] = useState({});
   const [conferenceList, setConferenceList] = useState([]);
   const [activeConference, setActiveConference] = useState("");
-  const [draftedTeams, setDraftedTeams] = useState(new Set());
+  const [draftedTeams, setDraftedTeams] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -21,12 +21,17 @@ function FreeAgents() {
       const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
 
       const teamsMap = {};
-      const drafted = new Set();
+      const drafted = {};
 
       membersSnap.forEach(doc => {
-        const { lineup } = doc.data();
+        const { displayName, teamName, lineup } = doc.data();
         if (lineup?.drafted) {
-          lineup.drafted.forEach(team => drafted.add(team));
+          lineup.drafted.forEach(team => {
+            drafted[team] = {
+              ownerName: displayName,
+              teamName: teamName || "Unnamed Squad"
+            };
+          });
         }
       });
 
@@ -85,7 +90,8 @@ function FreeAgents() {
 
       {/* Team Table for Active Conference */}
       {teamsByConference[activeConference]?.map(team => {
-        const owned = draftedTeams.has(team.school);
+        const owner = draftedTeams[team.school];
+        const owned = Boolean(owner);
         const season = team.currentSeason || {};
 
         return (
@@ -100,7 +106,10 @@ function FreeAgents() {
             }}
           >
             <div>
-              <strong>{team.school}</strong> | Record: {season.record} | Conf: {season.confRecord} | Next: {season.nextOpponent} | Points For: {season.totalPointsFor} | Points Against: {season.totalPointsAgainst} | Status: {owned ? "Owned" : "Available"}
+              <strong>{team.school}</strong> | Record: {season.record} | Conf: {season.confRecord} | 
+              Next: {season.nextOpponent} | Points For: {season.totalPointsFor} | 
+              Points Against: {season.totalPointsAgainst} | 
+              Status: {owned ? `Owned by ${owner.ownerName} (${owner.teamName})` : "Available"}
             </div>
             {!owned && (
               <button onClick={() => handleAddTeam(team.school)}>

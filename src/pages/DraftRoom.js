@@ -136,14 +136,19 @@ function DraftRoom() {
     if (!draftData || !leagueId || !draftData.selectedTeams) return;
 
     const updates = Object.entries(draftData.selectedTeams).map(async ([uid, teams]) => {
+      const starters = teams.slice(0, 5);
+      const bench = teams.slice(5);
+
       const memberRef = doc(db, "leagues", leagueId, "members", uid);
       await updateDoc(memberRef, {
-        "lineup.drafted": teams
+        "lineup.drafted": teams,
+        "lineup.starters": starters,
+        "lineup.bench": bench
       });
     });
 
     await Promise.all(updates);
-    alert("Lineups updated based on final draft!");
+    alert("✅ Lineups updated with starters and bench!");
   };
 
   const handlePick = async () => {
