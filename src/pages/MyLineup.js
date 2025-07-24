@@ -7,6 +7,7 @@ import {
   collection,
   getDocs
 } from "firebase/firestore";
+import LeagueNavBar from "../components/LeagueNavBar";
 
 function MyLineup() {
   const { leagueId } = useParams();
@@ -55,6 +56,8 @@ function MyLineup() {
 
   return (
     <div>
+      <LeagueNavBar />
+
       <h2>{teamName} — My Lineup</h2>
 
       {lineup.map(team => {

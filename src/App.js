@@ -11,7 +11,6 @@ import JoinLeague from "./pages/JoinLeague";
 import DraftRoom from "./pages/DraftRoom";
 import Home from "./pages/Home";
 import Landing from "./pages/Landing";
-import LeagueLandingPage from "./pages/LeagueLandingPage";
 import MyLineup from "./pages/MyLineup";
 import FreeAgents from "./pages/FreeAgents";
 import MyLeague from "./pages/MyLeague";
@@ -75,7 +74,7 @@ function App() {
         <div style={{ marginBottom: "10px" }}>
           Logged in as: <strong>{displayName}</strong>
         </div>
-      )}
+      )} 
 
       <Routes>
         <Route path="/" element={<Landing />} />
@@ -84,11 +83,10 @@ function App() {
         <Route path="/home" element={<Home />} />
         <Route path="/create-league" element={<CreateLeague />} />
         <Route path="/join-league" element={<JoinLeague />} />
-        <Route path="/league/:leagueId" element={<LeagueLandingPage />} />
         <Route path="/:leagueId/my-lineup" element={<MyLineup />} />
         <Route path="/:leagueId/free-agents" element={<FreeAgents />} />
         <Route path="/:leagueId/draft-room" element={<DraftRoom />} />
-        <Route path="/league/:leagueId/my-league" element={<MyLeague />} />
+        <Route path="/:leagueId/my-league" element={<MyLeague />} />
       </Routes>
     </>
   );

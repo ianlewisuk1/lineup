@@ -6,6 +6,7 @@ import {
 } from "firebase/firestore";
 import { useParams } from "react-router-dom";
 import { Plus } from "lucide-react";
+import LeagueNavBar from "../components/LeagueNavBar";
 
 function FreeAgents() {
   const { leagueId } = useParams();
@@ -73,6 +74,8 @@ function FreeAgents() {
 
   return (
     <div>
+
+      <LeagueNavBar />
       <h2>Free Agents</h2>
 
       {/* Conference Toggle */}

@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import DraftBoard from "../components/DraftBoard";
 import { useParams } from "react-router-dom";
+import LeagueNavBar from "../components/LeagueNavBar";
 
 function DraftRoom() {
   const { leagueId } = useParams();
@@ -229,6 +230,7 @@ function DraftRoom() {
 
   return (
     <div>
+      <LeagueNavBar />
       <h2>Draft Room</h2>
       <p><strong>League ID:</strong> {leagueId}</p>
 

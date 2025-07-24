@@ -40,7 +40,7 @@ function Home() {
         <ul style={{ listStyle: "none", padding: 0 }}>
           {leagueList.map((league) => (
             <li key={league.id} style={{ margin: "10px 0" }}>
-              <button onClick={() => navigate(`/league/${league.id}`)}>
+              <button onClick={() => navigate(`/${league.id}/my-lineup`)}>
                 {league.name || "Unnamed League"}
               </button>
             </li>
