@@ -124,11 +124,29 @@ function DraftRoom() {
     if (!confirm) return;
 
     try {
+      // Delete the draft metadata
       const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
       await deleteDoc(draftRef);
-      alert("Draft has been reset. You can now start a new draft.");
+
+      // Reset each member's lineup
+      const membersRef = collection(db, "leagues", leagueId, "members");
+      const membersSnap = await getDocs(membersRef);
+
+      const resets = membersSnap.docs.map(async (docSnap) => {
+        const memberRef = docSnap.ref;
+        await updateDoc(memberRef, {
+          "lineup.drafted": [],
+          "lineup.currentRoster": [],
+          "lineup.starters": [],
+          "lineup.bench": []
+        });
+      });
+
+      await Promise.all(resets);
+
+      alert("Draft has been reset. All member teams have been cleared.");
     } catch (err) {
-      console.error("Failed to delete draft:", err);
+      console.error("Failed to reset draft:", err);
       alert("Error resetting draft: " + err.message);
     }
   };

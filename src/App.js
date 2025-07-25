@@ -14,6 +14,11 @@ import Landing from "./pages/Landing";
 import MyLineup from "./pages/MyLineup";
 import FreeAgents from "./pages/FreeAgents";
 import MyLeague from "./pages/MyLeague";
+import ConfirmCut from "./pages/ConfirmCut";
+import DraftGuard from "./components/DraftGuard";
+import HowToPlay from "./pages/HowToPlay";
+import LeagueRules from "./pages/LeagueRules";
+import Stats from "./pages/Stats";
 
 function AppWrapper() {
   return (
@@ -55,17 +60,18 @@ function App() {
   return (
     <>
       <nav style={{ marginBottom: "10px" }}>
-        {user ? <Link to="/home">Home</Link> : <Link to="/">Home</Link>}{" "}
+        {user ? <Link to="/home">Home</Link> : <Link to="/">Home</Link>} {" "}
         {user ? (
           <>
-            | <Link to="/create-league">Create League</Link>{" "}
-            | <Link to="/join-league">Join League</Link>{" "}
+            | <Link to="/create-league">Create League</Link> {" "}
+            | <Link to="/join-league">Join League</Link> {" "}
             | <button onClick={handleLogout}>Logout</button>
           </>
         ) : (
           <>
-            | <Link to="/signup">Sign Up</Link>{" "}
+            | <Link to="/signup">Sign Up</Link> {" "}
             | <Link to="/login">Login</Link>
+            | <Link to="/how-to-play">How to Play</Link>
           </>
         )}
       </nav>
@@ -83,10 +89,49 @@ function App() {
         <Route path="/home" element={<Home />} />
         <Route path="/create-league" element={<CreateLeague />} />
         <Route path="/join-league" element={<JoinLeague />} />
-        <Route path="/:leagueId/my-lineup" element={<MyLineup />} />
-        <Route path="/:leagueId/free-agents" element={<FreeAgents />} />
-        <Route path="/:leagueId/draft-room" element={<DraftRoom />} />
-        <Route path="/:leagueId/my-league" element={<MyLeague />} />
+        <Route path="/how-to-play" element={<HowToPlay />} />
+        <Route
+          path=":leagueId/my-lineup"
+          element={
+            <DraftGuard>
+              <MyLineup />
+            </DraftGuard>
+          }
+        />
+        <Route
+          path=":leagueId/free-agents"
+          element={
+            <DraftGuard>
+              <FreeAgents />
+            </DraftGuard>
+          }
+        />
+        <Route path=":leagueId/draft-room" element={<DraftRoom />} />
+        <Route
+          path=":leagueId/my-league"
+          element={
+            <DraftGuard>
+              <MyLeague />
+            </DraftGuard>
+          }
+        />
+        <Route
+          path=":leagueId/league-rules"
+          element={
+            <DraftGuard>
+              <LeagueRules />
+            </DraftGuard>
+          }
+        />
+        <Route
+          path=":leagueId/stats"
+          element={
+            <DraftGuard>
+              <Stats />
+            </DraftGuard>
+          }
+        />
+        <Route path="/cut/:leagueId/:teamName" element={<ConfirmCut />} />
       </Routes>
     </>
   );

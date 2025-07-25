@@ -11,6 +11,8 @@ function LeagueNavBar() {
       <button onClick={() => navigate(`/${leagueId}/free-agents`)}>Free Agents</button>
       <button onClick={() => navigate(`/${leagueId}/draft-room`)}>Draft Room</button>
       <button onClick={() => navigate(`/${leagueId}/my-league`)}>Standings</button>
+      <button onClick={() => navigate(`/${leagueId}/league-rules`)}>League Rules</button>
+      <button onClick={() => navigate(`/${leagueId}/stats`)}>Stats</button>
     </nav>
   );
 }

@@ -49,9 +49,15 @@ async function simulateDraft(leagueId) {
     selectedTeams[uid] = picks;
     teamIndex += 7;
 
-    // write to lineup.drafted
+    const starters = picks.slice(0, 5);
+    const bench = picks.slice(5, 7);
+
+    // write all lineup fields
     await db.collection("leagues").doc(leagueId).collection("members").doc(uid).update({
-      "lineup.drafted": picks
+      "lineup.drafted": picks,
+      "lineup.currentRoster": picks,
+      "lineup.starters": starters,
+      "lineup.bench": bench
     });
   }
 
