@@ -5,25 +5,24 @@ import {
   getDocs,
   getDoc,
   doc,
-  updateDoc,
 } from "firebase/firestore";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import LeagueNavBar from "../components/LeagueNavBar";
 
 function FreeAgents() {
   const { leagueId } = useParams();
+  const navigate = useNavigate();
   const [teamsByConference, setTeamsByConference] = useState({});
   const [conferenceList, setConferenceList] = useState([]);
-  const [activeConference, setActiveConference] = useState("");
+  const [activeConference, setActiveConference] = useState("National");
   const [draftedTeams, setDraftedTeams] = useState({});
   const [loading, setLoading] = useState(true);
   const [userTeams, setUserTeams] = useState([]);
   const [selectedDropTeam, setSelectedDropTeam] = useState("");
   const [pendingAddTeam, setPendingAddTeam] = useState("");
   const [showSwapUI, setShowSwapUI] = useState(false);
-  const [starters, setStarters] = useState([]);
-  const [bench, setBench] = useState([]);
+  const [sortConfig, setSortConfig] = useState({ key: "school", direction: "asc" });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -46,7 +45,7 @@ function FreeAgents() {
 
       teamsSnap.forEach(doc => {
         const data = doc.data();
-        if (data.classification !== "FBS") return;
+        if ((data.classification || "").toUpperCase() !== "FBS") return;
 
         const conf = data.conference || "Unknown";
         if (!teamsMap[conf]) teamsMap[conf] = [];
@@ -58,16 +57,11 @@ function FreeAgents() {
       });
 
       const sortedConf = Object.keys(teamsMap).sort();
-      sortedConf.forEach(conf => {
-        teamsMap[conf].sort((a, b) => a.school.localeCompare(b.school));
-      });
-
+      setConferenceList(["National", ...sortedConf]);
       setTeamsByConference(teamsMap);
-      setConferenceList(sortedConf);
-      setActiveConference(sortedConf[0]);
+      setActiveConference("National");
       setDraftedTeams(drafted);
 
-      // fetch current user's roster
       const user = auth.currentUser;
       if (!user) return;
 
@@ -75,8 +69,6 @@ function FreeAgents() {
       const memberSnap = await getDoc(memberRef);
       const lineup = memberSnap.data()?.lineup || {};
       setUserTeams(lineup.currentRoster || []);
-      setStarters(lineup.starters || []);
-      setBench(lineup.bench || []);
 
       setLoading(false);
     };
@@ -84,76 +76,52 @@ function FreeAgents() {
     fetchData();
   }, [leagueId]);
 
-  const handleAddTeam = async (teamName) => {
+  const handleAddTeam = (teamName) => {
     const user = auth.currentUser;
     if (!user) return;
 
-    const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
-
-    // Prefer to fill starter, then bench
     if (userTeams.length < 7) {
-      const newRoster = [...userTeams, teamName];
-      const newStarters = starters.length < 5 ? [...starters, teamName] : starters;
-      const newBench = starters.length < 5 ? bench : [...bench, teamName];
-
-      await updateDoc(memberRef, {
-        "lineup.currentRoster": newRoster,
-        "lineup.starters": newStarters,
-        "lineup.bench": newBench
-      });
-
-      window.location.reload();
+      navigate(`/confirm-add/${leagueId}/${teamName}`);
     } else {
-      // Show swap UI if roster is full
       setPendingAddTeam(teamName);
       setSelectedDropTeam("");
       setShowSwapUI(true);
     }
   };
 
-  const handleConfirmSwap = async () => {
-    const user = auth.currentUser;
-    if (!user || !selectedDropTeam || !pendingAddTeam) return;
+  const handleConfirmSwap = () => {
+    if (!selectedDropTeam || !pendingAddTeam) return;
+    navigate(`/confirm-swap/${leagueId}/${pendingAddTeam}/${selectedDropTeam}`);
+  };
 
-    const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
-    const memberSnap = await getDoc(memberRef);
-    const data = memberSnap.data();
-    const lineup = data.lineup || {};
+  const getVisibleFreeAgents = () => {
+    if (activeConference === "National") {
+      return Object.values(teamsByConference)
+        .flat()
+        .filter(team => !draftedTeams[team.school]);
+    }
+    return (teamsByConference[activeConference] || []).filter(team => !draftedTeams[team.school]);
+  };
 
-    const currentRoster = lineup.currentRoster || [];
-    const starters = lineup.starters || [];
-    const bench = lineup.bench || [];
+  const sortedTeams = [...getVisibleFreeAgents()].sort((a, b) => {
+    const key = sortConfig.key;
+    const aValue = a[key] || "";
+    const bValue = b[key] || "";
 
-    if (!currentRoster.includes(selectedDropTeam)) {
-      alert("Team to drop is not in current roster.");
-      return;
+    if (typeof aValue === "number" && typeof bValue === "number") {
+      return sortConfig.direction === "asc" ? aValue - bValue : bValue - aValue;
     }
 
-    const newRoster = currentRoster
-      .filter(t => t !== selectedDropTeam)
-      .concat(pendingAddTeam);
+    return sortConfig.direction === "asc"
+      ? String(aValue).localeCompare(String(bValue))
+      : String(bValue).localeCompare(String(aValue));
+  });
 
-    let newStarters = starters;
-    let newBench = bench;
-
-    if (starters.includes(selectedDropTeam)) {
-      newStarters = starters.map(t => (t === selectedDropTeam ? pendingAddTeam : t));
-    } else if (bench.includes(selectedDropTeam)) {
-      newBench = bench.map(t => (t === selectedDropTeam ? pendingAddTeam : t));
-    } else {
-      newBench = [...bench, pendingAddTeam];
-    }
-
-    await updateDoc(memberRef, {
-      "lineup.currentRoster": newRoster,
-      "lineup.starters": newStarters,
-      "lineup.bench": newBench
-    });
-
-    setPendingAddTeam("");
-    setSelectedDropTeam("");
-    setShowSwapUI(false);
-    window.location.reload();
+  const toggleSort = (key) => {
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+    }));
   };
 
   if (loading) return <p>Loading Free Agents...</p>;
@@ -163,48 +131,78 @@ function FreeAgents() {
       <LeagueNavBar />
       <h2>Free Agents</h2>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
-        {conferenceList.map(conf => (
-          <button
-            key={conf}
-            onClick={() => setActiveConference(conf)}
-            style={{ fontWeight: activeConference === conf ? "bold" : "normal" }}
+      <div style={{ marginBottom: "1rem" }}>
+        <label>
+          Filter by Conference:{" "}
+          <select
+            value={activeConference}
+            onChange={(e) => setActiveConference(e.target.value)}
           >
-            {conf}
-          </button>
-        ))}
+            {conferenceList.map(conf => (
+              <option key={conf} value={conf}>
+                {conf}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
-      {teamsByConference[activeConference]?.map(team => {
-        const owner = draftedTeams[team.school];
-        const owned = Boolean(owner);
-        const season = team.currentSeason || {};
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th onClick={() => toggleSort("school")}>School</th>
+            <th onClick={() => toggleSort("gamePoints")}>Points</th>
+            <th onClick={() => toggleSort("currentSeason.record")}>Record</th>
+            <th onClick={() => toggleSort("currentSeason.nextOpponent")}>Next Game</th>
+            <th>Remaining Schedule</th>
+            <th></th> {/* Action column */}
+          </tr>
+        </thead>
+        <tbody>
+          {sortedTeams.map((team) => {
+            const season = team.currentSeason || {};
+            const scheduleTBD = [
+              "Week 1: TBD vs TBD",
+              "Week 2: TBD vs TBD",
+              "Week 3: TBD vs TBD",
+            ];
 
-        return (
-          <div
-            key={team.id}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "0.5rem",
-              borderBottom: "1px solid #ddd"
-            }}
-          >
-            <div>
-              <strong>{team.school}</strong> | Record: {season.record} | Conf: {season.confRecord} |
-              Next: {season.nextOpponent} | Points For: {season.totalPointsFor} |
-              Points Against: {season.totalPointsAgainst} |
-              Status: {owned ? `Owned by ${owner.ownerName} (${owner.teamName})` : "Available"}
-            </div>
-            {!owned && (
-              <button onClick={() => handleAddTeam(team.school)}>
-                <Plus color="green" />
-              </button>
-            )}
-          </div>
-        );
-      })}
+            return (
+              <tr key={team.id} style={{ borderBottom: "1px solid #ddd" }}>
+                <td>
+                  <strong>{team.school}</strong>{" "}
+                  <span style={{ color: "#666" }}>({team.conference || "N/A"})</span>
+                </td>
+                <td>{season.gamePoints ?? 0}</td>
+                <td>{season.record || "—"}</td>
+                <td>
+                  {season.nextOpponent || "—"}{" "}
+                  {season.nextOpponentSpread !== undefined && (
+                    <span style={{ color: "#666" }}>
+                      ({season.nextOpponentSpread})
+                    </span>
+                  )}
+                </td>
+                <td>
+                  <details>
+                    <summary>View</summary>
+                    <ul style={{ paddingLeft: "1rem", margin: 0 }}>
+                      {scheduleTBD.map((item, idx) => (
+                        <li key={idx}>{item}</li>
+                      ))}
+                    </ul>
+                  </details>
+                </td>
+                <td>
+                  <button onClick={() => handleAddTeam(team.school)}>
+                    <Plus color="green" />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
 
       {showSwapUI && (
         <div style={{ marginTop: "1rem", padding: "1rem", border: "1px solid #ccc" }}>

@@ -30,7 +30,7 @@ async function updateFBSTeams() {
 
   snapshot.forEach((doc) => {
     const data = doc.data();
-    if (data.classification === "FBS") {
+    if (data.classification === "fbs") {
       const teamRef = doc.ref;
       batch.update(teamRef, {
         currentSeason: defaultSeasonData

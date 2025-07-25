@@ -32,7 +32,6 @@ function DraftRoom() {
 
       setUserId(currentUser.uid);
 
-      // Get league info
       const leagueRef = doc(db, "leagues", leagueId);
       const leagueSnap = await getDoc(leagueRef);
       if (leagueSnap.exists()) {
@@ -41,7 +40,6 @@ function DraftRoom() {
         setMaxManagers(leagueData.maxManagers);
       }
 
-      // Get league members
       const membersRef = collection(db, "leagues", leagueId, "members");
       const membersSnap = await getDocs(membersRef);
 
@@ -56,7 +54,6 @@ function DraftRoom() {
 
       setUserMap(nameMap);
 
-      // Listen to draft data
       const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
       onSnapshot(draftRef, (snap) => {
         const data = snap.data();
@@ -124,11 +121,9 @@ function DraftRoom() {
     if (!confirm) return;
 
     try {
-      // Delete the draft metadata
       const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
       await deleteDoc(draftRef);
 
-      // Reset each member's lineup
       const membersRef = collection(db, "leagues", leagueId, "members");
       const membersSnap = await getDocs(membersRef);
 
@@ -219,6 +214,7 @@ function DraftRoom() {
   if (!draftData) {
     return (
       <div>
+        <LeagueNavBar />
         <h2>Draft Room</h2>
         <p>No draft has been started yet.</p>
 

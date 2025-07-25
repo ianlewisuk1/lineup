@@ -1,4 +1,3 @@
-// src/pages/Stats.js
 import React, { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase/firebase";
@@ -8,24 +7,35 @@ function Stats() {
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState({ key: "school", direction: "ascending" });
+  const [conferenceList, setConferenceList] = useState([]);
+  const [activeConference, setActiveConference] = useState("National");
 
   useEffect(() => {
     const fetchTeams = async () => {
       const snap = await getDocs(collection(db, "teams"));
       const list = [];
+      const confSet = new Set();
+
       snap.forEach(doc => {
         const data = doc.data();
-        if (data.classification === "FBS") {
+        if ((data.classification || "").toUpperCase() === "FBS") {
           list.push(data);
+          if (data.conference) confSet.add(data.conference);
         }
       });
+
       setTeams(list);
+      setConferenceList(["National", ...Array.from(confSet).sort()]);
       setLoading(false);
     };
     fetchTeams();
   }, []);
 
-  const sortedTeams = [...teams].sort((a, b) => {
+  const filteredTeams = activeConference === "National"
+    ? teams
+    : teams.filter(team => team.conference === activeConference);
+
+  const sortedTeams = [...filteredTeams].sort((a, b) => {
     const getValue = (team, key) => {
       if (key === "school") return team.school;
       const season = team.currentSeason || {};
@@ -59,6 +69,21 @@ function Stats() {
     <div style={{ padding: "1rem" }}>
       <LeagueNavBar />
       <h2>FBS Team Stats</h2>
+
+      <div style={{ marginBottom: "1rem" }}>
+        <label>
+          Filter by Conference:{" "}
+          <select
+            value={activeConference}
+            onChange={(e) => setActiveConference(e.target.value)}
+          >
+            {conferenceList.map(conf => (
+              <option key={conf} value={conf}>{conf}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
@@ -70,7 +95,7 @@ function Stats() {
             <th onClick={() => handleSort("avgPointsFor")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Avg PF</th>
             <th onClick={() => handleSort("avgPointsAgainst")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Avg PA</th>
             <th onClick={() => handleSort("nextOpponent")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Next Opponent</th>
-            <th onClick={() => handleSort("nextOpponentSpread")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Next Opp Date</th>
+            <th onClick={() => handleSort("nextOpponentSpread")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Next Opp Spread</th>
             <th onClick={() => handleSort("sosRank")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>SOS Rank</th>
             <th onClick={() => handleSort("philMetrics")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Phil Metrics Rank</th>
           </tr>
@@ -78,7 +103,7 @@ function Stats() {
         <tbody>
           {sortedTeams.map((team) => (
             <tr key={team.school}>
-              <td>{team.school} ({team.conference})</td>
+              <td>{team.school} ({team.conference || "-"})</td>
               <td>{team.currentSeason?.gamePoints ?? 0}</td>
               <td>{team.currentSeason?.record || "-"}</td>
               <td>{team.currentSeason?.confRecord || "-"}</td>
@@ -86,7 +111,7 @@ function Stats() {
               <td>{team.currentSeason?.avgPointsFor ?? "-"}</td>
               <td>{team.currentSeason?.avgPointsAgainst ?? "-"}</td>
               <td>{team.currentSeason?.nextOpponent || "-"}</td>
-              <td>{team.currentSeason?.nextOpponentSpread || "-"}</td>
+              <td>{team.currentSeason?.nextOpponentSpread ?? "-"}</td>
               <td>{team.currentSeason?.sosRank ?? "-"}</td>
               <td>{team.currentSeason?.philMetrics ?? "-"}</td>
             </tr>
