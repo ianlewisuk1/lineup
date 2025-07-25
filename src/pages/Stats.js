@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase/firebase";
+import LeagueNavBar from "../components/LeagueNavBar";
 
 function Stats() {
   const [teams, setTeams] = useState([]);
@@ -56,6 +57,7 @@ function Stats() {
 
   return (
     <div style={{ padding: "1rem" }}>
+      <LeagueNavBar />
       <h2>FBS Team Stats</h2>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
