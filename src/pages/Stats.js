@@ -63,16 +63,16 @@ function Stats() {
         <thead>
           <tr>
             <th onClick={() => handleSort("school")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Team (Conf)</th>
-            <th onClick={() => handleSort("gamePoints")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Lineup TM Pts</th>
+            <th onClick={() => handleSort("gamePoints")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Points</th>
             <th onClick={() => handleSort("record")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Record</th>
             <th onClick={() => handleSort("confRecord")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Conf Rec</th>
-            <th onClick={() => handleSort("ats")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>ATS</th>
+            <th onClick={() => handleSort("ats")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>ATS Record</th>
             <th onClick={() => handleSort("avgPointsFor")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Avg PF</th>
             <th onClick={() => handleSort("avgPointsAgainst")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Avg PA</th>
             <th onClick={() => handleSort("nextOpponent")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Next Opponent</th>
-            <th onClick={() => handleSort("nextOpponentSpread")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Next Opp Data</th>
+            <th onClick={() => handleSort("nextOpponentSpread")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Next Opp Date</th>
             <th onClick={() => handleSort("sosRank")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>SOS Rank</th>
-            <th onClick={() => handleSort("philMetrics")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Phil Metrics</th>
+            <th onClick={() => handleSort("philMetrics")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Phil Metrics Rank</th>
           </tr>
         </thead>
         <tbody>
