@@ -1,10 +1,13 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase/firebase";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 
 function SignUp() {
+  const navigate = useNavigate();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -23,10 +26,11 @@ function SignUp() {
         lastName,
         email: user.email,
         dob,
-        leagueIds: [] // starts empty, updated when they join a league
+        leagueIds: []
       });
 
       alert("Signup successful and user document created!");
+      navigate("/home"); // Redirect to home page
     } catch (err) {
       alert(err.message);
     }

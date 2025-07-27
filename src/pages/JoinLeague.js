@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { db, auth } from "../firebase/firebase";
 import {
   doc,
@@ -9,6 +10,8 @@ import {
 } from "firebase/firestore";
 
 function JoinLeague() {
+  const navigate = useNavigate();
+
   const [leagueId, setLeagueId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [teamName, setTeamName] = useState("");
@@ -46,21 +49,28 @@ function JoinLeague() {
         members: arrayUnion(user.uid)
       });
 
-      // Update user's leagueId
+      // Add leagueId to user's profile
       await updateDoc(doc(db, "users", user.uid), {
         leagueIds: arrayUnion(leagueId)
       });
 
-      // Set league-specific member info
+      // Create the member document for this league
       await setDoc(doc(db, "leagues", leagueId, "members", user.uid), {
         displayName: displayName.trim(),
         teamName: teamName.trim(),
-        email: user.email || "", // safe fallback
-        lineup: [],
-        joinedAt: new Date()
+        email: user.email || "",
+        joinedAt: new Date(),
+        lineup: {
+          starters: [],
+          bench: [],
+          currentRoster: []
+        },
+        points: 0,
+        weeklyPoints: {}
       }, { merge: true });
 
       alert("Joined league successfully!");
+      navigate(`/${leagueId}/draft-room`);
     } catch (err) {
       alert("Error: " + err.message);
     } finally {
