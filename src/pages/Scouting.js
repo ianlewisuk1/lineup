@@ -6,13 +6,15 @@ import LeagueNavBar from "../components/LeagueNavBar";
 function Scouting() {
   const [teams, setTeams] = useState([]);
   const [sortConfig, setSortConfig] = useState({ key: "philMetricDraftRank", direction: "asc" });
+  const [conferenceFilter, setConferenceFilter] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const fetchTeams = async () => {
       const querySnapshot = await getDocs(collection(db, "teams"));
       const fbsTeams = querySnapshot.docs
         .map((doc) => doc.data())
-          .filter(team => (team.classification || "").toLowerCase() === "fbs");
+        .filter((team) => (team.classification || "").toLowerCase() === "fbs");
       setTeams(fbsTeams);
     };
 
@@ -27,7 +29,16 @@ function Scouting() {
     setSortConfig({ key, direction });
   };
 
-  const sortedTeams = [...teams].sort((a, b) => {
+  const filteredTeams = teams.filter((team) => {
+    const matchesSearch = team.school.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const p4 = ["SEC", "ACC", "Big Ten", "Big 12"];
+    if (conferenceFilter === "All") return matchesSearch;
+    if (conferenceFilter === "P4") return matchesSearch && p4.includes(team.conference);
+    return matchesSearch && team.conference === conferenceFilter;
+  });
+
+  const sortedTeams = [...filteredTeams].sort((a, b) => {
     const aValue = a[sortConfig.key];
     const bValue = b[sortConfig.key];
 
@@ -44,10 +55,37 @@ function Scouting() {
       : bValue.toString().localeCompare(aValue.toString());
   });
 
+  const uniqueConferences = [...new Set(teams.map((team) => team.conference))].sort();
+
   return (
     <div>
       <LeagueNavBar />
       <h2 style={{ textAlign: "center" }}>Scouting</h2>
+
+      <div style={{ display: "flex", justifyContent: "center", gap: "10px", margin: "10px 0" }}>
+        <input
+          type="text"
+          placeholder="Search by school..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ padding: "6px", fontSize: "0.9rem", width: "200px" }}
+        />
+
+        <select
+          value={conferenceFilter}
+          onChange={(e) => setConferenceFilter(e.target.value)}
+          style={{ padding: "6px", fontSize: "0.9rem" }}
+        >
+          <option value="All">All Conferences</option>
+          <option value="P4">Power 4 (SEC, ACC, Big Ten, Big 12)</option>
+          {uniqueConferences.map((conf) => (
+            <option key={conf} value={conf}>
+              {conf}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
           <thead>
