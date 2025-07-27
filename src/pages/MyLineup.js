@@ -76,6 +76,14 @@ function MyLineup() {
     });
   };
 
+  const formatNextGame = (season) => {
+    if (!season?.nextOpponent) return "—";
+    const isHome = season.nextGameIsHome;
+    const spread = season.nextOpponentSpread ?? "TBD";
+    const prefix = isHome === false ? "@" : isHome === true ? "vs" : "?";
+    return `${prefix} ${season.nextOpponent} (${spread})`;
+  };
+
   if (loading) return <p>Loading your lineup...</p>;
 
   return (
@@ -105,7 +113,7 @@ function MyLineup() {
                   <br />
                   Record: {team.currentSeason?.record} | Conf: {team.currentSeason?.confRecord}
                   <br />
-                  Next: {team.currentSeason?.nextOpponent} ({team.currentSeason?.nextOpponentSpread})
+                  Next: {formatNextGame(team.currentSeason)}
                   <br />
                   Game Points: {team.currentSeason?.gamePoints ?? 0}
                   <div style={{ position: "absolute", right: "1rem", top: "0.5rem" }}>
@@ -169,7 +177,7 @@ function MyLineup() {
                   <br />
                   Record: {team.currentSeason?.record} | Conf: {team.currentSeason?.confRecord}
                   <br />
-                  Next: {team.currentSeason?.nextOpponent} ({team.currentSeason?.nextOpponentSpread})
+                  Next: {formatNextGame(team.currentSeason)}
                   <br />
                   Game Points: {team.currentSeason?.gamePoints ?? 0}
                   <Link

@@ -124,6 +124,14 @@ function FreeAgents() {
     }));
   };
 
+  const formatNextGame = (season) => {
+    if (!season?.nextOpponent) return "—";
+    const isHome = season.nextGameIsHome;
+    const spread = season.nextOpponentSpread ?? "TBD";
+    const prefix = isHome === false ? "@" : isHome === true ? "vs" : "?";
+    return `${prefix} ${season.nextOpponent} (${spread})`;
+  };
+
   if (loading) return <p>Loading Free Agents...</p>;
 
   return (
@@ -175,14 +183,7 @@ function FreeAgents() {
                 </td>
                 <td>{season.gamePoints ?? 0}</td>
                 <td>{season.record || "—"}</td>
-                <td>
-                  {season.nextOpponent || "—"}{" "}
-                  {season.nextOpponentSpread !== undefined && (
-                    <span style={{ color: "#666" }}>
-                      ({season.nextOpponentSpread})
-                    </span>
-                  )}
-                </td>
+                <td>{formatNextGame(season)}</td>
                 <td>
                   <details>
                     <summary>View</summary>

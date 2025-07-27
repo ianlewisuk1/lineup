@@ -63,6 +63,21 @@ function Stats() {
     });
   };
 
+  const formatNextOpponent = (team) => {
+    const cs = team.currentSeason;
+    if (!cs || !cs.nextOpponent) return "-";
+
+    const spread = cs.nextOpponentSpread ?? "TBD";
+
+    // ✅ Handle both true and false correctly
+    let prefix = "?";
+    if (cs.nextGameIsHome === true) prefix = "vs";
+    else if (cs.nextGameIsHome === false) prefix = "@";
+
+    return `${prefix} ${cs.nextOpponent} (${spread})`;
+  };
+
+
   if (loading) return <p>Loading FBS stats...</p>;
 
   return (
@@ -94,8 +109,7 @@ function Stats() {
             <th onClick={() => handleSort("ats")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>ATS Record</th>
             <th onClick={() => handleSort("avgPointsFor")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Avg PF</th>
             <th onClick={() => handleSort("avgPointsAgainst")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Avg PA</th>
-            <th onClick={() => handleSort("nextOpponent")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Next Opponent</th>
-            <th onClick={() => handleSort("nextOpponentSpread")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Next Opp Spread</th>
+            <th onClick={() => handleSort("nextOpponent")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Next Opponent (Spread)</th>
             <th onClick={() => handleSort("sosRank")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>SOS Rank</th>
             <th onClick={() => handleSort("philMetrics")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Phil Metrics Rank</th>
           </tr>
@@ -110,8 +124,7 @@ function Stats() {
               <td>{team.currentSeason?.ats || "-"}</td>
               <td>{team.currentSeason?.avgPointsFor ?? "-"}</td>
               <td>{team.currentSeason?.avgPointsAgainst ?? "-"}</td>
-              <td>{team.currentSeason?.nextOpponent || "-"}</td>
-              <td>{team.currentSeason?.nextOpponentSpread ?? "-"}</td>
+              <td>{formatNextOpponent(team)}</td>
               <td>{team.currentSeason?.sosRank ?? "-"}</td>
               <td>{team.currentSeason?.philMetrics ?? "-"}</td>
             </tr>
