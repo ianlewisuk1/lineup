@@ -31,6 +31,8 @@ import ConfirmAddTeam from "./pages/ConfirmAddTeam";
 import ConfirmSwapTeam from "./pages/ConfirmSwapTeam";
 import Scouting from "./pages/Scouting";
 import PreDraftOnly from "./components/PreDraftOnly";
+import AdminPanel from "./pages/AdminPanel";
+import AdminLeagueDetail from "./pages/AdminLeagueDetail"; // ✅ NEW
 
 function AppWrapper() {
   return (
@@ -53,9 +55,10 @@ function App() {
       setUser(currentUser);
       if (currentUser) {
         const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        const userData = userDoc.data();
         setDisplayName(
-          userDoc.data()?.firstName
-            ? `${userDoc.data().firstName} ${userDoc.data().lastName || ""}`
+          userData?.firstName
+            ? `${userData.firstName} ${userData.lastName || ""}`
             : currentUser.email
         );
       } else {
@@ -111,6 +114,8 @@ function App() {
         <Route path="/create-league" element={<CreateLeague />} />
         <Route path="/join-league" element={<JoinLeague />} />
         <Route path="/how-to-play" element={<HowToPlay />} />
+        <Route path="/admin" element={<AdminPanel />} />
+        <Route path="/admin/league/:leagueId" element={<AdminLeagueDetail />} /> {/* ✅ NEW */}
 
         {/* Public League Pages */}
         <Route path=":leagueId/draft-room" element={<DraftRoom />} />

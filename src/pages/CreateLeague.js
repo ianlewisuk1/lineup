@@ -37,7 +37,8 @@ function CreateLeague() {
         createdAt: new Date(),
         createdBy: user.uid,
         admin: user.uid,
-        maxManagers: maxManagers // ✅ saved to Firestore
+        maxManagers: maxManagers, // ✅ saved to Firestore
+        draftComplete: false
       });
 
       await updateDoc(doc(db, "users", user.uid), {

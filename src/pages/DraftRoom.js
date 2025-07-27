@@ -1,3 +1,4 @@
+// src/pages/DraftRoom.js
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../firebase/firebase";
 import {
@@ -194,6 +195,12 @@ function DraftRoom() {
       currentPickIndex: newIndex,
       draftComplete
     });
+
+    if (draftComplete) {
+      await updateDoc(doc(db, "leagues", leagueId), {
+        draftComplete: true
+      });
+    }
 
     const memberRef = doc(db, "leagues", leagueId, "members", userId);
     await updateDoc(memberRef, {

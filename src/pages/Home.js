@@ -5,17 +5,27 @@ import { useNavigate } from "react-router-dom";
 
 function Home() {
   const [leagueList, setLeagueList] = useState([]);
+  const [isAdmin, setIsAdmin] = useState(null); // null = not yet checked
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchLeagues = async () => {
+    const fetchUserAndLeagues = async () => {
       const currentUser = auth.currentUser;
       if (!currentUser) return;
 
       const userRef = doc(db, "users", currentUser.uid);
       const userSnap = await getDoc(userRef);
-      const leagueIds = userSnap.data()?.leagueIds || [];
+      const userData = userSnap.data();
+      const adminStatus = userData?.isAdmin || false;
+      setIsAdmin(adminStatus);
 
+      // If admin, redirect to /admin immediately
+      if (adminStatus) {
+        navigate("/admin");
+        return;
+      }
+
+      const leagueIds = userData?.leagueIds || [];
       const leaguesData = [];
       for (let leagueId of leagueIds) {
         const leagueRef = doc(db, "leagues", leagueId);
@@ -28,8 +38,11 @@ function Home() {
       setLeagueList(leaguesData);
     };
 
-    fetchLeagues();
-  }, []);
+    fetchUserAndLeagues();
+  }, [navigate]);
+
+  // Don’t render anything if admin — will be redirected
+  if (isAdmin) return null;
 
   return (
     <div>

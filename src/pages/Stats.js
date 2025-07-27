@@ -8,7 +8,8 @@ function Stats() {
   const [loading, setLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState({ key: "school", direction: "ascending" });
   const [conferenceList, setConferenceList] = useState([]);
-  const [activeConference, setActiveConference] = useState("National");
+  const [activeConference, setActiveConference] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const fetchTeams = async () => {
@@ -25,15 +26,20 @@ function Stats() {
       });
 
       setTeams(list);
-      setConferenceList(["National", ...Array.from(confSet).sort()]);
+      setConferenceList(["All", "P4", ...Array.from(confSet).sort()]);
       setLoading(false);
     };
     fetchTeams();
   }, []);
 
-  const filteredTeams = activeConference === "National"
-    ? teams
-    : teams.filter(team => team.conference === activeConference);
+  const filteredTeams = teams.filter(team => {
+    const matchesSearch = team.school.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const p4 = ["SEC", "ACC", "Big Ten", "Big 12"];
+    if (activeConference === "All") return matchesSearch;
+    if (activeConference === "P4") return matchesSearch && p4.includes(team.conference);
+    return matchesSearch && team.conference === activeConference;
+  });
 
   const sortedTeams = [...filteredTeams].sort((a, b) => {
     const getValue = (team, key) => {
@@ -69,14 +75,12 @@ function Stats() {
 
     const spread = cs.nextOpponentSpread ?? "TBD";
 
-    // ✅ Handle both true and false correctly
     let prefix = "?";
     if (cs.nextGameIsHome === true) prefix = "vs";
     else if (cs.nextGameIsHome === false) prefix = "@";
 
     return `${prefix} ${cs.nextOpponent} (${spread})`;
   };
-
 
   if (loading) return <p>Loading FBS stats...</p>;
 
@@ -85,33 +89,39 @@ function Stats() {
       <LeagueNavBar />
       <h2>FBS Team Stats</h2>
 
-      <div style={{ marginBottom: "1rem" }}>
-        <label>
-          Filter by Conference:{" "}
-          <select
-            value={activeConference}
-            onChange={(e) => setActiveConference(e.target.value)}
-          >
-            {conferenceList.map(conf => (
-              <option key={conf} value={conf}>{conf}</option>
-            ))}
-          </select>
-        </label>
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+        <input
+          type="text"
+          placeholder="Search by team name..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ padding: "6px", fontSize: "0.9rem" }}
+        />
+
+        <select
+          value={activeConference}
+          onChange={(e) => setActiveConference(e.target.value)}
+          style={{ padding: "6px", fontSize: "0.9rem" }}
+        >
+          {conferenceList.map(conf => (
+            <option key={conf} value={conf}>{conf}</option>
+          ))}
+        </select>
       </div>
 
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
-            <th onClick={() => handleSort("school")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Team (Conf)</th>
-            <th onClick={() => handleSort("gamePoints")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Points</th>
-            <th onClick={() => handleSort("record")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Record</th>
-            <th onClick={() => handleSort("confRecord")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Conf Rec</th>
-            <th onClick={() => handleSort("ats")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>ATS Record</th>
-            <th onClick={() => handleSort("avgPointsFor")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Avg PF</th>
-            <th onClick={() => handleSort("avgPointsAgainst")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Avg PA</th>
-            <th onClick={() => handleSort("nextOpponent")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Next Opponent (Spread)</th>
-            <th onClick={() => handleSort("sosRank")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>SOS Rank</th>
-            <th onClick={() => handleSort("philMetrics")} style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc" }}>Phil Metrics Rank</th>
+            <Th label="Team (Conf)" sortKey="school" onSort={handleSort} sortConfig={sortConfig} />
+            <Th label="Points" sortKey="gamePoints" onSort={handleSort} sortConfig={sortConfig} />
+            <Th label="Record" sortKey="record" onSort={handleSort} sortConfig={sortConfig} />
+            <Th label="Conf Rec" sortKey="confRecord" onSort={handleSort} sortConfig={sortConfig} />
+            <Th label="ATS Record" sortKey="ats" onSort={handleSort} sortConfig={sortConfig} />
+            <Th label="Avg PF" sortKey="avgPointsFor" onSort={handleSort} sortConfig={sortConfig} />
+            <Th label="Avg PA" sortKey="avgPointsAgainst" onSort={handleSort} sortConfig={sortConfig} />
+            <Th label="Next Opponent (Spread)" sortKey="nextOpponent" onSort={handleSort} sortConfig={sortConfig} />
+            <Th label="SOS Rank" sortKey="sosRank" onSort={handleSort} sortConfig={sortConfig} />
+            <Th label="Phil Metrics Rank" sortKey="philMetrics" onSort={handleSort} sortConfig={sortConfig} />
           </tr>
         </thead>
         <tbody>
@@ -134,5 +144,14 @@ function Stats() {
     </div>
   );
 }
+
+const Th = ({ label, sortKey, onSort, sortConfig }) => (
+  <th
+    onClick={() => onSort(sortKey)}
+    style={{ cursor: "pointer", textAlign: "left", borderBottom: "1px solid #ccc", whiteSpace: "nowrap" }}
+  >
+    {label} {sortConfig.key === sortKey ? (sortConfig.direction === "ascending" ? "▲" : "▼") : ""}
+  </th>
+);
 
 export default Stats;
