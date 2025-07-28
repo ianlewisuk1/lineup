@@ -29,7 +29,6 @@ function MyLineup() {
 
       const starterList = memberData?.lineup?.starters || [];
       const benchList = memberData?.lineup?.bench || [];
-      const rosterList = memberData?.lineup?.currentRoster || [];
 
       setTeamName(memberData?.teamName || "Unnamed Squad");
 
@@ -42,8 +41,8 @@ function MyLineup() {
         };
       });
 
-      const startersResolved = starterList.map(name => rosterList.includes(name) ? allTeams[name] : null);
-      const benchResolved = benchList.map(name => rosterList.includes(name) ? allTeams[name] : null);
+      const startersResolved = starterList.map(name => allTeams[name] || null);
+      const benchResolved = benchList.map(name => allTeams[name] || null);
 
       setStarters(startersResolved);
       setBench(benchResolved);

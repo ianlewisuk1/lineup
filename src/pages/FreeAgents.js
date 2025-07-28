@@ -31,11 +31,13 @@ function FreeAgents() {
 
       const teamsMap = {};
       const drafted = {};
-
       membersSnap.forEach(doc => {
         const { displayName, teamName, lineup } = doc.data();
-        const currentRoster = lineup?.currentRoster || [];
-        currentRoster.forEach(team => {
+        const starters = lineup?.starters || [];
+        const bench = lineup?.bench || [];
+        const current = [...starters, ...bench];
+
+        current.forEach(team => {
           drafted[team] = {
             ownerName: displayName,
             teamName: teamName || "Unnamed Squad"
@@ -68,7 +70,10 @@ function FreeAgents() {
       const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
       const memberSnap = await getDoc(memberRef);
       const lineup = memberSnap.data()?.lineup || {};
-      setUserTeams(lineup.currentRoster || []);
+
+      const starters = lineup.starters || [];
+      const bench = lineup.bench || [];
+      setUserTeams([...starters, ...bench]);
 
       setLoading(false);
     };
@@ -163,7 +168,7 @@ function FreeAgents() {
             <th onClick={() => toggleSort("currentSeason.record")}>Record</th>
             <th onClick={() => toggleSort("currentSeason.nextOpponent")}>Next Game</th>
             <th>Remaining Schedule</th>
-            <th></th> {/* Action column */}
+            <th></th>
           </tr>
         </thead>
         <tbody>

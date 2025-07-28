@@ -8,13 +8,16 @@ import {
   updateDoc,
   arrayUnion
 } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
 
 function CreateLeague() {
+  const navigate = useNavigate();
+
   const [leagueName, setLeagueName] = useState("");
   const [scoringType, setScoringType] = useState("head_to_head");
   const [displayName, setDisplayName] = useState("");
   const [teamName, setTeamName] = useState("");
-  const [maxManagers, setMaxManagers] = useState(8); // ✅ new state
+  const [maxManagers, setMaxManagers] = useState(8);
   const [loading, setLoading] = useState(false);
 
   const handleCreateLeague = async (e) => {
@@ -37,7 +40,7 @@ function CreateLeague() {
         createdAt: new Date(),
         createdBy: user.uid,
         admin: user.uid,
-        maxManagers: maxManagers, // ✅ saved to Firestore
+        maxManagers: maxManagers,
         draftComplete: false
       });
 
@@ -57,7 +60,10 @@ function CreateLeague() {
         joinedAt: new Date()
       });
 
-      alert("League created!");
+      // Redirect with flash state
+      navigate("/home", {
+        state: { message: "✅ League created successfully!" }
+      });
     } catch (err) {
       alert("Error: " + err.message);
     } finally {
@@ -85,7 +91,6 @@ function CreateLeague() {
         <option value="cumulative">Cumulative</option>
       </select>
 
-      {/* ✅ New dropdown for max managers */}
       <label>
         Max Managers:
         <select

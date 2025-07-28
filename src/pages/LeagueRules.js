@@ -11,6 +11,7 @@ function LeagueRules() {
       <LeagueNavBar />
       <div style={{ padding: "1rem" }}>
         <h2>League Rules</h2>
+        <p><strong>League ID:</strong> {leagueId}</p>
         <ul>
           <li>Each league consists of 8, 10, or 12 players.</li>
           <li>Every player drafts 7 college football teams: 5 starters, 2 bench.</li>

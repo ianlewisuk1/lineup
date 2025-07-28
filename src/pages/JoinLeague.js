@@ -44,6 +44,15 @@ function JoinLeague() {
         return;
       }
 
+      // ✅ Guard against joining the same league twice
+      const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
+      const memberSnap = await getDoc(memberRef);
+      if (memberSnap.exists()) {
+        alert("You are already a member of this league.");
+        setLoading(false);
+        return;
+      }
+
       // Add user to league's members array
       await updateDoc(leagueRef, {
         members: arrayUnion(user.uid)
@@ -55,7 +64,7 @@ function JoinLeague() {
       });
 
       // Create the member document for this league
-      await setDoc(doc(db, "leagues", leagueId, "members", user.uid), {
+      await setDoc(memberRef, {
         displayName: displayName.trim(),
         teamName: teamName.trim(),
         email: user.email || "",

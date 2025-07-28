@@ -18,18 +18,16 @@ function ConfirmAddTeam() {
     const data = memberSnap.data();
     const lineup = data.lineup || {};
 
-    const currentRoster = lineup.currentRoster || [];
     const starters = lineup.starters || [];
     const bench = lineup.bench || [];
+    const currentRoster = [...starters, ...bench];
 
     if (currentRoster.length >= 7) return;
 
-    const newRoster = [...currentRoster, teamName];
     const newStarters = starters.length < 5 ? [...starters, teamName] : starters;
     const newBench = starters.length < 5 ? bench : [...bench, teamName];
 
     await updateDoc(memberRef, {
-      "lineup.currentRoster": newRoster,
       "lineup.starters": newStarters,
       "lineup.bench": newBench
     });

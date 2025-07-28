@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { auth, db } from "../firebase/firebase";
 import { doc, getDoc } from "firebase/firestore";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 function Home() {
   const [leagueList, setLeagueList] = useState([]);
-  const [isAdmin, setIsAdmin] = useState(null); // null = not yet checked
+  const [isAdmin, setIsAdmin] = useState(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const flashMessage = location.state?.message;
 
   useEffect(() => {
     const fetchUserAndLeagues = async () => {
@@ -19,7 +21,6 @@ function Home() {
       const adminStatus = userData?.isAdmin || false;
       setIsAdmin(adminStatus);
 
-      // If admin, redirect to /admin immediately
       if (adminStatus) {
         navigate("/admin");
         return;
@@ -41,11 +42,16 @@ function Home() {
     fetchUserAndLeagues();
   }, [navigate]);
 
-  // Don’t render anything if admin — will be redirected
   if (isAdmin) return null;
 
   return (
     <div>
+      {flashMessage && (
+        <div style={{ padding: "10px", backgroundColor: "#d4edda", color: "#155724", marginBottom: "1rem", borderRadius: "4px" }}>
+          {flashMessage}
+        </div>
+      )}
+
       <h2>My Leagues</h2>
       {leagueList.length === 0 ? (
         <p>You are not part of any leagues yet.</p>

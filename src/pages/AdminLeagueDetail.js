@@ -86,59 +86,83 @@ function AdminLeagueDetail() {
   };
 
   const handleSimulateDraft = async () => {
-  try {
-    // Step 1: Fetch FBS teams
-    const teamsSnap = await getDocs(collection(db, "teams"));
-    const allTeams = teamsSnap.docs
-      .map(doc => doc.data())
-      .filter(team => team.classification === "fbs" && typeof team.school === "string");
+    try {
+      const teamsSnap = await getDocs(collection(db, "teams"));
+      const allTeams = teamsSnap.docs
+        .map(doc => doc.data())
+        .filter(team => team.classification?.toLowerCase() === "fbs" && typeof team.school === "string")
 
-    const shuffledTeams = allTeams.map(t => t.school).sort(() => 0.5 - Math.random());
+      const shuffledTeams = allTeams.map(t => t.school).sort(() => 0.5 - Math.random());
 
-    // Step 2: Assign 7 teams per member
-    const draftOrder = members.map(m => m.id);
-    const selectedTeams = {};
-    const memberUpdates = [];
+      const draftOrder = members.map(m => m.id);
+      const selectedTeams = {};
+      const memberUpdates = [];
 
-    draftOrder.forEach((uid, idx) => {
-      const picks = shuffledTeams.slice(idx * 7, idx * 7 + 7);
-      selectedTeams[uid] = picks;
+      draftOrder.forEach((uid, idx) => {
+        const picks = shuffledTeams.slice(idx * 7, idx * 7 + 7);
+        selectedTeams[uid] = picks;
 
-      const memberRef = doc(db, "leagues", leagueId, "members", uid);
-      memberUpdates.push(
-        setDoc(memberRef, {
-          lineup: {
-            drafted: picks,
-            starters: picks.slice(0, 5),
-            bench: picks.slice(5)
-          }
-        }, { merge: true }) // ✅ Ensures existing data is preserved
+        const memberRef = doc(db, "leagues", leagueId, "members", uid);
+        memberUpdates.push(
+          setDoc(memberRef, {
+            lineup: {
+              drafted: picks,
+              starters: picks.slice(0, 5),
+              bench: picks.slice(5)
+            }
+          }, { merge: true })
+        );
+      });
+
+      await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), {
+        draftOrder,
+        currentPickIndex: draftOrder.length * 7,
+        availableTeams: [],
+        selectedTeams,
+        draftComplete: true
+      });
+
+      await updateDoc(doc(db, "leagues", leagueId), {
+        draftComplete: true
+      });
+
+      await Promise.all(memberUpdates);
+      alert("✅ Draft simulated.");
+      refresh();
+    } catch (err) {
+      console.error("Error simulating draft:", err);
+      alert("Error: " + err.message);
+    }
+  };
+
+  const handleResetDraft = async () => {
+    if (!window.confirm("This will delete all draft data and clear every lineup. Continue?")) return;
+
+    try {
+      await deleteDoc(doc(db, "leagues", leagueId, "meta", "draft"));
+
+      await updateDoc(doc(db, "leagues", leagueId), {
+        draftComplete: false
+      });
+
+      const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
+      const clears = membersSnap.docs.map(docSnap =>
+        updateDoc(docSnap.ref, {
+          "lineup.drafted": [],
+          "lineup.starters": [],
+          "lineup.bench": []
+        })
       );
-    });
 
-    // Step 3: Write draft metadata
-    await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), {
-      draftOrder,
-      currentPickIndex: draftOrder.length * 7,
-      availableTeams: [],
-      selectedTeams,
-      draftComplete: true
-    });
+      await Promise.all(clears);
 
-    await updateDoc(doc(db, "leagues", leagueId), {
-      draftComplete: true
-    });
-
-    await Promise.all(memberUpdates);
-    alert("✅ Draft simulated.");
-    refresh();
-  } catch (err) {
-    console.error("Error simulating draft:", err);
-    alert("Error: " + err.message);
-  }
-};
-
-
+      alert("✅ Draft reset successfully.");
+      refresh();
+    } catch (err) {
+      console.error("Error resetting draft:", err);
+      alert("Failed to reset draft: " + err.message);
+    }
+  };
 
   const handleSeedRemainingUsers = async () => {
     if (!league) return;
@@ -186,7 +210,6 @@ function AdminLeagueDetail() {
           joinedAt: new Date()
         });
 
-        // ✅ Push UID to top-level members array
         await updateDoc(doc(db, "leagues", leagueId), {
           members: arrayUnion(docSnap.id)
         });
@@ -194,14 +217,13 @@ function AdminLeagueDetail() {
 
       await Promise.all(batchAdds);
       alert(`Added ${needed} user(s) to the league.`);
-      refresh(); // ✅ Trigger re-fetch of league and members
+      refresh();
 
     } catch (err) {
       console.error("Error seeding users:", err);
       alert("Failed to add users: " + err.message);
     }
   };
-
 
   const formatList = (arr) => {
     if (!Array.isArray(arr) || arr.length === 0) return "-";
@@ -236,6 +258,10 @@ function AdminLeagueDetail() {
 
         <button onClick={handleSimulateDraft} style={{ marginLeft: "1rem" }}>
           Simulate Draft
+        </button>
+
+        <button onClick={handleResetDraft} style={{ marginLeft: "1rem", color: "red" }}>
+          🗑️ Reset Draft
         </button>
       </div>
 

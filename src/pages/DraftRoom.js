@@ -88,21 +88,30 @@ function DraftRoom() {
 
       const draftOrder = Object.keys(userMap).filter(Boolean);
       const allTeamsSnap = await getDocs(collection(db, "teams"));
-      const allTeams = allTeamsSnap.docs.map(doc => doc.data());
 
-      const availableTeams = allTeams
-        .filter(team => team.classification === "FBS" && typeof team.school === "string")
-        .map(team => team.school);
+      const allTeams = allTeamsSnap.docs
+        .map(doc => {
+          const data = doc.data();
+          if (!data.school || typeof data.school !== "string" || data.classification?.toLowerCase() !== "fbs") {
+            console.warn("❌ Skipping invalid team:", data);
+            return null;
+          }
+          return data;
+        })
+        .filter(Boolean);
 
-      if (availableTeams.length === 0) {
-        alert("⚠️ No valid FBS teams with names found.");
+      if (allTeams.length === 0) {
+        alert("⚠️ No valid FBS teams with names found. Check your /teams collection in Firestore.");
         return;
       }
+
+      const teamNames = allTeams.map(team => team.school);
+      console.log("✅ Available FBS teams:", teamNames);
 
       const draftPayload = {
         draftOrder,
         currentPickIndex: 0,
-        availableTeams,
+        availableTeams: teamNames,
         selectedTeams: {},
         draftComplete: false
       };
@@ -117,6 +126,7 @@ function DraftRoom() {
     }
   };
 
+
   const handleRestartDraft = async () => {
     const confirm = window.confirm("Are you sure you want to delete and restart the draft?");
     if (!confirm) return;
@@ -125,6 +135,11 @@ function DraftRoom() {
       const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
       await deleteDoc(draftRef);
 
+      const leagueRef = doc(db, "leagues", leagueId);
+      await updateDoc(leagueRef, {
+        draftComplete: false
+      });
+
       const membersRef = collection(db, "leagues", leagueId, "members");
       const membersSnap = await getDocs(membersRef);
 
@@ -132,7 +147,6 @@ function DraftRoom() {
         const memberRef = docSnap.ref;
         await updateDoc(memberRef, {
           "lineup.drafted": [],
-          "lineup.currentRoster": [],
           "lineup.starters": [],
           "lineup.bench": []
         });

@@ -18,13 +18,11 @@ function ConfirmSwapTeam() {
     const data = memberSnap.data();
     const lineup = data.lineup || {};
 
-    const currentRoster = lineup.currentRoster || [];
     const starters = lineup.starters || [];
     const bench = lineup.bench || [];
+    const currentRoster = [...starters, ...bench];
 
     if (!currentRoster.includes(dropTeam)) return;
-
-    const newRoster = currentRoster.filter(t => t !== dropTeam).concat(addTeam);
 
     let newStarters = starters;
     let newBench = bench;
@@ -34,11 +32,11 @@ function ConfirmSwapTeam() {
     } else if (bench.includes(dropTeam)) {
       newBench = bench.map(t => (t === dropTeam ? addTeam : t));
     } else {
-      newBench = [...bench, addTeam];
+      // Defensive fallback: dropTeam is somehow not in either group
+      return;
     }
 
     await updateDoc(memberRef, {
-      "lineup.currentRoster": newRoster,
       "lineup.starters": newStarters,
       "lineup.bench": newBench
     });
