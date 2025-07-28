@@ -32,7 +32,9 @@ import ConfirmSwapTeam from "./pages/ConfirmSwapTeam";
 import Scouting from "./pages/Scouting";
 import PreDraftOnly from "./components/PreDraftOnly";
 import AdminPanel from "./pages/AdminPanel";
-import AdminLeagueDetail from "./pages/AdminLeagueDetail"; // ✅ NEW
+import AdminLeagueDetail from "./pages/AdminLeagueDetail"; 
+import AdminTeamsPanel from "./pages/AdminTeamsPanel";
+import AdminSchedulePanel from "./pages/AdminSchedulePanel";
 
 function AppWrapper() {
   return (
@@ -116,6 +118,8 @@ function App() {
         <Route path="/how-to-play" element={<HowToPlay />} />
         <Route path="/admin" element={<AdminPanel />} />
         <Route path="/admin/league/:leagueId" element={<AdminLeagueDetail />} /> {/* ✅ NEW */}
+        <Route path="/admin/teams" element={<AdminTeamsPanel />} />
+        <Route path="/admin/schedule" element={<AdminSchedulePanel />} />
 
         {/* Public League Pages */}
         <Route path=":leagueId/draft-room" element={<DraftRoom />} />

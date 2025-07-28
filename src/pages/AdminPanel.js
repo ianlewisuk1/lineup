@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { auth, db } from "../firebase/firebase";
 import { getDoc, doc } from "firebase/firestore";
 import AdminUserPanel from "../components/AdminUserPanel";
@@ -35,6 +35,15 @@ function AdminPanel() {
   return (
     <div style={{ padding: "1rem" }}>
       <h2>Admin Panel</h2>
+
+      <div style={{ marginBottom: "1rem" }}>
+        <Link to="/admin/teams" style={{ marginRight: "1rem" }}>
+          🛠 Manage Teams
+        </Link>
+        <Link to="/admin/schedule">
+          📅 Manage Schedule
+        </Link>
+      </div>
 
       <AdminUserPanel />
       <AdminLeaguePanel />
