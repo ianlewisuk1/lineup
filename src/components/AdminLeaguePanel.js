@@ -112,7 +112,7 @@ function AdminLeaguePanel() {
   };
 
   const deleteAllLeagues = async () => {
-    if (!window.confirm("⚠️ This will permanently delete ALL leagues and their members/draft data. Users will NOT be deleted.\n\nProceed?")) return;
+    if (!window.confirm("⚠️ This will permanently delete ALL leagues and their members/draft/meta data. Users will NOT be deleted.\n\nProceed?")) return;
 
     setDeletingAll(true);
 
@@ -131,12 +131,18 @@ function AdminLeaguePanel() {
         await deleteDoc(doc(db, "leagues", leagueId, "draft", docRef.id));
       }
 
+      const metaSnap = await getDocs(collection(db, "leagues", leagueId, "meta"));
+      for (const docRef of metaSnap.docs) {
+        await deleteDoc(doc(db, "leagues", leagueId, "meta", docRef.id));
+      }
+
       await deleteDoc(doc(db, "leagues", leagueId));
     }
 
     setDeletingAll(false);
     fetchLeagues();
   };
+
 
   const seedLeagues = async () => {
     const confirm = window.confirm("Seed 10 test leagues into Firestore using real users as admins?");
