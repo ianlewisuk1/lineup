@@ -27,6 +27,7 @@ import DraftGuard from "./components/DraftGuard";
 import HowToPlay from "./pages/HowToPlay";
 import LeagueRules from "./pages/LeagueRules";
 import Stats from "./pages/Stats";
+import TeamPage from "./pages/TeamPage";
 import ConfirmAddTeam from "./pages/ConfirmAddTeam";
 import ConfirmSwapTeam from "./pages/ConfirmSwapTeam";
 import Scouting from "./pages/Scouting";
@@ -163,6 +164,14 @@ function App() {
           element={
             <DraftGuard>
               <Stats />
+            </DraftGuard>
+          }
+        />
+        <Route
+          path=":leagueId/team/:teamName"
+          element={
+            <DraftGuard>
+              <TeamPage />
             </DraftGuard>
           }
         />

@@ -23,6 +23,7 @@ function FreeAgents() {
   const [pendingAddTeam, setPendingAddTeam] = useState("");
   const [showSwapUI, setShowSwapUI] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: "school", direction: "asc" });
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -81,6 +82,10 @@ function FreeAgents() {
     fetchData();
   }, [leagueId]);
 
+  const handleTeamClick = (teamName) => {
+    navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
+  };
+
   const handleAddTeam = (teamName) => {
     const user = auth.currentUser;
     if (!user) return;
@@ -100,12 +105,23 @@ function FreeAgents() {
   };
 
   const getVisibleFreeAgents = () => {
+    let teams;
     if (activeConference === "National") {
-      return Object.values(teamsByConference)
+      teams = Object.values(teamsByConference)
         .flat()
         .filter(team => !draftedTeams[team.school]);
+    } else {
+      teams = (teamsByConference[activeConference] || []).filter(team => !draftedTeams[team.school]);
     }
-    return (teamsByConference[activeConference] || []).filter(team => !draftedTeams[team.school]);
+
+    // Filter by search query
+    if (searchQuery) {
+      teams = teams.filter(team => 
+        team.school.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    return teams;
   };
 
   const sortedTeams = [...getVisibleFreeAgents()].sort((a, b) => {
@@ -144,12 +160,21 @@ function FreeAgents() {
       <LeagueNavBar />
       <h2>Free Agents</h2>
 
-      <div style={{ marginBottom: "1rem" }}>
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+        <input
+          type="text"
+          placeholder="Search by team name..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ padding: "6px", fontSize: "0.9rem", minWidth: "200px" }}
+        />
+
         <label>
           Filter by Conference:{" "}
           <select
             value={activeConference}
             onChange={(e) => setActiveConference(e.target.value)}
+            style={{ padding: "6px", fontSize: "0.9rem" }}
           >
             {conferenceList.map(conf => (
               <option key={conf} value={conf}>
@@ -163,12 +188,36 @@ function FreeAgents() {
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
-            <th onClick={() => toggleSort("school")}>School</th>
-            <th onClick={() => toggleSort("gamePoints")}>Points</th>
-            <th onClick={() => toggleSort("currentSeason.record")}>Record</th>
-            <th onClick={() => toggleSort("currentSeason.nextOpponent")}>Next Game</th>
-            <th>Remaining Schedule</th>
-            <th></th>
+            <SortableHeader 
+              label="School" 
+              sortKey="school" 
+              onSort={toggleSort} 
+              sortConfig={sortConfig} 
+            />
+            <SortableHeader 
+              label="Points" 
+              sortKey="gamePoints" 
+              onSort={toggleSort} 
+              sortConfig={sortConfig} 
+            />
+            <SortableHeader 
+              label="Record" 
+              sortKey="currentSeason.record" 
+              onSort={toggleSort} 
+              sortConfig={sortConfig} 
+            />
+            <SortableHeader 
+              label="Next Game" 
+              sortKey="currentSeason.nextOpponent" 
+              onSort={toggleSort} 
+              sortConfig={sortConfig} 
+            />
+            <th style={{ padding: "0.75rem", textAlign: "left", borderBottom: "2px solid #ccc" }}>
+              Remaining Schedule
+            </th>
+            <th style={{ padding: "0.75rem", textAlign: "center", borderBottom: "2px solid #ccc" }}>
+              Add
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -183,7 +232,12 @@ function FreeAgents() {
             return (
               <tr key={team.id} style={{ borderBottom: "1px solid #ddd" }}>
                 <td>
-                  <strong>{team.school}</strong>{" "}
+                  <strong 
+                    onClick={() => handleTeamClick(team.school)}
+                    style={{ cursor: "pointer", color: "#0066cc", textDecoration: "underline" }}
+                  >
+                    {team.school}
+                  </strong>{" "}
                   <span style={{ color: "#666" }}>({team.conference || "N/A"})</span>
                 </td>
                 <td>{season.gamePoints ?? 0}</td>
@@ -240,5 +294,21 @@ function FreeAgents() {
     </div>
   );
 }
+
+const SortableHeader = ({ label, sortKey, onSort, sortConfig }) => (
+  <th
+    onClick={() => onSort(sortKey)}
+    style={{ 
+      cursor: "pointer", 
+      textAlign: "left", 
+      borderBottom: "2px solid #ccc",
+      padding: "0.75rem",
+      userSelect: "none",
+      backgroundColor: sortConfig.key === sortKey ? "#f0f0f0" : "transparent"
+    }}
+  >
+    {label} {sortConfig.key === sortKey ? (sortConfig.direction === "asc" ? "▲" : "▼") : "⇅"}
+  </th>
+);
 
 export default FreeAgents;

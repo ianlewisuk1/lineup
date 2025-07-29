@@ -88,25 +88,63 @@ function AdminUserPanel() {
     await fetchUsers("initial");
   };
 
-  const deleteUser = async (uid) => {
+  const deleteUser = async (uid, userEmail) => {
     if (!window.confirm("Are you sure you want to delete this user?")) return;
-    await deleteDoc(doc(db, "users", uid));
-    setUsers(prev => prev.filter(user => user.uid !== uid));
+    
+    try {
+      // Delete the Firestore document
+      await deleteDoc(doc(db, "users", uid));
+      
+      // Update local state
+      setUsers(prev => prev.filter(user => user.uid !== uid));
+      
+      // Inform admin about manual auth cleanup if needed
+      alert(`✅ User document deleted for ${userEmail}
+
+📝 Note: If you want to prevent them from logging in completely:
+1. Go to Firebase Console → Authentication → Users  
+2. Find and delete: ${userEmail}
+
+Without their Firestore document, they can't use the app anyway.`);
+      
+      console.log(`User Firestore document deleted for UID: ${uid}`);
+      
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      alert("Error deleting user. Please try again.");
+    }
   };
 
   const deleteAllNonAdminUsers = async () => {
     const confirm = window.confirm(
-      "⚠️ This will delete ALL users who are NOT site admins. This cannot be undone.\n\nAre you sure?"
+      "⚠️ This will delete ALL Firestore documents for users who are NOT site admins. This cannot be undone.\n\nAre you sure?"
     );
     if (!confirm) return;
 
     setDeletingAll(true);
 
-    const snap = await getDocs(collection(db, "users"));
-    const batchDeletes = snap.docs.filter(doc => !doc.data()?.isAdmin);
+    try {
+      const snap = await getDocs(collection(db, "users"));
+      const nonAdminUsers = snap.docs.filter(doc => !doc.data()?.isAdmin);
 
-    for (const userDoc of batchDeletes) {
-      await deleteDoc(doc(db, "users", userDoc.id));
+      let deletedCount = 0;
+      for (const userDoc of nonAdminUsers) {
+        try {
+          await deleteDoc(doc(db, "users", userDoc.id));
+          deletedCount++;
+        } catch (error) {
+          console.error(`Error deleting user ${userDoc.id}:`, error);
+        }
+      }
+
+      alert(`✅ Deleted ${deletedCount} non-admin user documents.
+
+📝 Note: Auth accounts still exist. To prevent login:
+Go to Firebase Console → Authentication → Users and delete manually if needed.`);
+      
+    } catch (error) {
+      console.error("Error in bulk delete:", error);
+      alert("Error during bulk delete. Please check console.");
     }
 
     setDeletingAll(false);
@@ -258,7 +296,7 @@ function AdminUserPanel() {
               </td>
               <td>
                 <button
-                  onClick={() => deleteUser(user.uid)}
+                  onClick={() => deleteUser(user.uid, user.email)}
                   style={{ color: "red" }}
                 >
                   Delete

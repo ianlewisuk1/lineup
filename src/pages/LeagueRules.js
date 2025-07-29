@@ -57,7 +57,7 @@ function LeagueRules() {
           return {
             uid: userId,
             name: `${userData.firstName || ""} ${userData.lastName || ""}`.trim(),
-            username: memberData.displayName || "Unknown",
+            username: userData.username || userData.email || "Unknown",
             teamName: memberData.teamName || "Untitled Team",
           };
         })
@@ -75,9 +75,49 @@ function LeagueRules() {
     setFormState((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleRemoveManager = async (uid) => {
-    await deleteDoc(doc(db, "leagues", leagueId, "members", uid));
-    setMembers((prev) => prev.filter((m) => m.uid !== uid));
+  const handleRemoveManager = async (uid, memberName) => {
+    const confirmRemoval = window.confirm(
+      `Are you sure you want to remove ${memberName} from the league? This action cannot be undone.`
+    );
+    
+    if (confirmRemoval) {
+      try {
+        // Remove from the members subcollection
+        await deleteDoc(doc(db, "leagues", leagueId, "members", uid));
+        
+        // Remove from the members array field in the main league document
+        const leagueRef = doc(db, "leagues", leagueId);
+        const currentMembers = leagueData.members || [];
+        const updatedMembers = currentMembers.filter(memberId => memberId !== uid);
+        
+        await updateDoc(leagueRef, {
+          members: updatedMembers
+        });
+        
+        // Remove league ID from user's leagueIds array
+        const userRef = doc(db, "users", uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const userData = userSnap.data();
+          const currentLeagueIds = userData.leagueIds || [];
+          const updatedLeagueIds = currentLeagueIds.filter(id => id !== leagueId);
+          
+          await updateDoc(userRef, {
+            leagueIds: updatedLeagueIds
+          });
+        }
+        
+        // Update local state
+        setMembers((prev) => prev.filter((m) => m.uid !== uid));
+        setLeagueData((prev) => ({
+          ...prev,
+          members: updatedMembers
+        }));
+      } catch (error) {
+        console.error("Error removing manager:", error);
+        setError("Failed to remove manager. Please try again.");
+      }
+    }
   };
 
   const handleConfirmChanges = async () => {
@@ -145,6 +185,7 @@ function LeagueRules() {
     <div>
       <LeagueNavBar />
       <div style={{ padding: "1rem" }}>
+        <h3>League ID: {leagueId}</h3>
         <h2>League Rules</h2>
 
         {isAdmin ? (
@@ -230,7 +271,7 @@ function LeagueRules() {
                 <td>{m.teamName}</td>
                 {isAdmin && (
                   <td>
-                    <button onClick={() => handleRemoveManager(m.uid)}>Remove</button>
+                    <button onClick={() => handleRemoveManager(m.uid, m.name || m.username)}>Remove</button>
                   </td>
                 )}
               </tr>

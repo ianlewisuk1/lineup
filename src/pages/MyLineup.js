@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { auth, db } from "../firebase/firebase";
 import {
   doc,
@@ -12,6 +12,7 @@ import LeagueNavBar from "../components/LeagueNavBar";
 
 function MyLineup() {
   const { leagueId } = useParams();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [teamName, setTeamName] = useState("");
   const [starters, setStarters] = useState([]);
@@ -51,6 +52,10 @@ function MyLineup() {
 
     fetchLineup();
   }, [leagueId]);
+
+  const handleTeamClick = (teamName) => {
+    navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
+  };
 
   const handleSwap = (starterIndex, benchTeam) => {
     const starterTeam = starters[starterIndex];
@@ -108,7 +113,12 @@ function MyLineup() {
             >
               {team ? (
                 <>
-                  <strong>{team.school}</strong> ({team.conference})
+                  <strong 
+                    onClick={() => handleTeamClick(team.school)}
+                    style={{ cursor: "pointer", color: "#0066cc", textDecoration: "underline" }}
+                  >
+                    {team.school}
+                  </strong> ({team.conference})
                   <br />
                   Record: {team.currentSeason?.record} | Conf: {team.currentSeason?.confRecord}
                   <br />
@@ -172,7 +182,12 @@ function MyLineup() {
             >
               {team ? (
                 <>
-                  <strong>{team.school}</strong> ({team.conference})
+                  <strong 
+                    onClick={() => handleTeamClick(team.school)}
+                    style={{ cursor: "pointer", color: "#0066cc", textDecoration: "underline" }}
+                  >
+                    {team.school}
+                  </strong> ({team.conference})
                   <br />
                   Record: {team.currentSeason?.record} | Conf: {team.currentSeason?.confRecord}
                   <br />
