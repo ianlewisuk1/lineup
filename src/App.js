@@ -14,6 +14,7 @@ import { doc, getDoc } from "firebase/firestore";
 
 import SignUp from "./pages/SignUp";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
 import CreateLeague from "./pages/CreateLeague";
 import JoinLeague from "./pages/JoinLeague";
 import DraftRoom from "./pages/DraftRoom";
@@ -51,7 +52,7 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const hideLoggedInBar = ["/", "/login", "/signup"].includes(location.pathname);
+  const hideLoggedInBar = ["/", "/login", "/signup", "/forgot-password"].includes(location.pathname);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
@@ -113,6 +114,7 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/home" element={<Home />} />
         <Route path="/create-league" element={<CreateLeague />} />
         <Route path="/join-league" element={<JoinLeague />} />

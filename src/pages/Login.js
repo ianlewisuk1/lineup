@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { auth, db } from "../firebase/firebase";
 
 function Login() {
@@ -33,7 +33,7 @@ function Login() {
 
     } catch (err) {
       console.error("Login error:", err);
-      setError(err.message); // 👈 Display actual error from Firebase
+      setError(err.message);
     }
   };
 
@@ -56,6 +56,19 @@ function Login() {
         required
       />
       <button type="submit">Login</button>
+      
+      <div style={{ marginTop: "1rem", textAlign: "center" }}>
+        <Link 
+          to="/forgot-password"
+          style={{ 
+            color: "#0066cc", 
+            textDecoration: "underline",
+            fontSize: "0.9rem"
+          }}
+        >
+          Forgot your password?
+        </Link>
+      </div>
     </form>
   );
 }
