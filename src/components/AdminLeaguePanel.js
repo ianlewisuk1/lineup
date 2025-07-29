@@ -143,7 +143,6 @@ function AdminLeaguePanel() {
     fetchLeagues();
   };
 
-
   const seedLeagues = async () => {
     const confirm = window.confirm("Seed 10 test leagues into Firestore using real users as admins?");
     if (!confirm) return;
@@ -156,34 +155,55 @@ function AdminLeaguePanel() {
     }
 
     const leagueNames = Array.from({ length: 10 }, (_, i) => `Test League ${i + 1}`);
-    const scoringTypes = ["head_to_head", "cumulative"];
     const maxOptions = [8, 10, 12];
+    const draftTypes = ["simulated", "live"];
 
     for (let i = 0; i < 10; i++) {
       const userDoc = userDocs[i];
       const userId = userDoc.id;
       const userData = userDoc.data();
+      
+      const selectedDraftType = draftTypes[Math.floor(Math.random() * draftTypes.length)];
+      const maxManagers = maxOptions[Math.floor(Math.random() * maxOptions.length)];
 
+      // Build league data matching CreateLeague.js exactly
       const leagueData = {
         name: leagueNames[i],
-        scoringType: scoringTypes[Math.floor(Math.random() * scoringTypes.length)],
-        members: [userId],
         createdAt: new Date(),
         createdBy: userId,
         admin: userId,
-        maxManagers: maxOptions[Math.floor(Math.random() * maxOptions.length)],
-        draftComplete: false
+        maxManagers: maxManagers,
+        draftComplete: false,
+        draftType: selectedDraftType,
+        scoringType: "cumulative", // All leagues use cumulative as specified
+        members: [userId]
       };
 
+      // Add live draft specific fields if needed
+      if (selectedDraftType === "live") {
+        // Set random future date between tomorrow and August 20, 2025
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const maxDate = new Date('2025-08-20');
+        const randomTime = tomorrow.getTime() + Math.random() * (maxDate.getTime() - tomorrow.getTime());
+        const randomDate = new Date(randomTime);
+        
+        leagueData.draftDate = randomDate;
+        leagueData.timePerPick = [1, 2, 5, 10][Math.floor(Math.random() * 4)]; // Random pick time
+      }
+
+      // Create the league
       const leagueRef = await addDoc(collection(db, "leagues"), leagueData);
 
+      // Update user's leagueIds array
       await updateDoc(doc(db, "users", userId), {
         leagueIds: arrayUnion(leagueRef.id)
       });
 
+      // Create member document exactly like CreateLeague.js
       await setDoc(doc(db, "leagues", leagueRef.id, "members", userId), {
-        displayName: `${userData.firstName}Bot`,
-        teamName: `${userData.lastName} FC`,
+        displayName: `${userData.firstName || 'User'}Bot`, // Add 'Bot' suffix for test leagues
+        teamName: `${userData.lastName || 'Test'} FC`,
         email: userData.email || "",
         lineup: {
           starters: [],
@@ -194,7 +214,7 @@ function AdminLeaguePanel() {
       });
     }
 
-    alert("✅ 10 leagues seeded with real users as admins.");
+    alert("✅ 10 leagues seeded with real users as admins, matching manual creation process.");
     fetchLeagues();
   };
 
