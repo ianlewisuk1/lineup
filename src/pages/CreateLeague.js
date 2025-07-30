@@ -18,6 +18,7 @@ function CreateLeague() {
   const [teamName, setTeamName] = useState("");
   const [maxManagers, setMaxManagers] = useState(8);
   const [draftType, setDraftType] = useState("manual");
+  const [draftOrderType, setDraftOrderType] = useState("random"); // New state
   const [draftDate, setDraftDate] = useState("");
   const [draftTime, setDraftTime] = useState("");
   const [timePerPick, setTimePerPick] = useState("2");
@@ -64,6 +65,7 @@ function CreateLeague() {
         maxManagers: maxManagers,
         draftComplete: false,
         draftType,
+        draftOrderType, // Add the draft order type
         scoringType: "cumulative",
         members: [user.uid],
       };
@@ -173,6 +175,29 @@ function CreateLeague() {
           <option value="live">Live Draft</option>
         </select>
       </label>
+
+      <label>
+        Draft Order:
+        <select
+          value={draftOrderType}
+          onChange={(e) => setDraftOrderType(e.target.value)}
+        >
+          <option value="random">Random Order (Determined at Draft Start)</option>
+          <option value="admin">Commissioner Sets Order</option>
+        </select>
+      </label>
+
+      {draftOrderType === "random" && (
+        <div style={{ fontSize: "0.9em", color: "#666", margin: "0.5rem 0", padding: "0.5rem", backgroundColor: "#f8f9fa", borderRadius: "4px" }}>
+          <strong>Random Order:</strong> Draft order will be randomly shuffled when the draft begins.
+        </div>
+      )}
+
+      {draftOrderType === "admin" && (
+        <div style={{ fontSize: "0.9em", color: "#666", margin: "0.5rem 0", padding: "0.5rem", backgroundColor: "#fff3cd", borderRadius: "4px" }}>
+          <strong>Commissioner Sets Order:</strong> You'll be able to arrange the draft order before starting the draft.
+        </div>
+      )}
 
       {draftType === "live" && (
         <>

@@ -157,6 +157,7 @@ function AdminLeaguePanel() {
     const leagueNames = Array.from({ length: 10 }, (_, i) => `Test League ${i + 1}`);
     const maxOptions = [8, 10, 12];
     const draftTypes = ["manual", "live"];
+    const draftOrderTypes = ["random", "admin"]; // Add draft order options
 
     for (let i = 0; i < 10; i++) {
       const userDoc = userDocs[i];
@@ -164,6 +165,7 @@ function AdminLeaguePanel() {
       const userData = userDoc.data();
       
       const selectedDraftType = draftTypes[Math.floor(Math.random() * draftTypes.length)];
+      const selectedDraftOrderType = draftOrderTypes[Math.floor(Math.random() * draftOrderTypes.length)];
       const maxManagers = maxOptions[Math.floor(Math.random() * maxOptions.length)];
 
       // Build league data matching CreateLeague.js exactly
@@ -175,6 +177,7 @@ function AdminLeaguePanel() {
         maxManagers: maxManagers,
         draftComplete: false,
         draftType: selectedDraftType,
+        draftOrderType: selectedDraftOrderType, // Add the draft order type
         scoringType: "cumulative", // All leagues use cumulative as specified
         members: [userId]
       };

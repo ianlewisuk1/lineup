@@ -15,11 +15,12 @@ import {
 } from "firebase/firestore";
 import DraftBoard from "../components/DraftBoard";
 import ManualDraftEntry from "../components/ManualDraftEntry";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import LeagueNavBar from "../components/LeagueNavBar";
 
 function DraftRoom() {
   const { leagueId } = useParams();
+  const navigate = useNavigate();
   const [draftData, setDraftData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState(null);
@@ -33,6 +34,7 @@ function DraftRoom() {
   const [draftCountdown, setDraftCountdown] = useState(0);
   const [countdownInterval, setCountdownInterval] = useState(null);
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   useEffect(() => {
     const fetchDraft = async () => {
@@ -71,7 +73,14 @@ function DraftRoom() {
       const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
       onSnapshot(draftRef, (snap) => {
         const data = snap.data();
-        setDraftData(data || null);
+        const newDraftData = data || null;
+        
+        // Check if draft just completed
+        if (newDraftData?.draftComplete && (!draftData || !draftData.draftComplete)) {
+          setShowCompletionModal(true);
+        }
+        
+        setDraftData(newDraftData);
         setLoading(false);
       });
     };
@@ -361,20 +370,6 @@ function DraftRoom() {
 
       console.log("✅ Draft completed automatically!");
 
-      // Show completion message and prompt to go to lineup
-      setTimeout(() => {
-        const goToLineup = window.confirm(
-          "🎉 Draft Complete! 🎉\n\n" +
-          "All teams have been drafted and your lineup has been set.\n\n" +
-          "Would you like to go to your lineup page to review and manage your team?"
-        );
-
-        if (goToLineup) {
-          // Navigate to lineup page - this will also refresh the navbar
-          window.location.href = `/leagues/${leagueId}/lineup`;
-        }
-      }, 1000); // Small delay to let the final pick show in the UI
-
     } catch (err) {
       console.error("Error completing draft:", err);
     }
@@ -402,69 +397,84 @@ function DraftRoom() {
     }
   };
 
-  const handleStartDraft = async () => {
-    if (!leagueId || Object.keys(userMap).length === 0) return;
+const handleStartDraft = async () => {
+  if (!leagueId || Object.keys(userMap).length === 0) return;
 
-    try {
-      const leagueRef = doc(db, "leagues", leagueId);
-      const leagueSnap = await getDoc(leagueRef);
-      if (!leagueSnap.exists()) {
-        alert("League not found.");
-        return;
-      }
-
-      const leagueData = leagueSnap.data();
-      const expectedManagers = leagueData.maxManagers;
-      const currentManagers = Object.keys(userMap).length;
-
-      if (currentManagers < expectedManagers) {
-        alert(`You need ${expectedManagers} managers to start the draft. Currently: ${currentManagers}`);
-        return;
-      }
-
-      const allTeamsSnap = await getDocs(collection(db, "teams"));
-
-      const allTeams = allTeamsSnap.docs
-        .map(doc => {
-          const data = doc.data();
-          if (!data.school || typeof data.school !== "string" || data.classification?.toLowerCase() !== "fbs") {
-            console.warn("❌ Skipping invalid team:", data);
-            return null;
-          }
-          return data;
-        })
-        .filter(Boolean);
-
-      if (allTeams.length === 0) {
-        alert("⚠️ No valid FBS teams with names found. Check your /teams collection in Firestore.");
-        return;
-      }
-
-      const teamNames = allTeams.map(team => team.school);
-      
-      const managerOrder = Object.keys(userMap).filter(Boolean);
-      
-      console.log("✅ Manager order:", managerOrder);
-      console.log("✅ Available FBS teams:", teamNames);
-
-      const draftPayload = {
-        draftOrder: managerOrder, // Keep simple manager list for DraftBoard compatibility
-        currentPickIndex: 0,
-        availableTeams: teamNames,
-        selectedTeams: {},
-        draftComplete: false,
-        currentPickStartTime: serverTimestamp()
-      };
-
-      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-      await setDoc(draftRef, draftPayload);
-      alert("Live draft started!");
-
-    } catch (err) {
-      console.error("❌ Failed to start draft:", err);
-      alert("Error starting draft: " + err.message);
+  try {
+    const leagueRef = doc(db, "leagues", leagueId);
+    const leagueSnap = await getDoc(leagueRef);
+    if (!leagueSnap.exists()) {
+      alert("League not found.");
+      return;
     }
-  };
+
+    const leagueData = leagueSnap.data();
+    const expectedManagers = leagueData.maxManagers;
+    const currentManagers = Object.keys(userMap).length;
+
+    if (currentManagers < expectedManagers) {
+      alert(`You need ${expectedManagers} managers to start the draft. Currently: ${currentManagers}`);
+      return;
+    }
+
+    const allTeamsSnap = await getDocs(collection(db, "teams"));
+
+    const allTeams = allTeamsSnap.docs
+      .map(doc => {
+        const data = doc.data();
+        if (!data.school || typeof data.school !== "string" || data.classification?.toLowerCase() !== "fbs") {
+          console.warn("❌ Skipping invalid team:", data);
+          return null;
+        }
+        return data;
+      })
+      .filter(Boolean);
+
+    if (allTeams.length === 0) {
+      alert("⚠️ No valid FBS teams with names found. Check your /teams collection in Firestore.");
+      return;
+    }
+
+    const teamNames = allTeams.map(team => team.school);
+    
+    // ✅ Use custom draft order if admin set it, otherwise use random order
+    let managerOrder;
+    
+    if (leagueData.draftOrderType === "admin" && leagueData.customDraftOrder && leagueData.customDraftOrder.length > 0) {
+      // Use the custom order set by admin
+      managerOrder = leagueData.customDraftOrder;
+      console.log("✅ Using admin-set draft order:", managerOrder);
+    } else if (leagueData.draftOrderType === "random") {
+      // Randomize the order
+      managerOrder = Object.keys(userMap).filter(Boolean).sort(() => Math.random() - 0.5);
+      console.log("✅ Using randomized draft order:", managerOrder);
+    } else {
+      // Fallback to current userMap order
+      managerOrder = Object.keys(userMap).filter(Boolean);
+      console.log("✅ Using fallback draft order:", managerOrder);
+    }
+    
+    console.log("✅ Manager order:", managerOrder);
+    console.log("✅ Available FBS teams:", teamNames);
+
+    const draftPayload = {
+      draftOrder: managerOrder,
+      currentPickIndex: 0,
+      availableTeams: teamNames,
+      selectedTeams: {},
+      draftComplete: false,
+      currentPickStartTime: serverTimestamp()
+    };
+
+    const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
+    await setDoc(draftRef, draftPayload);
+    alert("Live draft started!");
+
+  } catch (err) {
+    console.error("❌ Failed to start draft:", err);
+    alert("Error starting draft: " + err.message);
+  }
+};
 
   const handleStartManualDraft = async () => {
     if (!leagueId || Object.keys(userMap).length === 0) return;
@@ -526,6 +536,9 @@ function DraftRoom() {
 
       await Promise.all(resets);
 
+      // Close completion modal if open
+      setShowCompletionModal(false);
+
       alert("Draft has been reset. All member teams have been cleared.");
     } catch (err) {
       console.error("Failed to reset draft:", err);
@@ -558,6 +571,15 @@ function DraftRoom() {
     } else {
       return `${secs}s`;
     }
+  };
+
+  const handleGoToLineup = () => {
+    setShowCompletionModal(false);
+    navigate(`/${leagueId}/my-lineup`);
+  };
+
+  const handleCloseModal = () => {
+    setShowCompletionModal(false);
   };
 
   const currentCount = Object.keys(userMap).length;
@@ -772,6 +794,83 @@ function DraftRoom() {
       <LeagueNavBar />
       <h2>Draft Room - Live Draft</h2>
       <p><strong>League ID:</strong> {leagueId}</p>
+
+      {/* Draft Completion Modal */}
+      {showCompletionModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.7)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: "white",
+            padding: "2rem",
+            borderRadius: "12px",
+            textAlign: "center",
+            maxWidth: "500px",
+            width: "90%",
+            boxShadow: "0 10px 30px rgba(0, 0, 0, 0.3)"
+          }}>
+            <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>🎉</div>
+            <h2 style={{ 
+              color: "#2e7d32", 
+              marginBottom: "1rem",
+              fontSize: "2rem"
+            }}>
+              Draft Complete!
+            </h2>
+            <p style={{ 
+              fontSize: "1.2rem", 
+              marginBottom: "2rem", 
+              color: "#424242" 
+            }}>
+              Congratulations! All teams have been drafted and your lineup has been automatically set.
+            </p>
+            <div style={{ display: "flex", gap: "1rem", justifyContent: "center" }}>
+              <button
+                onClick={handleGoToLineup}
+                style={{
+                  backgroundColor: "#2e7d32",
+                  color: "white",
+                  border: "none",
+                  padding: "12px 24px",
+                  borderRadius: "6px",
+                  fontSize: "1.1rem",
+                  cursor: "pointer",
+                  fontWeight: "bold"
+                }}
+                onMouseOver={(e) => e.target.style.backgroundColor = "#1b5e20"}
+                onMouseOut={(e) => e.target.style.backgroundColor = "#2e7d32"}
+              >
+                Take Me to My Lineup
+              </button>
+              <button
+                onClick={handleCloseModal}
+                style={{
+                  backgroundColor: "#757575",
+                  color: "white",
+                  border: "none",
+                  padding: "12px 24px",
+                  borderRadius: "6px",
+                  fontSize: "1.1rem",
+                  cursor: "pointer"
+                }}
+                onMouseOver={(e) => e.target.style.backgroundColor = "#424242"}
+                onMouseOut={(e) => e.target.style.backgroundColor = "#757575"}
+              >
+                Stay Here
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isLeagueAdmin && draftData && (
         <button onClick={handleRestartDraft} style={{ marginTop: "1rem", color: "red" }}>

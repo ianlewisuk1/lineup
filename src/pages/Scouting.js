@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { db } from "../firebase/firebase";
 import { collection, getDocs } from "firebase/firestore";
+import { useParams, useNavigate } from "react-router-dom";
 import LeagueNavBar from "../components/LeagueNavBar";
 
 function Scouting() {
+  const { leagueId } = useParams();
+  const navigate = useNavigate();
   const [teams, setTeams] = useState([]);
   const [sortConfig, setSortConfig] = useState({ key: "philMetricDraftRank", direction: "asc" });
   const [conferenceFilter, setConferenceFilter] = useState("All");
@@ -20,6 +23,10 @@ function Scouting() {
 
     fetchTeams();
   }, []);
+
+  const handleTeamClick = (teamName) => {
+    navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
+  };
 
   const sortBy = (key) => {
     let direction = "asc";
@@ -105,7 +112,19 @@ function Scouting() {
           <tbody>
             {sortedTeams.map((team, i) => (
               <tr key={i}>
-                <td style={tdStyle}><strong>{team.school}</strong> ({team.conference})</td>
+                <td style={tdStyle}>
+                  <strong 
+                    onClick={() => handleTeamClick(team.school)}
+                    style={{ 
+                      cursor: "pointer", 
+                      color: "#0066cc", 
+                      textDecoration: "underline" 
+                    }}
+                  >
+                    {team.school}
+                  </strong>{" "}
+                  <span style={{ color: "#666" }}>({team.conference})</span>
+                </td>
                 <td style={tdStyle}>{team.confOdds != null ? `${team.confOdds}%` : "-"}</td>
                 <td style={tdStyle}>{team.philMetricDraftRank ?? "-"}</td>
                 <td style={tdStyle}>{team.powerRank ?? "-"}</td>

@@ -10,7 +10,8 @@ import {
   deleteDoc,
   arrayRemove,
   arrayUnion,
-  setDoc
+  setDoc,
+  serverTimestamp
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 
@@ -59,6 +60,23 @@ function AdminLeagueDetail() {
   }, [leagueId, refreshFlag]);
 
   const refresh = () => setRefreshFlag(f => !f);
+
+  // Helper function to get current picker using snake draft logic (matches DraftRoom.js)
+  const getCurrentPicker = (draftOrder, currentPickIndex) => {
+    if (!draftOrder || draftOrder.length === 0) return null;
+    
+    const totalManagers = draftOrder.length;
+    const currentRound = Math.floor(currentPickIndex / totalManagers);
+    const positionInRound = currentPickIndex % totalManagers;
+    
+    // For even rounds (0, 2, 4, 6): use normal order
+    // For odd rounds (1, 3, 5): use reverse order
+    if (currentRound % 2 === 0) {
+      return draftOrder[positionInRound];
+    } else {
+      return draftOrder[totalManagers - 1 - positionInRound];
+    }
+  };
 
   const handleKick = async (userId) => {
     if (!window.confirm("Kick this user from the league? This cannot be undone.")) return;
@@ -129,6 +147,111 @@ function AdminLeagueDetail() {
       await Promise.all(memberUpdates);
       alert("✅ Draft simulated.");
       refresh();
+    } catch (err) {
+      console.error("Error simulating draft:", err);
+      alert("Error: " + err.message);
+    }
+  };
+
+  const handleSimulateAllButFinalPick = async () => {
+    if (!window.confirm("This will simulate the entire draft except for the final pick using snake draft order and smart team selection. Continue?")) return;
+
+    try {
+      // Get all FBS teams with their rankings
+      const teamsSnap = await getDocs(collection(db, "teams"));
+      const allTeams = teamsSnap.docs
+        .map(doc => doc.data())
+        .filter(team => team.classification?.toLowerCase() === "fbs" && typeof team.school === "string");
+
+      if (allTeams.length === 0) {
+        alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
+        return;
+      }
+
+      // Create team rankings map (matches DraftRoom.js logic)
+      const teamRankings = {};
+      allTeams.forEach(team => {
+        if (team.school && team.philMetricDraftRank !== undefined) {
+          teamRankings[team.school] = team.philMetricDraftRank;
+        }
+      });
+
+      const teamNames = allTeams.map(team => team.school);
+      const draftOrder = members.map(m => m.id);
+      const totalPicks = draftOrder.length * 7;
+      const finalPickIndex = totalPicks - 1; // Stop before the final pick
+
+      let availableTeams = [...teamNames];
+      const selectedTeams = {};
+      
+      // Initialize empty arrays for each manager
+      draftOrder.forEach(uid => {
+        selectedTeams[uid] = [];
+      });
+
+      // Simulate picks using snake draft order and smart selection
+      for (let pickIndex = 0; pickIndex < finalPickIndex; pickIndex++) {
+        const currentUid = getCurrentPicker(draftOrder, pickIndex);
+        
+        if (!currentUid || availableTeams.length === 0) {
+          console.error(`Simulation failed at pick ${pickIndex}: no current UID or no available teams`);
+          break;
+        }
+
+        // Smart team selection (matches DraftRoom.js auto-pick logic)
+        const availableTeamsWithRanks = availableTeams
+          .map(teamName => ({
+            name: teamName,
+            rank: teamRankings[teamName] || 999 // Default high rank if not found
+          }))
+          .sort((a, b) => a.rank - b.rank); // Sort ascending (lower rank = better)
+
+        // Pick the best available team
+        const bestTeam = availableTeamsWithRanks[0];
+        const pickedTeam = bestTeam.name;
+
+        // Add to selected teams
+        selectedTeams[currentUid].push(pickedTeam);
+        
+        // Remove from available teams
+        availableTeams = availableTeams.filter(t => t !== pickedTeam);
+
+        console.log(`Pick ${pickIndex + 1}: ${pickedTeam} (rank: ${bestTeam.rank}) → ${members.find(m => m.id === currentUid)?.displayName}`);
+      }
+
+      // Update member lineups for completed picks
+      const memberUpdates = [];
+      Object.entries(selectedTeams).forEach(([uid, teams]) => {
+        if (teams.length > 0) {
+          const memberRef = doc(db, "leagues", leagueId, "members", uid);
+          memberUpdates.push(
+            updateDoc(memberRef, {
+              "lineup.drafted": teams
+              // Don't set starters/bench yet since draft isn't complete
+            })
+          );
+        }
+      });
+
+      // Create draft metadata (matches DraftRoom.js format)
+      await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), {
+        draftOrder,
+        currentPickIndex: finalPickIndex, // One pick before completion
+        availableTeams,
+        selectedTeams,
+        draftComplete: false,
+        currentPickStartTime: serverTimestamp() // Set timer for final pick
+      });
+
+      // Update all member lineups
+      await Promise.all(memberUpdates);
+
+      const finalPicker = getCurrentPicker(draftOrder, finalPickIndex);
+      const finalPickerName = members.find(m => m.id === finalPicker)?.displayName || "Unknown";
+      
+      alert(`✅ Draft simulated up to final pick!\n\nFinal pick belongs to: ${finalPickerName}\nRemaining teams: ${availableTeams.length}`);
+      refresh();
+
     } catch (err) {
       console.error("Error simulating draft:", err);
       alert("Error: " + err.message);
@@ -236,6 +359,45 @@ function AdminLeagueDetail() {
     return <span style={{ color: "orange" }}>🕐 In Progress</span>;
   };
 
+  const formatDraftType = () => {
+    if (league.draftType === "live") {
+      return `Live Draft`;
+    } else if (league.draftType === "manual") {
+      return `Manual Draft`;
+    }
+    return league.draftType || "Unknown";
+  };
+
+  const formatDraftOrderType = () => {
+    if (league.draftOrderType === "random") {
+      return "Random Order";
+    } else if (league.draftOrderType === "admin") {
+      return "Commissioner Sets Order";
+    }
+    return league.draftOrderType || "Not Set";
+  };
+
+  const formatDraftDateTime = () => {
+    if (!league.draftDate) return "-";
+    
+    try {
+      const date = league.draftDate.toDate ? league.draftDate.toDate() : new Date(league.draftDate);
+      return date.toLocaleString("en-US", {
+        timeZone: "America/New_York",
+        weekday: "short",
+        year: "numeric",
+        month: "short", 
+        day: "numeric",
+        hour: "numeric", 
+        minute: "2-digit",
+        timeZoneName: "short"
+      });
+    } catch (error) {
+      console.warn("Error formatting draft date:", error);
+      return "Invalid Date";
+    }
+  };
+
   if (loading) return <p>Loading league data...</p>;
   if (!league) return <p>League not found.</p>;
 
@@ -249,6 +411,14 @@ function AdminLeagueDetail() {
       <p><strong>Max Managers:</strong> {league.maxManagers}</p>
       <p><strong>Members:</strong> {league.members?.length || 0}</p>
       <p><strong>Draft Status:</strong> {draftStatus()}</p>
+      <p><strong>Draft Type:</strong> {formatDraftType()}</p>
+      <p><strong>Draft Order:</strong> {formatDraftOrderType()}</p>
+      {league.draftType === "live" && (
+        <>
+          <p><strong>Draft Date:</strong> {formatDraftDateTime()}</p>
+          <p><strong>Time Per Pick:</strong> {league.timePerPick ? `${league.timePerPick} minute${league.timePerPick !== 1 ? 's' : ''}` : "-"}</p>
+        </>
+      )}
       <p><strong>Created At:</strong> {league.createdAt?.toDate().toLocaleString()}</p>
 
       <div style={{ marginTop: "1rem" }}>
@@ -257,7 +427,21 @@ function AdminLeagueDetail() {
         </button>
 
         <button onClick={handleSimulateDraft} style={{ marginLeft: "1rem" }}>
-          Simulate Draft
+          Simulate Full Draft
+        </button>
+
+        <button 
+          onClick={handleSimulateAllButFinalPick} 
+          style={{ 
+            marginLeft: "1rem", 
+            backgroundColor: "#1976d2", 
+            color: "white", 
+            border: "none", 
+            padding: "8px 12px", 
+            borderRadius: "4px" 
+          }}
+        >
+          🎯 Simulate All But Final Pick
         </button>
 
         <button onClick={handleResetDraft} style={{ marginLeft: "1rem", color: "red" }}>

@@ -21,8 +21,10 @@ function LeagueRules() {
   const [members, setMembers] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [formState, setFormState] = useState({});
+  const [draftOrder, setDraftOrder] = useState([]);
   const [error, setError] = useState("");
   const [draftStarted, setDraftStarted] = useState(false);
+  const [isReordering, setIsReordering] = useState(false); // Add this flag
 
   useEffect(() => {
     const fetchData = async () => {
@@ -33,6 +35,7 @@ function LeagueRules() {
       const leagueSnap = await getDoc(leagueRef);
       const data = leagueSnap.data();
       setLeagueData(data);
+      
       // Handle draftDate properly for datetime-local input
       let formattedDraftDate = "";
       if (data.draftDate) {
@@ -49,6 +52,7 @@ function LeagueRules() {
       setFormState({
         name: data.name,
         draftType: data.draftType,
+        draftOrderType: data.draftOrderType || "random",
         draftDate: formattedDraftDate,
         timePerPick: data.timePerPick || 5,
         maxManagers: data.maxManagers
@@ -85,15 +89,132 @@ function LeagueRules() {
       );
 
       setMembers(memberList);
+      
+      // Initialize draft order with current members if admin sets order
+      if (data.draftOrderType === "admin" && data.customDraftOrder) {
+        // Use saved custom order
+        const orderedMembers = data.customDraftOrder.map(uid => 
+          memberList.find(m => m.uid === uid)
+        ).filter(Boolean);
+        setDraftOrder(orderedMembers);
+      } else if (data.draftOrderType === "admin") {
+        // Initialize with current member list for admin to arrange
+        setDraftOrder([...memberList]);
+      }
     };
 
     fetchData();
   }, [leagueId]);
 
+  // Handle member changes and refresh draft order
+  useEffect(() => {
+    if (leagueData?.draftOrderType === "admin" && members.length > 0 && !draftStarted) {
+      if (leagueData.customDraftOrder && leagueData.customDraftOrder.length > 0) {
+        // Use saved custom order, but filter out any users that no longer exist
+        const orderedMembers = leagueData.customDraftOrder
+          .map(uid => members.find(m => m.uid === uid))
+          .filter(Boolean);
+        
+        // Add any new members that aren't in the saved order
+        const orderedUids = new Set(orderedMembers.map(m => m.uid));
+        const missingMembers = members.filter(m => !orderedUids.has(m.uid));
+        
+        const newDraftOrder = [...orderedMembers, ...missingMembers];
+        
+        // Only update if the members changed (not just reordered)
+        const currentMemberIds = new Set(draftOrder.map(m => m.uid));
+        const newMemberIds = new Set(newDraftOrder.map(m => m.uid));
+        const memberCountChanged = currentMemberIds.size !== newMemberIds.size;
+        const membersChanged = [...currentMemberIds].some(id => !newMemberIds.has(id)) || 
+                              [...newMemberIds].some(id => !currentMemberIds.has(id));
+        
+        if (memberCountChanged || membersChanged) {
+          setDraftOrder(newDraftOrder);
+        }
+      } else {
+        // Initialize with current member list for admin to arrange
+        const currentMemberIds = new Set(draftOrder.map(m => m.uid));
+        const newMemberIds = new Set(members.map(m => m.uid));
+        const memberCountChanged = currentMemberIds.size !== newMemberIds.size;
+        const membersChanged = [...currentMemberIds].some(id => !newMemberIds.has(id)) || 
+                              [...newMemberIds].some(id => !currentMemberIds.has(id));
+        
+        if (memberCountChanged || membersChanged) {
+          setDraftOrder([...members]);
+        }
+      }
+    }
+  }, [members, leagueData?.draftOrderType, leagueData?.customDraftOrder, draftStarted]);
+
+  // Detect when new users are added to members (simplified version)
+  useEffect(() => {
+    // This effect is now simplified since the main logic is handled above
+    // We keep it for logging purposes but most work is done in the previous useEffect
+    if (leagueData?.draftOrderType === "admin" && members.length > 0 && draftOrder.length > 0 && !draftStarted) {
+      const currentDraftOrderIds = new Set(draftOrder.map(m => m.uid));
+      const newMembers = members.filter(m => !currentDraftOrderIds.has(m.uid));
+      
+      if (newMembers.length > 0) {
+        console.log(`Detected ${newMembers.length} new member(s), but handling is done in main useEffect`);
+      }
+    }
+  }, [members.length, leagueData?.draftOrderType, draftStarted]);
+
   const isAdmin = currentUserId && leagueData?.admin === currentUserId;
+  const isLeagueFull = members.length === leagueData?.maxManagers;
 
   const handleInputChange = (field, value) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleDraftOrderChange = (fromIndex, toIndex) => {
+    const newOrder = [...draftOrder];
+    const [movedItem] = newOrder.splice(fromIndex, 1);
+    newOrder.splice(toIndex, 0, movedItem);
+    setDraftOrder(newOrder);
+  };
+
+  const saveDraftOrder = async () => {
+    if (!isLeagueFull) {
+      setError("League must be full before setting draft order.");
+      return;
+    }
+
+    try {
+      const orderUids = draftOrder.map(member => member.uid);
+      await updateDoc(doc(db, "leagues", leagueId), {
+        customDraftOrder: orderUids
+      });
+      setError("");
+      alert("Draft order saved successfully!");
+    } catch (error) {
+      console.error("Error saving draft order:", error);
+      setError("Failed to save draft order. Please try again.");
+    }
+  };
+
+  const randomizeDraftOrder = () => {
+    const shuffled = [...draftOrder].sort(() => Math.random() - 0.5);
+    setDraftOrder(shuffled);
+  };
+
+  const syncDraftOrderWithMembers = async (updatedMembers) => {
+    // Only sync if admin sets order and league isn't full yet
+    if (leagueData?.draftOrderType === "admin" && !draftStarted) {
+      try {
+        // Clear the saved custom draft order since member list changed
+        await updateDoc(doc(db, "leagues", leagueId), {
+          customDraftOrder: [] // Clear it so admin needs to set it again
+        });
+        
+        // Update local draft order state with new member list
+        setDraftOrder([...updatedMembers]);
+        
+        console.log("Draft order cleared due to member changes. Admin needs to set order again.");
+      } catch (error) {
+        console.error("Error clearing draft order:", error);
+      }
+    }
   };
 
   const handleRemoveManager = async (uid, memberName) => {
@@ -129,11 +250,17 @@ function LeagueRules() {
         }
         
         // Update local state
-        setMembers((prev) => prev.filter((m) => m.uid !== uid));
+        const updatedMembersList = members.filter((m) => m.uid !== uid);
+        setMembers(updatedMembersList);
+        setDraftOrder((prev) => prev.filter((m) => m.uid !== uid));
         setLeagueData((prev) => ({
           ...prev,
           members: updatedMembers
         }));
+
+        // Sync draft order with updated members
+        await syncDraftOrderWithMembers(updatedMembersList);
+        
       } catch (error) {
         console.error("Error removing manager:", error);
         setError("Failed to remove manager. Please try again.");
@@ -228,6 +355,7 @@ function LeagueRules() {
     const update = {
       name: formState.name,
       draftType: formState.draftType,
+      draftOrderType: formState.draftOrderType,
       maxManagers: formState.maxManagers,
       scoringType: leagueData.scoringType
     };
@@ -266,17 +394,21 @@ function LeagueRules() {
     return today.toISOString().slice(0, 16);
   };
 
-  // Get the actual minimum time for validation (15 minutes from now)
-  const getActualMinDateTime = () => {
-    const now = new Date();
-    const minTime = new Date(now.getTime() + 15 * 60 * 1000);
-    return minTime.toISOString().slice(0, 16);
-  };
-
   // Get max date (August 20, 2025) in YYYY-MM-DDTHH:MM format
   const getMaxDate = () => {
     const maxDate = new Date('2025-08-20T23:59');
     return maxDate.toISOString().slice(0, 16);
+  };
+
+  const getDraftOrderTypeDisplay = (type) => {
+    switch (type) {
+      case "random":
+        return "Random Order (Determined at Draft Start)";
+      case "admin":
+        return "Commissioner Sets Order";
+      default:
+        return type;
+    }
   };
 
   if (!leagueData) return <div>Loading...</div>;
@@ -324,12 +456,12 @@ function LeagueRules() {
         {draftStarted && (
           <div style={{ 
             padding: "0.75rem", 
-            backgroundColor: "#fff3cd", 
-            border: "1px solid #ffeaa7", 
+            backgroundColor: leagueData?.draftComplete ? "#d4edda" : "#fff3cd", 
+            border: `1px solid ${leagueData?.draftComplete ? "#c3e6cb" : "#ffeaa7"}`, 
             borderRadius: "4px", 
             marginBottom: "1rem" 
           }}>
-            <strong>⚠️ Draft has started:</strong> League settings are now locked and cannot be changed.
+            <strong>{leagueData?.draftComplete ? "✅ Draft has concluded:" : "⚠️ Draft has started:"}</strong> League settings are now locked and cannot be changed.
           </div>
         )}
 
@@ -344,6 +476,7 @@ function LeagueRules() {
                 style={{ opacity: draftStarted ? 0.6 : 1 }}
               />
             </label><br />
+            
             <label>
               Draft Type:
               <select 
@@ -356,6 +489,20 @@ function LeagueRules() {
                 <option value="live">Live Draft</option>
               </select>
             </label><br />
+
+            <label>
+              Draft Order:
+              <select 
+                value={formState.draftOrderType} 
+                onChange={(e) => handleInputChange("draftOrderType", e.target.value)}
+                disabled={draftStarted}
+                style={{ opacity: draftStarted ? 0.6 : 1 }}
+              >
+                <option value="random">Random Order (Determined at Draft Start)</option>
+                <option value="admin">Commissioner Sets Order</option>
+              </select>
+            </label><br />
+
             {formState.draftType === "live" && (
               <>
                 <label>
@@ -389,6 +536,7 @@ function LeagueRules() {
                 </label><br />
               </>
             )}
+            
             <label>
               Max Managers:
               <select 
@@ -402,7 +550,9 @@ function LeagueRules() {
                 ))}
               </select>
             </label>
+            
             {error && <p style={{ color: "red" }}>{error}</p>}
+            
             <div style={{ marginTop: "1rem" }}>
               <button 
                 onClick={handleConfirmChanges}
@@ -439,6 +589,7 @@ function LeagueRules() {
             <p><strong>Admin:</strong> {adminName || "Unknown"}</p>
             <p><strong>League ID:</strong> {leagueId}</p>
             <p><strong>Draft Type:</strong> {getDraftDisplayText(leagueData.draftType)}</p>
+            <p><strong>Draft Order:</strong> {getDraftOrderTypeDisplay(leagueData.draftOrderType)}</p>
             {leagueData.draftType === "manual" && (
               <p><strong>Manual Draft:</strong> Commissioner will enter team selections after offline draft</p>
             )}
@@ -460,6 +611,133 @@ function LeagueRules() {
               </>
             )}
           </>
+        )}
+
+        {/* Draft Order Management Section */}
+        {isAdmin && formState.draftOrderType === "admin" && !draftStarted && (
+          <div style={{ 
+            marginTop: "2rem", 
+            padding: "1rem", 
+            backgroundColor: "#f8f9fa", 
+            borderRadius: "8px",
+            border: "1px solid #dee2e6"
+          }}>
+            <h3>Draft Order Management</h3>
+            
+            {!isLeagueFull ? (
+              <div style={{ 
+                padding: "1rem", 
+                backgroundColor: "#fff3cd", 
+                border: "1px solid #ffeaa7", 
+                borderRadius: "4px", 
+                marginBottom: "1rem" 
+              }}>
+                <strong>⚠️ League must be full ({leagueData.maxManagers} managers) before you can set the draft order.</strong>
+                <br />
+                Current: {members.length}/{leagueData.maxManagers} managers
+              </div>
+            ) : (
+              <>
+                <p>Drag and drop to reorder managers. Position 1 gets the first pick.</p>
+                
+                <div style={{ marginBottom: "1rem" }}>
+                  <button 
+                    onClick={randomizeDraftOrder}
+                    style={{ 
+                      backgroundColor: "#6c757d",
+                      color: "white",
+                      border: "none",
+                      padding: "0.5rem 1rem",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      marginRight: "1rem"
+                    }}
+                  >
+                    🎲 Randomize Order
+                  </button>
+                  
+                  <button 
+                    onClick={saveDraftOrder}
+                    style={{ 
+                      backgroundColor: "#28a745",
+                      color: "white",
+                      border: "none",
+                      padding: "0.5rem 1rem",
+                      borderRadius: "4px",
+                      cursor: "pointer"
+                    }}
+                  >
+                    💾 Save Draft Order
+                  </button>
+                </div>
+
+                <div style={{ maxWidth: "600px" }}>
+                  {draftOrder.map((member, index) => (
+                    <div key={member.uid} style={{
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "0.75rem",
+                      margin: "0.5rem 0",
+                      backgroundColor: "white",
+                      border: "1px solid #ccc",
+                      borderRadius: "4px",
+                      cursor: "move"
+                    }}>
+                      <div style={{ 
+                        marginRight: "1rem", 
+                        fontWeight: "bold", 
+                        minWidth: "30px",
+                        textAlign: "center",
+                        backgroundColor: "#007bff",
+                        color: "white",
+                        borderRadius: "50%",
+                        width: "30px",
+                        height: "30px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center"
+                      }}>
+                        {index + 1}
+                      </div>
+                      
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: "bold" }}>{member.name || member.username}</div>
+                        <div style={{ fontSize: "0.9em", color: "#666" }}>{member.teamName}</div>
+                      </div>
+                      
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        <button 
+                          onClick={() => handleDraftOrderChange(index, Math.max(0, index - 1))}
+                          disabled={index === 0}
+                          style={{ 
+                            fontSize: "0.8em", 
+                            padding: "0.25rem 0.5rem", 
+                            marginBottom: "0.25rem",
+                            opacity: index === 0 ? 0.5 : 1,
+                            cursor: index === 0 ? "not-allowed" : "pointer"
+                          }}
+                        >
+                          ↑
+                        </button>
+                        <button 
+                          onClick={() => handleDraftOrderChange(index, Math.min(draftOrder.length - 1, index + 1))}
+                          disabled={index === draftOrder.length - 1}
+                          style={{ 
+                            fontSize: "0.8em", 
+                            padding: "0.25rem 0.5rem",
+                            opacity: index === draftOrder.length - 1 ? 0.5 : 1,
+                            cursor: index === draftOrder.length - 1 ? "not-allowed" : "pointer"
+                          }}
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         )}
 
         <h3>Managers</h3>

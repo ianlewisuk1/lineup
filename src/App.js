@@ -120,7 +120,7 @@ function App() {
         <Route path="/join-league" element={<JoinLeague />} />
         <Route path="/how-to-play" element={<HowToPlay />} />
         <Route path="/admin" element={<AdminPanel />} />
-        <Route path="/admin/league/:leagueId" element={<AdminLeagueDetail />} /> {/* ✅ NEW */}
+        <Route path="/admin/league/:leagueId" element={<AdminLeagueDetail />} />
         <Route path="/admin/teams" element={<AdminTeamsPanel />} />
         <Route path="/admin/schedule" element={<AdminSchedulePanel />} />
 
@@ -135,6 +135,9 @@ function App() {
             </PreDraftOnly>
           }
         />
+
+        {/* TeamPage - Available both pre and post draft */}
+        <Route path=":leagueId/team/:teamName" element={<TeamPage />} />
 
         {/* Draft-Dependent League Pages */}
         <Route
@@ -166,14 +169,6 @@ function App() {
           element={
             <DraftGuard>
               <Stats />
-            </DraftGuard>
-          }
-        />
-        <Route
-          path=":leagueId/team/:teamName"
-          element={
-            <DraftGuard>
-              <TeamPage />
             </DraftGuard>
           }
         />
