@@ -1,6 +1,6 @@
 // src/pages/LeagueRules.js
 import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { db, auth } from "../firebase/firebase";
 import {
   doc,
@@ -8,18 +8,21 @@ import {
   collection,
   getDocs,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  arrayRemove
 } from "firebase/firestore";
 import LeagueNavBar from "../components/LeagueNavBar";
 
 function LeagueRules() {
   const { leagueId } = useParams();
+  const navigate = useNavigate();
   const [leagueData, setLeagueData] = useState(null);
   const [adminName, setAdminName] = useState("");
   const [members, setMembers] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [formState, setFormState] = useState({});
   const [error, setError] = useState("");
+  const [draftStarted, setDraftStarted] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -30,13 +33,31 @@ function LeagueRules() {
       const leagueSnap = await getDoc(leagueRef);
       const data = leagueSnap.data();
       setLeagueData(data);
+      // Handle draftDate properly for datetime-local input
+      let formattedDraftDate = "";
+      if (data.draftDate) {
+        const draftDateTime = data.draftDate.toDate();
+        // Convert to local time for the form input (avoids timezone shifts)
+        const year = draftDateTime.getFullYear();
+        const month = String(draftDateTime.getMonth() + 1).padStart(2, '0');
+        const day = String(draftDateTime.getDate()).padStart(2, '0');
+        const hours = String(draftDateTime.getHours()).padStart(2, '0');
+        const minutes = String(draftDateTime.getMinutes()).padStart(2, '0');
+        formattedDraftDate = `${year}-${month}-${day}T${hours}:${minutes}`;
+      }
+
       setFormState({
         name: data.name,
         draftType: data.draftType,
-        draftDate: data.draftDate?.toDate().toISOString().slice(0, 16) || "",
+        draftDate: formattedDraftDate,
         timePerPick: data.timePerPick || 5,
         maxManagers: data.maxManagers
       });
+
+      // Check if draft has started
+      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
+      const draftSnap = await getDoc(draftRef);
+      setDraftStarted(draftSnap.exists() || data.draftComplete);
 
       if (data?.createdBy) {
         const userSnap = await getDoc(doc(db, "users", data.createdBy));
@@ -120,11 +141,90 @@ function LeagueRules() {
     }
   };
 
+  const handleDeleteLeague = async () => {
+    const confirmDelete = window.confirm(
+      `Are you sure you want to DELETE the entire league "${leagueData.name}"? This will:\n\n` +
+      `• Delete the league permanently\n` +
+      `• Remove it from all members' league lists\n` +
+      `• Delete all draft data and settings\n\n` +
+      `THIS CANNOT BE UNDONE!`
+    );
+
+    if (!confirmDelete) return;
+
+    const doubleConfirm = window.confirm(
+      `Last chance! Type the league name to confirm deletion.\n\n` +
+      `Expected: "${leagueData.name}"\n\n` +
+      `Are you absolutely sure you want to delete this league?`
+    );
+
+    if (!doubleConfirm) return;
+
+    try {
+      // Remove league ID from all members' user documents
+      const membersToUpdate = leagueData.members || [];
+      
+      for (const memberId of membersToUpdate) {
+        try {
+          const userRef = doc(db, "users", memberId);
+          await updateDoc(userRef, {
+            leagueIds: arrayRemove(leagueId)
+          });
+        } catch (error) {
+          console.warn(`Failed to update user ${memberId}:`, error);
+        }
+      }
+
+      // Delete all member documents in the subcollection
+      const membersRef = collection(db, "leagues", leagueId, "members");
+      const memberDocs = await getDocs(membersRef);
+      for (const memberDoc of memberDocs.docs) {
+        await deleteDoc(memberDoc.ref);
+      }
+
+      // Delete draft metadata if it exists
+      try {
+        const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
+        await deleteDoc(draftRef);
+      } catch (error) {
+        console.warn("No draft metadata to delete:", error);
+      }
+
+      // Delete the main league document
+      await deleteDoc(doc(db, "leagues", leagueId));
+
+      alert("League deleted successfully!");
+      navigate("/home");
+
+    } catch (error) {
+      console.error("Error deleting league:", error);
+      setError("Failed to delete league. Please try again.");
+    }
+  };
+
   const handleConfirmChanges = async () => {
     if (members.length > formState.maxManagers) {
       setError(`Reduce managers to ${formState.maxManagers} or fewer before changing this setting.`);
       return;
     }
+
+    // Validate live draft datetime if applicable
+    if (formState.draftType === "live" && formState.draftDate) {
+      // Parse the datetime components manually to avoid timezone issues
+      const [datePart, timePart] = formState.draftDate.split('T');
+      const [year, month, day] = datePart.split('-').map(Number);
+      const [hours, minutes] = timePart.split(':').map(Number);
+      
+      const draftDateTime = new Date(year, month - 1, day, hours, minutes, 0);
+      const now = new Date();
+      const minTime = new Date(now.getTime() + 15 * 60 * 1000);
+
+      if (draftDateTime < minTime) {
+        setError("Draft must be scheduled at least 15 minutes in the future.");
+        return;
+      }
+    }
+
     const update = {
       name: formState.name,
       draftType: formState.draftType,
@@ -132,23 +232,45 @@ function LeagueRules() {
       scoringType: leagueData.scoringType
     };
 
-    if (formState.draftType === "live") {
-      update.draftDate = new Date(formState.draftDate);
+    if (formState.draftType === "live" && formState.draftDate) {
+      // Parse datetime components manually to maintain timezone consistency
+      const [datePart, timePart] = formState.draftDate.split('T');
+      const [year, month, day] = datePart.split('-').map(Number);
+      const [hours, minutes] = timePart.split(':').map(Number);
+      
+      update.draftDate = new Date(year, month - 1, day, hours, minutes, 0);
       update.timePerPick = Number(formState.timePerPick);
     } else {
       update.draftDate = null;
       update.timePerPick = null;
     }
 
-    await updateDoc(doc(db, "leagues", leagueId), update);
-    window.location.reload();
+    try {
+      await updateDoc(doc(db, "leagues", leagueId), update);
+      setError(""); // Clear any previous errors
+      window.location.reload();
+    } catch (error) {
+      console.error("Error updating league:", error);
+      setError("Failed to update league settings. Please try again.");
+    }
   };
 
-  // Get tomorrow's date in YYYY-MM-DDTHH:MM format
-  const getTomorrowDate = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().slice(0, 16);
+  // Get minimum datetime (15 minutes from now)
+  const getMinDateTime = () => {
+    const now = new Date();
+    const minTime = new Date(now.getTime() + 15 * 60 * 1000);
+    
+    // Always allow today's date by setting min to start of today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today.toISOString().slice(0, 16);
+  };
+
+  // Get the actual minimum time for validation (15 minutes from now)
+  const getActualMinDateTime = () => {
+    const now = new Date();
+    const minTime = new Date(now.getTime() + 15 * 60 * 1000);
+    return minTime.toISOString().slice(0, 16);
   };
 
   // Get max date (August 20, 2025) in YYYY-MM-DDTHH:MM format
@@ -181,6 +303,17 @@ function LeagueRules() {
     return "lightgreen";
   };
 
+  const getDraftDisplayText = (draftType) => {
+    switch (draftType) {
+      case "manual":
+        return "Manual Draft (Commissioner Enters Teams)";
+      case "live":
+        return "Live Draft";
+      default:
+        return draftType;
+    }
+  };
+
   return (
     <div>
       <LeagueNavBar />
@@ -188,34 +321,66 @@ function LeagueRules() {
         <h3>League ID: {leagueId}</h3>
         <h2>League Rules</h2>
 
+        {draftStarted && (
+          <div style={{ 
+            padding: "0.75rem", 
+            backgroundColor: "#fff3cd", 
+            border: "1px solid #ffeaa7", 
+            borderRadius: "4px", 
+            marginBottom: "1rem" 
+          }}>
+            <strong>⚠️ Draft has started:</strong> League settings are now locked and cannot be changed.
+          </div>
+        )}
+
         {isAdmin ? (
           <div style={{ marginBottom: "1rem" }}>
             <label>
               League Name:
-              <input value={formState.name} onChange={(e) => handleInputChange("name", e.target.value)} />
+              <input 
+                value={formState.name} 
+                onChange={(e) => handleInputChange("name", e.target.value)}
+                disabled={draftStarted}
+                style={{ opacity: draftStarted ? 0.6 : 1 }}
+              />
             </label><br />
             <label>
               Draft Type:
-              <select value={formState.draftType} onChange={(e) => handleInputChange("draftType", e.target.value)}>
-                <option value="simulated">Simulated</option>
-                <option value="live">Live</option>
+              <select 
+                value={formState.draftType} 
+                onChange={(e) => handleInputChange("draftType", e.target.value)}
+                disabled={draftStarted}
+                style={{ opacity: draftStarted ? 0.6 : 1 }}
+              >
+                <option value="manual">Manual Draft (Commissioner Enters Teams)</option>
+                <option value="live">Live Draft</option>
               </select>
             </label><br />
             {formState.draftType === "live" && (
               <>
                 <label>
-                  Draft Date:
+                  Draft Date & Time:
                   <input 
                     type="datetime-local" 
                     value={formState.draftDate} 
                     onChange={(e) => handleInputChange("draftDate", e.target.value)}
-                    min={getTomorrowDate()}
+                    min={getMinDateTime()}
                     max={getMaxDate()}
+                    disabled={draftStarted}
+                    style={{ opacity: draftStarted ? 0.6 : 1 }}
                   />
                 </label><br />
+                <div style={{ fontSize: "0.85em", color: "#666", margin: "0.25rem 0" }}>
+                  Draft must be scheduled at least 15 minutes from now.
+                </div>
                 <label>
                   OTC Interval (minutes):
-                  <select value={formState.timePerPick} onChange={(e) => handleInputChange("timePerPick", e.target.value)}>
+                  <select 
+                    value={formState.timePerPick} 
+                    onChange={(e) => handleInputChange("timePerPick", e.target.value)}
+                    disabled={draftStarted}
+                    style={{ opacity: draftStarted ? 0.6 : 1 }}
+                  >
                     <option value={1}>1 minute</option>
                     <option value={2}>2 minutes</option>
                     <option value={5}>5 minutes</option>
@@ -226,27 +391,71 @@ function LeagueRules() {
             )}
             <label>
               Max Managers:
-              <select value={formState.maxManagers} onChange={(e) => handleInputChange("maxManagers", parseInt(e.target.value))}>
+              <select 
+                value={formState.maxManagers} 
+                onChange={(e) => handleInputChange("maxManagers", parseInt(e.target.value))}
+                disabled={draftStarted}
+                style={{ opacity: draftStarted ? 0.6 : 1 }}
+              >
                 {[8, 10, 12].map((num) => (
                   <option key={num} value={num}>{num}</option>
                 ))}
               </select>
             </label>
             {error && <p style={{ color: "red" }}>{error}</p>}
-            <button onClick={handleConfirmChanges}>Confirm Changes</button>
+            <div style={{ marginTop: "1rem" }}>
+              <button 
+                onClick={handleConfirmChanges}
+                disabled={draftStarted}
+                style={{ 
+                  opacity: draftStarted ? 0.6 : 1,
+                  cursor: draftStarted ? "not-allowed" : "pointer",
+                  marginRight: "1rem"
+                }}
+              >
+                {draftStarted ? "Settings Locked" : "Confirm Changes"}
+              </button>
+              
+              <button 
+                onClick={handleDeleteLeague}
+                style={{ 
+                  backgroundColor: "#dc3545",
+                  color: "white",
+                  border: "none",
+                  padding: "0.5rem 1rem",
+                  borderRadius: "4px",
+                  cursor: "pointer"
+                }}
+                onMouseOver={(e) => e.target.style.backgroundColor = "#c82333"}
+                onMouseOut={(e) => e.target.style.backgroundColor = "#dc3545"}
+              >
+                🗑️ Delete League
+              </button>
+            </div>
           </div>
         ) : (
           <>
             <p><strong>League Name:</strong> {leagueData.name}</p>
             <p><strong>Admin:</strong> {adminName || "Unknown"}</p>
             <p><strong>League ID:</strong> {leagueId}</p>
-            <p><strong>Draft Type:</strong> {leagueData.draftType}</p>
-            {leagueData.draftType === "simulated" && (
-              <p><strong>Simulated Draft Runs:</strong> August 19, 2025 at 3:00 PM EST</p>
+            <p><strong>Draft Type:</strong> {getDraftDisplayText(leagueData.draftType)}</p>
+            {leagueData.draftType === "manual" && (
+              <p><strong>Manual Draft:</strong> Commissioner will enter team selections after offline draft</p>
             )}
-            {leagueData.draftType === "live" && (
+            {leagueData.draftType === "live" && leagueData.draftDate && (
               <>
-                <p><strong>Scheduled Draft:</strong> {leagueData.draftDate?.toDate().toLocaleString()}</p>
+                <p><strong>Scheduled Draft:</strong> {
+                  leagueData.draftDate?.toDate().toLocaleString("en-US", {
+                    timeZone: "America/New_York", // EDT/EST
+                    weekday: "long",
+                    year: "numeric", 
+                    month: "long", 
+                    day: "numeric",
+                    hour: "numeric", 
+                    minute: "2-digit",
+                    timeZoneName: "short"
+                  })
+                }</p>
                 <p><strong>OTC Interval:</strong> {leagueData.timePerPick} minutes</p>
               </>
             )}
@@ -271,7 +480,16 @@ function LeagueRules() {
                 <td>{m.teamName}</td>
                 {isAdmin && (
                   <td>
-                    <button onClick={() => handleRemoveManager(m.uid, m.name || m.username)}>Remove</button>
+                    <button 
+                      onClick={() => handleRemoveManager(m.uid, m.name || m.username)}
+                      disabled={draftStarted}
+                      style={{ 
+                        opacity: draftStarted ? 0.6 : 1,
+                        cursor: draftStarted ? "not-allowed" : "pointer"
+                      }}
+                    >
+                      {draftStarted ? "Locked" : "Remove"}
+                    </button>
                   </td>
                 )}
               </tr>

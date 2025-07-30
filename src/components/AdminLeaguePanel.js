@@ -156,7 +156,7 @@ function AdminLeaguePanel() {
 
     const leagueNames = Array.from({ length: 10 }, (_, i) => `Test League ${i + 1}`);
     const maxOptions = [8, 10, 12];
-    const draftTypes = ["simulated", "live"];
+    const draftTypes = ["manual", "live"];
 
     for (let i = 0; i < 10; i++) {
       const userDoc = userDocs[i];

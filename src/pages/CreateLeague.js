@@ -17,15 +17,23 @@ function CreateLeague() {
   const [displayName, setDisplayName] = useState("");
   const [teamName, setTeamName] = useState("");
   const [maxManagers, setMaxManagers] = useState(8);
-  const [draftType, setDraftType] = useState("simulated");
+  const [draftType, setDraftType] = useState("manual");
   const [draftDate, setDraftDate] = useState("");
+  const [draftTime, setDraftTime] = useState("");
   const [timePerPick, setTimePerPick] = useState("2");
   const [loading, setLoading] = useState(false);
 
+  // Allow today's date in the date picker (accounting for timezone)
   const getMinDraftDate = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split("T")[0];
+    const now = new Date();
+    // Account for timezone offset to ensure today is always available
+    const localOffset = now.getTimezoneOffset() * 60000; // offset in milliseconds
+    const localDate = new Date(now.getTime() - localOffset);
+    return localDate.toISOString().split("T")[0];
+  };
+
+  const getMaxDraftDate = () => {
+    return "2025-08-20"; // Max date
   };
 
   const handleCreateLeague = async (e) => {
@@ -41,8 +49,8 @@ function CreateLeague() {
         return;
       }
 
-      if (draftType === "live" && (!draftDate || !timePerPick)) {
-        alert("Please select both a draft date and pick time.");
+      if (draftType === "live" && (!draftDate || !draftTime || !timePerPick)) {
+        alert("Please select a draft date, time, and pick duration.");
         setLoading(false);
         return;
       }
@@ -61,9 +69,33 @@ function CreateLeague() {
       };
 
       if (draftType === "live") {
-        const parsedDate = new Date(draftDate);
-        if (!isNaN(parsedDate)) {
-          leagueData.draftDate = parsedDate;
+        // Parse the date and time components manually
+        const [year, month, day] = draftDate.split('-').map(Number);
+        const [hours, minutes] = draftTime.split(':').map(Number);
+        
+        // Create datetime object in local timezone
+        const draftDateTime = new Date(year, month - 1, day, hours, minutes, 0);
+        
+        console.log("📅 Input date:", draftDate, "time:", draftTime);
+        console.log("📅 Draft datetime (EDT):", draftDateTime.toLocaleString("en-US", {timeZone: "America/New_York"}));
+        console.log("📅 Draft datetime stored:", draftDateTime);
+        
+        // Validate the datetime is at least 15 minutes in the future
+        const now = new Date();
+        const minTime = new Date(now.getTime() + 15 * 60 * 1000);
+        
+        console.log("📅 Now (EDT):", now.toLocaleString("en-US", {timeZone: "America/New_York"}));
+        console.log("📅 Min time (EDT):", minTime.toLocaleString("en-US", {timeZone: "America/New_York"}));
+        console.log("📅 Draft is valid:", draftDateTime >= minTime);
+        
+        if (draftDateTime < minTime) {
+          alert("Draft must be scheduled at least 15 minutes in the future.");
+          setLoading(false);
+          return;
+        }
+        
+        if (!isNaN(draftDateTime)) {
+          leagueData.draftDate = draftDateTime;
         } else {
           console.warn("Invalid draftDate skipped");
         }
@@ -137,7 +169,7 @@ function CreateLeague() {
           value={draftType}
           onChange={(e) => setDraftType(e.target.value)}
         >
-          <option value="simulated">Simulated Draft</option>
+          <option value="manual">Manual Draft (Commissioner Enters Teams)</option>
           <option value="live">Live Draft</option>
         </select>
       </label>
@@ -145,16 +177,30 @@ function CreateLeague() {
       {draftType === "live" && (
         <>
           <label>
-            Draft Date (between tomorrow and August 20):
+            Draft Date:
             <input
               type="date"
               value={draftDate}
               onChange={(e) => setDraftDate(e.target.value)}
-              min={getMinDraftDate()}
-              max="2025-08-20"
+              min={getMinDraftDate()} // Today's date (clickable)
+              max={getMaxDraftDate()}
               required
             />
           </label>
+
+          <label>
+            Draft Time:
+            <input
+              type="time"
+              value={draftTime}
+              onChange={(e) => setDraftTime(e.target.value)}
+              required
+            />
+          </label>
+
+          <div style={{ fontSize: "0.9em", color: "#666", margin: "0.5rem 0" }}>
+            Draft must be scheduled at least 15 minutes from now.
+          </div>
 
           <label>
             Time on Clock:
@@ -170,6 +216,12 @@ function CreateLeague() {
             </select>
           </label>
         </>
+      )}
+
+      {draftType === "manual" && (
+        <div style={{ padding: "1rem", backgroundColor: "#f0f8ff", borderRadius: "4px", margin: "1rem 0" }}>
+          <p><strong>Manual Draft:</strong> You can enter team lineups after league creation. The commissioner will manually input all drafted teams for each manager.</p>
+        </div>
       )}
 
       <input
