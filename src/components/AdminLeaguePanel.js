@@ -157,7 +157,7 @@ function AdminLeaguePanel() {
     const leagueNames = Array.from({ length: 10 }, (_, i) => `Test League ${i + 1}`);
     const maxOptions = [8, 10, 12];
     const draftTypes = ["manual", "live"];
-    const draftOrderTypes = ["random", "admin"]; // Add draft order options
+    const draftOrderTypes = ["random", "admin"];
 
     for (let i = 0; i < 10; i++) {
       const userDoc = userDocs[i];
@@ -177,8 +177,8 @@ function AdminLeaguePanel() {
         maxManagers: maxManagers,
         draftComplete: false,
         draftType: selectedDraftType,
-        draftOrderType: selectedDraftOrderType, // Add the draft order type
-        scoringType: "cumulative", // All leagues use cumulative as specified
+        draftOrderType: selectedDraftOrderType,
+        scoringType: "cumulative",
         members: [userId]
       };
 
@@ -192,7 +192,7 @@ function AdminLeaguePanel() {
         const randomDate = new Date(randomTime);
         
         leagueData.draftDate = randomDate;
-        leagueData.timePerPick = [1, 2, 5, 10][Math.floor(Math.random() * 4)]; // Random pick time
+        leagueData.timePerPick = [1, 2, 5, 10][Math.floor(Math.random() * 4)];
       }
 
       // Create the league
@@ -203,7 +203,7 @@ function AdminLeaguePanel() {
         leagueIds: arrayUnion(leagueRef.id)
       });
 
-      // Create member document exactly like CreateLeague.js
+      // ✅ Create member document with consistent structure matching CreateLeague.js and JoinLeague.js
       await setDoc(doc(db, "leagues", leagueRef.id, "members", userId), {
         displayName: `${userData.firstName || 'User'}Bot`, // Add 'Bot' suffix for test leagues
         teamName: `${userData.lastName || 'Test'} FC`,
@@ -213,6 +213,10 @@ function AdminLeaguePanel() {
           bench: [],
           drafted: []
         },
+        points: 0,                    // ✅ Total season points
+        weeklyPoints: 0,              // ✅ Current week's points (number)
+        weeklyPointsHistory: {},      // ✅ Historical weekly points (object)
+        freeAgentMoves: 0,            // ✅ Number of FA moves made
         joinedAt: new Date()
       });
     }

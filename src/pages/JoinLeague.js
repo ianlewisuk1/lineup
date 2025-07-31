@@ -63,7 +63,7 @@ function JoinLeague() {
         leagueIds: arrayUnion(leagueId)
       });
 
-      // Create the member document for this league
+      // Create member document with consistent structure
       await setDoc(memberRef, {
         displayName: displayName.trim(),
         teamName: teamName.trim(),
@@ -75,7 +75,9 @@ function JoinLeague() {
           currentRoster: []
         },
         points: 0,
-        weeklyPoints: {}
+        weeklyPoints: 0,           // Current week's points (number)
+        weeklyPointsHistory: {},   // Historical weekly points (object)
+        freeAgentMoves: 0          // Number of FA moves made
       }, { merge: true });
 
       alert("Joined league successfully!");

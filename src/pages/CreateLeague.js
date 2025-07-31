@@ -18,7 +18,7 @@ function CreateLeague() {
   const [teamName, setTeamName] = useState("");
   const [maxManagers, setMaxManagers] = useState(8);
   const [draftType, setDraftType] = useState("manual");
-  const [draftOrderType, setDraftOrderType] = useState("random"); // New state
+  const [draftOrderType, setDraftOrderType] = useState("random");
   const [draftDate, setDraftDate] = useState("");
   const [draftTime, setDraftTime] = useState("");
   const [timePerPick, setTimePerPick] = useState("2");
@@ -65,7 +65,7 @@ function CreateLeague() {
         maxManagers: maxManagers,
         draftComplete: false,
         draftType,
-        draftOrderType, // Add the draft order type
+        draftOrderType,
         scoringType: "cumulative",
         members: [user.uid],
       };
@@ -118,6 +118,7 @@ function CreateLeague() {
         leagueIds: arrayUnion(leagueRef.id)
       });
 
+      // Create member document with consistent structure
       await setDoc(doc(db, "leagues", leagueRef.id, "members", user.uid), {
         displayName: displayName.trim(),
         teamName: teamName.trim(),
@@ -127,6 +128,10 @@ function CreateLeague() {
           bench: [],
           drafted: []
         },
+        points: 0,
+        weeklyPoints: 0,           // Current week's points (number)
+        weeklyPointsHistory: {},   // Historical weekly points (object)
+        freeAgentMoves: 0,         // Number of FA moves made
         joinedAt: new Date()
       });
 
@@ -207,7 +212,7 @@ function CreateLeague() {
               type="date"
               value={draftDate}
               onChange={(e) => setDraftDate(e.target.value)}
-              min={getMinDraftDate()} // Today's date (clickable)
+              min={getMinDraftDate()}
               max={getMaxDraftDate()}
               required
             />
