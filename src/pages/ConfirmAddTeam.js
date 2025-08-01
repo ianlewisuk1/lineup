@@ -2,7 +2,7 @@
 import React from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { auth, db } from "../firebase/firebase";
-import { doc, updateDoc, getDoc } from "firebase/firestore";
+import { doc, updateDoc, getDoc, increment } from "firebase/firestore";
 import LeagueNavBar from "../components/LeagueNavBar";
 
 function ConfirmAddTeam() {
@@ -29,7 +29,8 @@ function ConfirmAddTeam() {
 
     await updateDoc(memberRef, {
       "lineup.starters": newStarters,
-      "lineup.bench": newBench
+      "lineup.bench": newBench,
+      freeAgentMoves: increment(1)  // Increment the free agent moves counter
     });
 
     navigate(`/${leagueId}/my-lineup`);

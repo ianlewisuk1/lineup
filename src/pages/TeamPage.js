@@ -1,8 +1,9 @@
 // src/pages/TeamPage.js
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { collection, getDocs, doc, getDoc } from "firebase/firestore";
+import { db, auth } from "../firebase/firebase";
+import { Plus } from "lucide-react";
 import LeagueNavBar from "../components/LeagueNavBar";
 
 function TeamPage() {
@@ -11,9 +12,14 @@ function TeamPage() {
   const [schedule, setSchedule] = useState([]);
   const [loading, setLoading] = useState(true);
   const [teamInfo, setTeamInfo] = useState(null);
+  const [ownershipInfo, setOwnershipInfo] = useState(null);
+  const [userTeams, setUserTeams] = useState([]);
+  const [selectedDropTeam, setSelectedDropTeam] = useState("");
+  const [pendingAddTeam, setPendingAddTeam] = useState("");
+  const [showSwapUI, setShowSwapUI] = useState(false);
 
   useEffect(() => {
-    const fetchTeamSchedule = async () => {
+    const fetchTeamData = async () => {
       try {
         const decodedTeamName = decodeURIComponent(teamName);
         
@@ -27,6 +33,77 @@ function TeamPage() {
           }
         });
         setTeamInfo(foundTeam);
+
+        // Fetch ownership info from league members
+        const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
+        let ownership = null;
+        
+        for (const memberDoc of membersSnap.docs) {
+          const memberData = memberDoc.data();
+          const lineup = memberData.lineup || {};
+          const starters = lineup.starters || [];
+          const bench = lineup.bench || [];
+          
+          // Check if this team is in starters or bench
+          if (starters.includes(decodedTeamName)) {
+            // Fetch user info for display name
+            let ownerName = memberData.displayName || "Unknown Owner";
+            try {
+              const userDoc = await getDoc(doc(db, "users", memberDoc.id));
+              if (userDoc.exists()) {
+                const userData = userDoc.data();
+                ownerName = userData.firstName 
+                  ? `${userData.firstName} ${userData.lastName || ""}`.trim()
+                  : userData.displayName || memberData.displayName || "Unknown Owner";
+              }
+            } catch (error) {
+              console.warn("Could not fetch user data:", error);
+            }
+            
+            ownership = {
+              status: "starting",
+              ownerName: ownerName,
+              teamName: memberData.teamName || "Unnamed Team"
+            };
+            break;
+          } else if (bench.includes(decodedTeamName)) {
+            // Fetch user info for display name
+            let ownerName = memberData.displayName || "Unknown Owner";
+            try {
+              const userDoc = await getDoc(doc(db, "users", memberDoc.id));
+              if (userDoc.exists()) {
+                const userData = userDoc.data();
+                ownerName = userData.firstName 
+                  ? `${userData.firstName} ${userData.lastName || ""}`.trim()
+                  : userData.displayName || memberData.displayName || "Unknown Owner";
+              }
+            } catch (error) {
+              console.warn("Could not fetch user data:", error);
+            }
+            
+            ownership = {
+              status: "bench",
+              ownerName: ownerName,
+              teamName: memberData.teamName || "Unnamed Team"
+            };
+            break;
+          }
+        }
+        
+        setOwnershipInfo(ownership);
+
+        // Fetch current user's teams for add functionality
+        const user = auth.currentUser;
+        if (user) {
+          const userMemberRef = doc(db, "leagues", leagueId, "members", user.uid);
+          const userMemberSnap = await getDoc(userMemberRef);
+          if (userMemberSnap.exists()) {
+            const userLineup = userMemberSnap.data()?.lineup || {};
+            const starters = userLineup.starters || [];
+            const bench = userLineup.bench || [];
+            setUserTeams([...starters, ...bench]);
+          }
+        }
 
         // Fetch schedule for 2025
         const scheduleData = [];
@@ -54,13 +131,31 @@ function TeamPage() {
         setSchedule(scheduleData);
         setLoading(false);
       } catch (error) {
-        console.error("Error fetching team schedule:", error);
+        console.error("Error fetching team data:", error);
         setLoading(false);
       }
     };
 
-    fetchTeamSchedule();
-  }, [teamName]);
+    fetchTeamData();
+  }, [teamName, leagueId]);
+
+  const handleAddTeam = (teamName) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    if (userTeams.length < 7) {
+      navigate(`/confirm-add/${leagueId}/${teamName}`);
+    } else {
+      setPendingAddTeam(teamName);
+      setSelectedDropTeam("");
+      setShowSwapUI(true);
+    }
+  };
+
+  const handleConfirmSwap = () => {
+    if (!selectedDropTeam || !pendingAddTeam) return;
+    navigate(`/confirm-swap/${leagueId}/${pendingAddTeam}/${selectedDropTeam}`);
+  };
 
   const formatGameResult = (game, teamName) => {
     const isHome = game.homeTeam === teamName;
@@ -97,12 +192,72 @@ function TeamPage() {
     });
   };
 
+  const renderOwnershipStatus = () => {
+    if (!ownershipInfo) {
+      return (
+        <div style={{ 
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0.75rem", 
+          backgroundColor: "#d4edda", 
+          border: "1px solid #c3e6cb", 
+          borderRadius: "4px", 
+          color: "#155724",
+          marginBottom: "1rem"
+        }}>
+          <div>
+            <strong>Status:</strong> Free Agent
+          </div>
+          {auth.currentUser && (
+            <button 
+              onClick={() => handleAddTeam(decodeURIComponent(teamName))}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "0.5rem",
+                backgroundColor: "#28a745",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: "pointer"
+              }}
+              title="Add to your team"
+            >
+              <Plus size={20} />
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    const { status, ownerName, teamName: ownerTeamName } = ownershipInfo;
+    const statusText = status === "starting" ? "Starting" : "Riding the bench";
+    const bgColor = status === "starting" ? "#d1ecf1" : "#fff3cd";
+    const borderColor = status === "starting" ? "#bee5eb" : "#ffeaa7";
+    const textColor = status === "starting" ? "#0c5460" : "#856404";
+
+    return (
+      <div style={{ 
+        padding: "0.75rem", 
+        backgroundColor: bgColor, 
+        border: `1px solid ${borderColor}`, 
+        borderRadius: "4px", 
+        color: textColor,
+        marginBottom: "1rem"
+      }}>
+        <strong>Status:</strong> {statusText} for <strong>{ownerTeamName}</strong> (managed by {ownerName})
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div>
         <LeagueNavBar />
         <div style={{ padding: "1rem" }}>
-          <p>Loading team schedule...</p>
+          <p>Loading team information...</p>
         </div>
       </div>
     );
@@ -121,8 +276,12 @@ function TeamPage() {
           ← Back
         </button>
         
-        <h2>{decodedTeamName} Schedule</h2>
+        <h2>{decodedTeamName}</h2>
         
+        {/* Ownership Status */}
+        {renderOwnershipStatus()}
+        
+        {/* Team Info */}
         {teamInfo && (
           <div style={{ marginBottom: "1rem", padding: "1rem", backgroundColor: "#f5f5f5", borderRadius: "4px" }}>
             <p><strong>Conference:</strong> {teamInfo.conference || "Independent"}</p>
@@ -136,6 +295,7 @@ function TeamPage() {
           </div>
         )}
 
+        <h3>Schedule</h3>
         {schedule.length === 0 ? (
           <p>No schedule found for {decodedTeamName}</p>
         ) : (
@@ -167,6 +327,63 @@ function TeamPage() {
               ))}
             </tbody>
           </table>
+        )}
+
+        {/* Swap UI - only show if user is trying to add this team but has full roster */}
+        {showSwapUI && (
+          <div style={{ marginTop: "1rem", padding: "1rem", border: "1px solid #ccc", borderRadius: "4px", backgroundColor: "#f8f9fa" }}>
+            <h4>Swap in: {pendingAddTeam}</h4>
+            <p>Your roster is full. Choose a team to drop:</p>
+            <label>
+              Drop:
+              <select
+                value={selectedDropTeam}
+                onChange={(e) => setSelectedDropTeam(e.target.value)}
+                style={{ marginLeft: "1rem", padding: "0.5rem" }}
+              >
+                <option value="">Select one of your teams</option>
+                {userTeams.map((team) => (
+                  <option key={team} value={team}>
+                    {team}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div style={{ marginTop: "1rem" }}>
+              <button
+                onClick={handleConfirmSwap}
+                disabled={!selectedDropTeam}
+                style={{ 
+                  marginRight: "1rem",
+                  padding: "0.5rem 1rem",
+                  backgroundColor: selectedDropTeam ? "#007bff" : "#6c757d",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: selectedDropTeam ? "pointer" : "not-allowed"
+                }}
+              >
+                Confirm Swap
+              </button>
+              <button
+                onClick={() => {
+                  setShowSwapUI(false);
+                  setPendingAddTeam("");
+                  setSelectedDropTeam("");
+                }}
+                style={{ 
+                  padding: "0.5rem 1rem",
+                  backgroundColor: "#6c757d",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer"
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>

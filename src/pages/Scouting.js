@@ -101,7 +101,7 @@ function Scouting() {
               <Th label="Odds to Win Conf" sortKey="confOdds" sortBy={sortBy} sortConfig={sortConfig} />
               <Th label="PhilMetrics" sortKey="philMetricDraftRank" sortBy={sortBy} sortConfig={sortConfig} />
               <Th label="Power Rank" sortKey="powerRank" sortBy={sortBy} sortConfig={sortConfig} />
-              <Th label="Returning Starters" sortKey="retStarters" sortBy={sortBy} sortConfig={sortConfig} />
+              <Th label="Returning Starters %" sortKey="retStarters" sortBy={sortBy} sortConfig={sortConfig} />
               <Th label="SOS Rank" sortKey="sosRank" sortBy={sortBy} sortConfig={sortConfig} />
               <Th label="2024 Pts" sortKey="prevYearPoints" sortBy={sortBy} sortConfig={sortConfig} />
               <Th label="2024 Record" sortKey="prevYearRecord" sortBy={sortBy} sortConfig={sortConfig} />

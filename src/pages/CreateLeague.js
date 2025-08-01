@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { db, auth } from "../firebase/firebase";
 import {
   collection,
@@ -6,7 +6,8 @@ import {
   doc,
   setDoc,
   updateDoc,
-  arrayUnion
+  arrayUnion,
+  getDoc
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
@@ -23,6 +24,25 @@ function CreateLeague() {
   const [draftTime, setDraftTime] = useState("");
   const [timePerPick, setTimePerPick] = useState("2");
   const [loading, setLoading] = useState(false);
+  const [currentWeek, setCurrentWeek] = useState("Preseason");
+
+  // Fetch current week on component mount
+  useEffect(() => {
+    const fetchCurrentWeek = async () => {
+      try {
+        const configDoc = await getDoc(doc(db, "config", "season"));
+        if (configDoc.exists()) {
+          const data = configDoc.data();
+          setCurrentWeek(data.currentWeek || "Preseason");
+        }
+      } catch (error) {
+        console.warn("Could not fetch current week:", error);
+        setCurrentWeek("Preseason"); // fallback
+      }
+    };
+
+    fetchCurrentWeek();
+  }, []);
 
   // Allow today's date in the date picker (accounting for timezone)
   const getMinDraftDate = () => {
@@ -68,6 +88,7 @@ function CreateLeague() {
         draftOrderType,
         scoringType: "cumulative",
         members: [user.uid],
+        currentWeek: currentWeek, // Store current week at creation time
       };
 
       if (draftType === "live") {
@@ -132,6 +153,7 @@ function CreateLeague() {
         weeklyPoints: 0,           // Current week's points (number)
         weeklyPointsHistory: {},   // Historical weekly points (object)
         freeAgentMoves: 0,         // Number of FA moves made
+        smackTalk: "",             // Smack talk message for league standings
         joinedAt: new Date()
       });
 
@@ -146,136 +168,478 @@ function CreateLeague() {
   };
 
   return (
-    <form onSubmit={handleCreateLeague}>
-      <h2>Create a League</h2>
+    <div style={{ 
+      maxWidth: "500px", 
+      margin: "0 auto", 
+      padding: "20px",
+      backgroundColor: "#f8fafc",
+      minHeight: "100vh"
+    }}>
+      {/* Header */}
+      <div style={{
+        backgroundColor: "white",
+        borderRadius: "16px",
+        padding: "24px",
+        marginBottom: "24px",
+        boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+        textAlign: "center"
+      }}>
+        <h2 style={{
+          fontSize: "24px",
+          fontWeight: "700",
+          color: "#1e40af",
+          margin: "0 0 8px 0"
+        }}>
+          Create a League
+        </h2>
+        <p style={{
+          fontSize: "14px",
+          color: "#64748b",
+          margin: 0
+        }}>
+          Current Week: <strong>{currentWeek}</strong>
+        </p>
+      </div>
 
-      <input
-        type="text"
-        placeholder="League name"
-        value={leagueName}
-        onChange={(e) => setLeagueName(e.target.value)}
-        required
-      />
+      <form onSubmit={handleCreateLeague}>
+        {/* League Settings Card */}
+        <div style={{
+          backgroundColor: "white",
+          borderRadius: "16px",
+          padding: "24px",
+          marginBottom: "20px",
+          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)"
+        }}>
+          <h3 style={{
+            fontSize: "18px",
+            fontWeight: "600",
+            color: "#1e293b",
+            margin: "0 0 20px 0"
+          }}>
+            League Settings
+          </h3>
 
-      <label>
-        Number of Managers:
-        <select
-          value={maxManagers}
-          onChange={(e) => setMaxManagers(Number(e.target.value))}
-          required
-        >
-          <option value={8}>8</option>
-          <option value={10}>10</option>
-          <option value={12}>12</option>
-        </select>
-      </label>
-
-      <label>
-        Draft Type:
-        <select
-          value={draftType}
-          onChange={(e) => setDraftType(e.target.value)}
-        >
-          <option value="manual">Manual Draft (Commissioner Enters Teams)</option>
-          <option value="live">Live Draft</option>
-        </select>
-      </label>
-
-      <label>
-        Draft Order:
-        <select
-          value={draftOrderType}
-          onChange={(e) => setDraftOrderType(e.target.value)}
-        >
-          <option value="random">Random Order (Determined at Draft Start)</option>
-          <option value="admin">Commissioner Sets Order</option>
-        </select>
-      </label>
-
-      {draftOrderType === "random" && (
-        <div style={{ fontSize: "0.9em", color: "#666", margin: "0.5rem 0", padding: "0.5rem", backgroundColor: "#f8f9fa", borderRadius: "4px" }}>
-          <strong>Random Order:</strong> Draft order will be randomly shuffled when the draft begins.
-        </div>
-      )}
-
-      {draftOrderType === "admin" && (
-        <div style={{ fontSize: "0.9em", color: "#666", margin: "0.5rem 0", padding: "0.5rem", backgroundColor: "#fff3cd", borderRadius: "4px" }}>
-          <strong>Commissioner Sets Order:</strong> You'll be able to arrange the draft order before starting the draft.
-        </div>
-      )}
-
-      {draftType === "live" && (
-        <>
-          <label>
-            Draft Date:
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{
+              display: "block",
+              fontSize: "14px",
+              fontWeight: "500",
+              color: "#374151",
+              marginBottom: "6px"
+            }}>
+              League Name
+            </label>
             <input
-              type="date"
-              value={draftDate}
-              onChange={(e) => setDraftDate(e.target.value)}
-              min={getMinDraftDate()}
-              max={getMaxDraftDate()}
+              type="text"
+              placeholder="Enter league name"
+              value={leagueName}
+              onChange={(e) => setLeagueName(e.target.value)}
               required
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                border: "2px solid #e5e7eb",
+                borderRadius: "12px",
+                fontSize: "16px",
+                backgroundColor: "white",
+                transition: "border-color 0.2s ease",
+                boxSizing: "border-box"
+              }}
+              onFocus={(e) => e.target.style.borderColor = "#1e40af"}
+              onBlur={(e) => e.target.style.borderColor = "#e5e7eb"}
             />
-          </label>
-
-          <label>
-            Draft Time:
-            <input
-              type="time"
-              value={draftTime}
-              onChange={(e) => setDraftTime(e.target.value)}
-              required
-            />
-          </label>
-
-          <div style={{ fontSize: "0.9em", color: "#666", margin: "0.5rem 0" }}>
-            Draft must be scheduled at least 15 minutes from now.
           </div>
 
-          <label>
-            Time on Clock:
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{
+              display: "block",
+              fontSize: "14px",
+              fontWeight: "500",
+              color: "#374151",
+              marginBottom: "6px"
+            }}>
+              Number of Managers
+            </label>
             <select
-              value={timePerPick}
-              onChange={(e) => setTimePerPick(e.target.value)}
+              value={maxManagers}
+              onChange={(e) => setMaxManagers(Number(e.target.value))}
               required
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                border: "2px solid #e5e7eb",
+                borderRadius: "12px",
+                fontSize: "16px",
+                backgroundColor: "white",
+                boxSizing: "border-box"
+              }}
             >
-              <option value="1">1 minute</option>
-              <option value="2">2 minutes</option>
-              <option value="5">5 minutes</option>
-              <option value="10">10 minutes</option>
+              <option value={8}>8 Managers</option>
+              <option value={10}>10 Managers</option>
+              <option value={12}>12 Managers</option>
             </select>
-          </label>
-        </>
-      )}
+          </div>
 
-      {draftType === "manual" && (
-        <div style={{ padding: "1rem", backgroundColor: "#f0f8ff", borderRadius: "4px", margin: "1rem 0" }}>
-          <p><strong>Manual Draft:</strong> You can enter team lineups after league creation. The commissioner will manually input all drafted teams for each manager.</p>
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{
+              display: "block",
+              fontSize: "14px",
+              fontWeight: "500",
+              color: "#374151",
+              marginBottom: "6px"
+            }}>
+              Draft Type
+            </label>
+            <select
+              value={draftType}
+              onChange={(e) => setDraftType(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                border: "2px solid #e5e7eb",
+                borderRadius: "12px",
+                fontSize: "16px",
+                backgroundColor: "white",
+                boxSizing: "border-box"
+              }}
+            >
+              <option value="manual">Manual Draft (Commissioner Enters Teams)</option>
+              <option value="live">Live Draft</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{
+              display: "block",
+              fontSize: "14px",
+              fontWeight: "500",
+              color: "#374151",
+              marginBottom: "6px"
+            }}>
+              Draft Order
+            </label>
+            <select
+              value={draftOrderType}
+              onChange={(e) => setDraftOrderType(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                border: "2px solid #e5e7eb",
+                borderRadius: "12px",
+                fontSize: "16px",
+                backgroundColor: "white",
+                boxSizing: "border-box"
+              }}
+            >
+              <option value="random">Random Order (Determined at Draft Start)</option>
+              <option value="admin">Commissioner Sets Order</option>
+            </select>
+          </div>
+
+          {/* Info Cards */}
+          {draftOrderType === "random" && (
+            <div style={{
+              backgroundColor: "#f0f9ff",
+              border: "1px solid #0ea5e9",
+              borderRadius: "12px",
+              padding: "12px",
+              marginBottom: "20px"
+            }}>
+              <p style={{
+                fontSize: "14px",
+                color: "#0c4a6e",
+                margin: 0
+              }}>
+                <strong>Random Order:</strong> Draft order will be randomly shuffled when the draft begins.
+              </p>
+            </div>
+          )}
+
+          {draftOrderType === "admin" && (
+            <div style={{
+              backgroundColor: "#fffbeb",
+              border: "1px solid #f59e0b",
+              borderRadius: "12px",
+              padding: "12px",
+              marginBottom: "20px"
+            }}>
+              <p style={{
+                fontSize: "14px",
+                color: "#92400e",
+                margin: 0
+              }}>
+                <strong>Commissioner Sets Order:</strong> You'll be able to arrange the draft order before starting the draft.
+              </p>
+            </div>
+          )}
         </div>
-      )}
 
-      <input
-        type="text"
-        placeholder="Your username (max 15 chars)"
-        value={displayName}
-        onChange={(e) => setDisplayName(e.target.value)}
-        maxLength={15}
-        required
-      />
+        {/* Live Draft Settings */}
+        {draftType === "live" && (
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: "16px",
+            padding: "24px",
+            marginBottom: "20px",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)"
+          }}>
+            <h3 style={{
+              fontSize: "18px",
+              fontWeight: "600",
+              color: "#1e293b",
+              margin: "0 0 20px 0"
+            }}>
+              Live Draft Settings
+            </h3>
 
-      <input
-        type="text"
-        placeholder="Your team name (max 15 chars)"
-        value={teamName}
-        onChange={(e) => setTeamName(e.target.value)}
-        maxLength={15}
-        required
-      />
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{
+                display: "block",
+                fontSize: "14px",
+                fontWeight: "500",
+                color: "#374151",
+                marginBottom: "6px"
+              }}>
+                Draft Date
+              </label>
+              <input
+                type="date"
+                value={draftDate}
+                onChange={(e) => setDraftDate(e.target.value)}
+                min={getMinDraftDate()}
+                max={getMaxDraftDate()}
+                required
+                style={{
+                  width: "100%",
+                  padding: "12px 16px",
+                  border: "2px solid #e5e7eb",
+                  borderRadius: "12px",
+                  fontSize: "16px",
+                  backgroundColor: "white",
+                  boxSizing: "border-box"
+                }}
+              />
+            </div>
 
-      <button type="submit" disabled={loading}>
-        {loading ? "Creating..." : "Create League"}
-      </button>
-    </form>
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{
+                display: "block",
+                fontSize: "14px",
+                fontWeight: "500",
+                color: "#374151",
+                marginBottom: "6px"
+              }}>
+                Draft Time
+              </label>
+              <input
+                type="time"
+                value={draftTime}
+                onChange={(e) => setDraftTime(e.target.value)}
+                required
+                style={{
+                  width: "100%",
+                  padding: "12px 16px",
+                  border: "2px solid #e5e7eb",
+                  borderRadius: "12px",
+                  fontSize: "16px",
+                  backgroundColor: "white",
+                  boxSizing: "border-box"
+                }}
+              />
+            </div>
+
+            <div style={{
+              backgroundColor: "#fef3c7",
+              border: "1px solid #f59e0b",
+              borderRadius: "12px",
+              padding: "12px",
+              marginBottom: "20px"
+            }}>
+              <p style={{
+                fontSize: "14px",
+                color: "#92400e",
+                margin: 0
+              }}>
+                Draft must be scheduled at least 15 minutes from now.
+              </p>
+            </div>
+
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{
+                display: "block",
+                fontSize: "14px",
+                fontWeight: "500",
+                color: "#374151",
+                marginBottom: "6px"
+              }}>
+                Time on Clock
+              </label>
+              <select
+                value={timePerPick}
+                onChange={(e) => setTimePerPick(e.target.value)}
+                required
+                style={{
+                  width: "100%",
+                  padding: "12px 16px",
+                  border: "2px solid #e5e7eb",
+                  borderRadius: "12px",
+                  fontSize: "16px",
+                  backgroundColor: "white",
+                  boxSizing: "border-box"
+                }}
+              >
+                <option value="1">1 minute</option>
+                <option value="2">2 minutes</option>
+                <option value="5">5 minutes</option>
+                <option value="10">10 minutes</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Manual Draft Info */}
+        {draftType === "manual" && (
+          <div style={{
+            backgroundColor: "#f0f8ff",
+            border: "1px solid #0ea5e9",
+            borderRadius: "16px",
+            padding: "20px",
+            marginBottom: "20px"
+          }}>
+            <h4 style={{
+              fontSize: "16px",
+              fontWeight: "600",
+              color: "#0c4a6e",
+              margin: "0 0 8px 0"
+            }}>
+              Manual Draft
+            </h4>
+            <p style={{
+              fontSize: "14px",
+              color: "#0c4a6e",
+              margin: 0
+            }}>
+              You can enter team lineups after league creation. The commissioner will manually input all drafted teams for each manager.
+            </p>
+          </div>
+        )}
+
+        {/* Your Info Card */}
+        <div style={{
+          backgroundColor: "white",
+          borderRadius: "16px",
+          padding: "24px",
+          marginBottom: "20px",
+          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)"
+        }}>
+          <h3 style={{
+            fontSize: "18px",
+            fontWeight: "600",
+            color: "#1e293b",
+            margin: "0 0 20px 0"
+          }}>
+            Your Information
+          </h3>
+
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{
+              display: "block",
+              fontSize: "14px",
+              fontWeight: "500",
+              color: "#374151",
+              marginBottom: "6px"
+            }}>
+              Your Username (max 15 chars)
+            </label>
+            <input
+              type="text"
+              placeholder="Enter your username"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              maxLength={15}
+              required
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                border: "2px solid #e5e7eb",
+                borderRadius: "12px",
+                fontSize: "16px",
+                backgroundColor: "white",
+                transition: "border-color 0.2s ease",
+                boxSizing: "border-box"
+              }}
+              onFocus={(e) => e.target.style.borderColor = "#1e40af"}
+              onBlur={(e) => e.target.style.borderColor = "#e5e7eb"}
+            />
+          </div>
+
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{
+              display: "block",
+              fontSize: "14px",
+              fontWeight: "500",
+              color: "#374151",
+              marginBottom: "6px"
+            }}>
+              Your Team Name (max 15 chars)
+            </label>
+            <input
+              type="text"
+              placeholder="Enter your team name"
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
+              maxLength={15}
+              required
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                border: "2px solid #e5e7eb",
+                borderRadius: "12px",
+                fontSize: "16px",
+                backgroundColor: "white",
+                transition: "border-color 0.2s ease",
+                boxSizing: "border-box"
+              }}
+              onFocus={(e) => e.target.style.borderColor = "#1e40af"}
+              onBlur={(e) => e.target.style.borderColor = "#e5e7eb"}
+            />
+          </div>
+        </div>
+
+        {/* Submit Button */}
+        <button 
+          type="submit" 
+          disabled={loading}
+          style={{
+            width: "100%",
+            padding: "16px",
+            backgroundColor: loading ? "#94a3b8" : "#1e40af",
+            color: "white",
+            border: "none",
+            borderRadius: "12px",
+            fontSize: "16px",
+            fontWeight: "600",
+            cursor: loading ? "not-allowed" : "pointer",
+            transition: "all 0.2s ease",
+            marginBottom: "20px"
+          }}
+          onMouseEnter={(e) => {
+            if (!loading) {
+              e.target.style.backgroundColor = "#1d4ed8";
+              e.target.style.transform = "translateY(-1px)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!loading) {
+              e.target.style.backgroundColor = "#1e40af";
+              e.target.style.transform = "translateY(0)";
+            }
+          }}
+        >
+          {loading ? "Creating League..." : "Create League"}
+        </button>
+      </form>
+    </div>
   );
 }
 

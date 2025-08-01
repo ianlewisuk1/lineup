@@ -22,6 +22,8 @@ function AdminLeagueDetail() {
   const [draftMeta, setDraftMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshFlag, setRefreshFlag] = useState(false);
+  const [currentWeek, setCurrentWeek] = useState("Preseason");
+  const [newWeekValue, setNewWeekValue] = useState("");
 
   useEffect(() => {
     const fetchLeagueAndMembers = async () => {
@@ -49,6 +51,14 @@ function AdminLeagueDetail() {
           setDraftMeta(null);
         }
 
+        // Fetch current week from global config
+        const configDoc = await getDoc(doc(db, "config", "season"));
+        if (configDoc.exists()) {
+          const globalCurrentWeek = configDoc.data().currentWeek || "Preseason";
+          setCurrentWeek(globalCurrentWeek);
+          setNewWeekValue(globalCurrentWeek);
+        }
+
       } catch (err) {
         console.error("Error fetching league detail:", err);
       } finally {
@@ -60,6 +70,42 @@ function AdminLeagueDetail() {
   }, [leagueId, refreshFlag]);
 
   const refresh = () => setRefreshFlag(f => !f);
+
+  const handleUpdateCurrentWeek = async () => {
+    if (!newWeekValue.trim()) {
+      alert("Please enter a week value.");
+      return;
+    }
+
+    if (!window.confirm(`Update global current week to "${newWeekValue}"? This will affect ALL leagues.`)) {
+      return;
+    }
+
+    try {
+      // Update global config
+      await updateDoc(doc(db, "config", "season"), {
+        currentWeek: newWeekValue.trim(),
+        lastUpdated: new Date()
+      });
+
+      setCurrentWeek(newWeekValue.trim());
+      alert(`✅ Current week updated to "${newWeekValue.trim()}"`);
+    } catch (err) {
+      console.error("Error updating current week:", err);
+      alert("Failed to update current week: " + err.message);
+    }
+  };
+
+  const weekOptions = [
+    "Preseason",
+    "Week 1", "Week 2", "Week 3", "Week 4", "Week 5", "Week 6",
+    "Week 7", "Week 8", "Week 9", "Week 10", "Week 11", "Week 12",
+    "Week 13", "Week 14", "Week 15", "Week 16", "Week 17",
+    "Conference Championships",
+    "CFP Playoffs",
+    "National Championship",
+    "Offseason"
+  ];
 
   // Helper function to get current picker using snake draft logic (matches DraftRoom.js)
   const getCurrentPicker = (draftOrder, currentPickIndex) => {
@@ -127,7 +173,11 @@ function AdminLeagueDetail() {
               drafted: picks,
               starters: picks.slice(0, 5),
               bench: picks.slice(5)
-            }
+            },
+            freeAgentMoves: 0,  // Initialize free agent moves
+            points: 0,         // Initialize points
+            weeklyPoints: 0,   // Initialize weekly points
+            smackTalk: ""      // Initialize smack talk
           }, { merge: true })
         );
       });
@@ -226,7 +276,9 @@ function AdminLeagueDetail() {
           const memberRef = doc(db, "leagues", leagueId, "members", uid);
           memberUpdates.push(
             updateDoc(memberRef, {
-              "lineup.drafted": teams
+              "lineup.drafted": teams,
+              freeAgentMoves: 0,  // Initialize free agent moves
+              smackTalk: ""       // Initialize smack talk
               // Don't set starters/bench yet since draft isn't complete
             })
           );
@@ -273,7 +325,11 @@ function AdminLeagueDetail() {
         updateDoc(docSnap.ref, {
           "lineup.drafted": [],
           "lineup.starters": [],
-          "lineup.bench": []
+          "lineup.bench": [],
+          freeAgentMoves: 0,  // Reset free agent moves
+          points: 0,         // Reset points
+          weeklyPoints: 0,   // Reset weekly points
+          smackTalk: ""      // Reset smack talk
         })
       );
 
@@ -330,6 +386,10 @@ function AdminLeagueDetail() {
             starters: [],
             bench: []
           },
+          freeAgentMoves: 0,   // Initialize free agent moves
+          points: 0,          // Initialize points
+          weeklyPoints: 0,    // Initialize weekly points
+          smackTalk: "",      // Initialize smack talk
           joinedAt: new Date()
         });
 
@@ -404,6 +464,50 @@ function AdminLeagueDetail() {
   return (
     <div style={{ padding: "2rem" }}>
       <h2>Admin View: {league.name}</h2>
+      
+      {/* Current Week Management Section */}
+      <div style={{ 
+        backgroundColor: "#f0f8ff", 
+        border: "1px solid #0ea5e9", 
+        borderRadius: "8px", 
+        padding: "1rem", 
+        marginBottom: "2rem" 
+      }}>
+        <h3 style={{ margin: "0 0 1rem 0", color: "#0c4a6e" }}>Season Management</h3>
+        <p><strong>Current Week (Global):</strong> <span style={{ color: "#1e40af", fontSize: "1.1em" }}>{currentWeek}</span></p>
+        
+        <div style={{ marginTop: "1rem", display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
+          <select
+            value={newWeekValue}
+            onChange={(e) => setNewWeekValue(e.target.value)}
+            style={{ padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc" }}
+          >
+            {weekOptions.map(week => (
+              <option key={week} value={week}>{week}</option>
+            ))}
+          </select>
+          
+          <button 
+            onClick={handleUpdateCurrentWeek}
+            style={{
+              backgroundColor: "#1e40af",
+              color: "white",
+              border: "none",
+              padding: "0.5rem 1rem",
+              borderRadius: "4px",
+              cursor: "pointer"
+            }}
+          >
+            Update Global Week
+          </button>
+        </div>
+        
+        <p style={{ fontSize: "0.9em", color: "#64748b", marginTop: "0.5rem", marginBottom: 0 }}>
+          ⚠️ This updates the current week for ALL leagues globally.
+        </p>
+      </div>
+
+      {/* League Info */}
       <p><strong>League ID:</strong> {league.id}</p>
       <p><strong>Admin UID:</strong> {league.admin}</p>
       <p><strong>Created By:</strong> {league.createdBy}</p>
@@ -419,6 +523,7 @@ function AdminLeagueDetail() {
           <p><strong>Time Per Pick:</strong> {league.timePerPick ? `${league.timePerPick} minute${league.timePerPick !== 1 ? 's' : ''}` : "-"}</p>
         </>
       )}
+      <p><strong>League Current Week:</strong> {league.currentWeek || "Not Set"}</p>
       <p><strong>Created At:</strong> {league.createdAt?.toDate().toLocaleString()}</p>
 
       <div style={{ marginTop: "1rem" }}>
@@ -463,6 +568,7 @@ function AdminLeagueDetail() {
               <th style={th}>Starters</th>
               <th style={th}>Bench</th>
               <th style={th}>Drafted</th>
+              <th style={th}>FA Moves</th>
               <th style={th}>Joined</th>
               <th style={th}>Actions</th>
             </tr>
@@ -477,6 +583,7 @@ function AdminLeagueDetail() {
                 <td style={td}>{formatList(m.lineup?.starters)}</td>
                 <td style={td}>{formatList(m.lineup?.bench)}</td>
                 <td style={td}>{formatList(m.lineup?.drafted)}</td>
+                <td style={td}>{m.freeAgentMoves || 0}</td>
                 <td style={td}>
                   {m.joinedAt?.toDate().toLocaleString() || "-"}
                 </td>
