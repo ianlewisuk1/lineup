@@ -17,10 +17,10 @@ function MyLineup() {
   const [teamName, setTeamName] = useState("");
   const [starters, setStarters] = useState([]);
   const [bench, setBench] = useState([]);
-  const [swapTarget, setSwapTarget] = useState(null);
   const [smackTalk, setSmackTalk] = useState("");
   const [isEditingSmackTalk, setIsEditingSmackTalk] = useState(false);
   const [smackTalkSaving, setSmackTalkSaving] = useState(false);
+  const [allTeams, setAllTeams] = useState({});
 
   useEffect(() => {
     const fetchLineup = async () => {
@@ -38,16 +38,24 @@ function MyLineup() {
       setSmackTalk(memberData?.smackTalk || "");
 
       const teamsSnap = await getDocs(collection(db, "teams"));
-      const allTeams = {};
+      const teamsMap = {};
       teamsSnap.forEach(doc => {
-        allTeams[doc.data().school] = {
-          id: doc.id,
-          ...doc.data()
-        };
+        const teamData = doc.data();
+        if (teamData.school) {
+          teamsMap[teamData.school] = {
+            id: doc.id,
+            ...teamData,
+            logo: teamData.logos1 || teamData.logos2 || null,
+            currentWeekPoints: teamData.currentSeason?.currentWeekPoints || null,
+            gameComplete: teamData.currentSeason?.gameComplete || false,
+            color: teamData.color || null
+          };
+        }
       });
+      setAllTeams(teamsMap);
 
-      const startersResolved = starterList.map(name => allTeams[name] || null);
-      const benchResolved = benchList.map(name => allTeams[name] || null);
+      const startersResolved = starterList.map(name => teamsMap[name] || null);
+      const benchResolved = benchList.map(name => teamsMap[name] || null);
 
       setStarters(startersResolved);
       setBench(benchResolved);
@@ -72,7 +80,54 @@ function MyLineup() {
 
     setStarters(newStarters);
     setBench(newBench);
-    setSwapTarget(null);
+
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
+    updateDoc(memberRef, {
+      "lineup.starters": newStarters.map(t => t?.school || null),
+      "lineup.bench": newBench.map(t => t?.school || null)
+    });
+  };
+
+  const moveToStarters = (benchTeam, benchIndex) => {
+    // Find first empty starter slot
+    const emptyStarterIndex = starters.findIndex(t => t === null);
+    if (emptyStarterIndex === -1) return; // No empty slots
+
+    const newStarters = [...starters];
+    const newBench = [...bench];
+
+    newStarters[emptyStarterIndex] = benchTeam;
+    newBench[benchIndex] = null;
+
+    setStarters(newStarters);
+    setBench(newBench);
+
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
+    updateDoc(memberRef, {
+      "lineup.starters": newStarters.map(t => t?.school || null),
+      "lineup.bench": newBench.map(t => t?.school || null)
+    });
+  };
+
+  const moveToBench = (starterTeam, starterIndex) => {
+    // Find first empty bench slot
+    const emptyBenchIndex = bench.findIndex(t => t === null);
+    if (emptyBenchIndex === -1) return; // No empty slots
+
+    const newStarters = [...starters];
+    const newBench = [...bench];
+
+    newStarters[starterIndex] = null;
+    newBench[emptyBenchIndex] = starterTeam;
+
+    setStarters(newStarters);
+    setBench(newBench);
 
     const currentUser = auth.currentUser;
     if (!currentUser) return;
@@ -112,6 +167,138 @@ function MyLineup() {
     return `${prefix} ${season.nextOpponent} (${spread})`;
   };
 
+  // Team logo component
+  const TeamCard = ({ team, showBadge = false }) => {
+    const [expanded, setExpanded] = useState(false);
+
+    if (!team) return null;
+
+    const toggleExpanded = () => setExpanded((prev) => !prev);
+
+    return (
+      <div style={{
+        flex: 1,
+        padding: expanded ? "16px" : "12px",
+        borderRadius: "8px",
+        backgroundColor: "white",
+        border: "1px solid rgba(0, 0, 0, 0.1)",
+        position: "relative",
+        boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+        transition: "all 0.2s ease"
+      }}>
+        {/* Weekly Points Badge */}
+        {showBadge && (
+          <div style={{
+            position: "absolute",
+            top: "12px",
+            right: "12px",
+            backgroundColor: team?.gameComplete 
+              ? (team?.currentWeekPoints > 0 ? "#059669" : "#6b7280")
+              : "#f59e0b",
+            color: "white",
+            borderRadius: "6px",
+            padding: "4px 8px",
+            fontSize: "12px",
+            fontWeight: "700",
+            boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)"
+          }}>
+            {team?.gameComplete ? (team?.currentWeekPoints || 0) : "?"} pts
+          </div>
+        )}
+
+        {/* Main Team Info */}
+        <div>
+          <strong 
+            onClick={() => handleTeamClick(team.school)}
+            style={{ 
+              cursor: "pointer", 
+              color: "#1e293b", 
+              textDecoration: "underline",
+              fontSize: "18px",
+              fontWeight: "700"
+            }}
+          >
+            {team.school}
+          </strong>
+          <div style={{ color: "#64748b", fontSize: "13px", marginTop: "2px" }}>
+            {team.conference}
+          </div>
+        </div>
+
+        {/* Next Game */}
+        <div style={{
+          marginTop: "10px",
+          padding: "6px 10px",
+          backgroundColor: "#f8fafc",
+          borderRadius: "6px",
+          fontSize: "12px"
+        }}>
+          <span style={{ color: "#64748b", fontWeight: "500" }}>Next: </span>
+          <span style={{ color: "#1e293b", fontWeight: "600" }}>
+            {formatNextGame(team.currentSeason)}
+          </span>
+        </div>
+
+        {/* Expanded Details */}
+        {expanded && (
+          <div style={{ 
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "8px", 
+            marginTop: "10px",
+            fontSize: "12px",
+            paddingTop: "8px",
+            borderTop: "1px solid #e2e8f0"
+          }}>
+            <div>
+              <span style={{ color: "#64748b" }}>Record: </span>
+              <span style={{ color: "#1e293b", fontWeight: "600" }}>
+                {team.currentSeason?.record || "0-0"}
+              </span>
+            </div>
+            <div>
+              <span style={{ color: "#64748b" }}>ATS: </span>
+              <span style={{ color: "#1e293b", fontWeight: "600" }}>
+                {team.currentSeason?.atsRecord || "0-0"}
+              </span>
+            </div>
+            <div>
+              <span style={{ color: "#64748b" }}>Conf: </span>
+              <span style={{ color: "#1e293b", fontWeight: "600" }}>
+                {team.currentSeason?.confRecord || "0-0"}
+              </span>
+            </div>
+            <div>
+              <span style={{ color: "#64748b" }}>Points: </span>
+              <span style={{ color: "#059669", fontWeight: "700" }}>
+                {team.currentSeason?.gamePoints ?? 0}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Toggle Button */}
+        <button
+          onClick={toggleExpanded}
+          style={{
+            position: "absolute",
+            bottom: "8px",
+            right: "8px",
+            backgroundColor: "#e5e7eb",
+            border: "none",
+            borderRadius: "50%",
+            width: "24px",
+            height: "24px",
+            fontSize: "14px",
+            cursor: "pointer"
+          }}
+        >
+          {expanded ? "▲" : "▼"}
+        </button>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div style={{ 
@@ -124,6 +311,9 @@ function MyLineup() {
       </div>
     );
   }
+
+  const hasEmptyStarterSlots = starters.some(t => t === null);
+  const hasEmptyBenchSlots = bench.some(t => t === null);
 
   return (
     <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
@@ -159,7 +349,7 @@ function MyLineup() {
           backgroundColor: "white",
           borderRadius: "16px",
           padding: "20px",
-          marginBottom: "20px",
+          marginBottom: "16px",
           boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
           border: "1px solid #e2e8f0"
         }}>
@@ -232,7 +422,6 @@ function MyLineup() {
                   <button
                     onClick={() => {
                       setIsEditingSmackTalk(false);
-                      // Reset to original value if they cancel
                     }}
                     style={{
                       backgroundColor: "#6b7280",
@@ -311,7 +500,7 @@ function MyLineup() {
           backgroundColor: "white",
           borderRadius: "16px",
           padding: "20px",
-          marginBottom: "20px",
+          marginBottom: "16px",
           boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
           border: "1px solid #e2e8f0"
         }}>
@@ -331,120 +520,102 @@ function MyLineup() {
                 key={idx}
                 style={{
                   padding: "16px",
-                  borderBottom: idx < 4 ? "1px solid #f1f5f9" : "none",
-                  backgroundColor: "#f0fdf4",
-                  marginBottom: idx < 4 ? "12px" : 0,
+                  marginBottom: idx < 4 ? "8px" : 0,
                   borderRadius: "12px",
+                  backgroundColor: team?.color || "#f8fafc",
+                  border: team ? "1px solid #d1fae5" : "2px dashed #059669",
                   position: "relative",
-                  minHeight: "80px"
+                  minHeight: "100px",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "16px"
                 }}
               >
                 {team ? (
-                  <>
-                    <div style={{ paddingRight: "100px" }}>
-                      <strong 
-                        onClick={() => handleTeamClick(team.school)}
-                        style={{ 
-                          cursor: "pointer", 
-                          color: "#1e40af", 
-                          textDecoration: "underline",
-                          fontSize: "16px",
-                          fontWeight: "600"
-                        }}
-                      >
-                        {team.school}
-                      </strong>
-                      <span style={{ color: "#64748b", marginLeft: "8px" }}>
-                        ({team.conference})
-                      </span>
-                      <div style={{ fontSize: "14px", color: "#374151", marginTop: "4px" }}>
-                        Record: {team.currentSeason?.record} | Conf: {team.currentSeason?.confRecord}
-                      </div>
-                      <div style={{ fontSize: "14px", color: "#374151" }}>
-                        Next: {formatNextGame(team.currentSeason)}
-                      </div>
-                      <div style={{ fontSize: "14px", color: "#059669", fontWeight: "600", marginTop: "2px" }}>
-                        Points: {team.currentSeason?.gamePoints ?? 0}
-                      </div>
-                    </div>
+                  <div style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "12px",
+                    width: "100%"
+                  }}>
+                    <TeamCard team={team} showBadge={true} />
                     
-                    <div style={{ position: "absolute", right: "16px", top: "16px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                      <button 
-                        onClick={() => setSwapTarget(swapTarget === idx ? null : idx)}
-                        style={{
-                          backgroundColor: "#0ea5e9",
-                          color: "white",
-                          border: "none",
-                          padding: "6px 12px",
-                          borderRadius: "6px",
-                          fontSize: "12px",
-                          cursor: "pointer",
-                          minWidth: "60px"
-                        }}
-                      >
-                        {swapTarget === idx ? "Cancel" : "↕️ Swap"}
-                      </button>
+                    <div style={{ 
+                      display: "flex", 
+                      flexDirection: "column", 
+                      gap: "6px",
+                      alignItems: "flex-end",
+                      flexShrink: 0
+                    }}>
+                      {hasEmptyBenchSlots && (
+                        <button 
+                          onClick={() => moveToBench(team, idx)}
+                          style={{
+                            backgroundColor: "#d97706",
+                            color: "white",
+                            border: "none",
+                            padding: "8px 12px",
+                            borderRadius: "6px",
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            fontWeight: "500"
+                          }}
+                        >
+                          → Bench
+                        </button>
+                      )}
+                      
                       <Link
                         to={`/cut/${leagueId}/${encodeURIComponent(team.school)}`}
                         style={{
                           backgroundColor: "#dc2626",
                           color: "white",
-                          border: "none",
-                          padding: "6px 12px",
+                          padding: "8px 12px",
                           textDecoration: "none",
                           borderRadius: "6px",
                           fontSize: "12px",
-                          textAlign: "center",
-                          minWidth: "60px"
+                          fontWeight: "500"
                         }}
                       >
                         ❌ Cut
                       </Link>
                     </div>
-                    
-                    {swapTarget === idx && (
-                      <div style={{ 
-                        marginTop: "12px", 
-                        padding: "12px", 
-                        backgroundColor: "#ffffff",
-                        borderRadius: "8px",
-                        border: "1px solid #e2e8f0"
-                      }}>
-                        <strong style={{ fontSize: "14px", color: "#374151" }}>Select a bench team to swap with:</strong>
-                        <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                          {bench.filter(Boolean).map(benchTeam => (
-                            <button 
-                              key={benchTeam.id}
-                              onClick={() => handleSwap(idx, benchTeam)}
-                              style={{
-                                backgroundColor: "#f97316",
-                                color: "white",
-                                border: "none",
-                                padding: "8px 12px",
-                                borderRadius: "6px",
-                                fontSize: "14px",
-                                cursor: "pointer",
-                                textAlign: "left"
-                              }}
-                            >
-                              {benchTeam.school} ({benchTeam.conference})
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
+                  </div>
                 ) : (
                   <div style={{ 
-                    color: "#9ca3af", 
-                    fontStyle: "italic",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    height: "60px",
-                    fontSize: "14px"
+                    width: "100%",
+                    gap: "12px"
                   }}>
-                    Empty Starter Slot
+                    <Link
+                      to={`/${leagueId}/free-agents`}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: "48px",
+                        height: "48px",
+                        backgroundColor: "#059669",
+                        color: "white",
+                        borderRadius: "50%",
+                        textDecoration: "none",
+                        fontSize: "24px",
+                        fontWeight: "700",
+                        boxShadow: "0 2px 8px rgba(5, 150, 105, 0.3)",
+                        transition: "all 0.2s ease"
+                      }}
+                    >
+                      +
+                    </Link>
+                    <div style={{
+                      color: "#059669",
+                      fontSize: "16px",
+                      fontWeight: "600"
+                    }}>
+                      Add Team from Free Agents
+                    </div>
                   </div>
                 )}
               </div>
@@ -457,7 +628,7 @@ function MyLineup() {
           backgroundColor: "white",
           borderRadius: "16px",
           padding: "20px",
-          marginBottom: "20px",
+          marginBottom: "16px",
           boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
           border: "1px solid #e2e8f0"
         }}>
@@ -477,74 +648,102 @@ function MyLineup() {
                 key={idx}
                 style={{
                   padding: "16px",
-                  borderBottom: idx < 1 ? "1px solid #f1f5f9" : "none",
-                  backgroundColor: "#fffbeb",
-                  marginBottom: idx < 1 ? "12px" : 0,
+                  marginBottom: idx < 1 ? "8px" : 0,
                   borderRadius: "12px",
-                  minHeight: "80px",
-                  position: "relative"
+                  backgroundColor: team?.color || "#f8fafc",
+                  border: team ? "1px solid #fed7aa" : "2px dashed #d97706",
+                  position: "relative",
+                  minHeight: "100px",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "16px"
                 }}
               >
                 {team ? (
-                  <>
-                    <div style={{ paddingRight: "80px" }}>
-                      <strong 
-                        onClick={() => handleTeamClick(team.school)}
-                        style={{ 
-                          cursor: "pointer", 
-                          color: "#1e40af", 
-                          textDecoration: "underline",
-                          fontSize: "16px",
-                          fontWeight: "600"
+                  <div style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "12px",
+                    width: "100%"
+                  }}>
+                    <TeamCard team={team} showBadge={true} />
+                    
+                    <div style={{ 
+                      display: "flex", 
+                      flexDirection: "column", 
+                      gap: "6px",
+                      alignItems: "flex-end",
+                      flexShrink: 0
+                    }}>
+                      {hasEmptyStarterSlots && (
+                        <button 
+                          onClick={() => moveToStarters(team, idx)}
+                          style={{
+                            backgroundColor: "#059669",
+                            color: "white",
+                            border: "none",
+                            padding: "8px 12px",
+                            borderRadius: "6px",
+                            fontSize: "12px",
+                            cursor: "pointer",
+                            fontWeight: "500"
+                          }}
+                        >
+                          → Starters
+                        </button>
+                      )}
+                      
+                      <Link
+                        to={`/cut/${leagueId}/${encodeURIComponent(team.school)}`}
+                        style={{
+                          backgroundColor: "#dc2626",
+                          color: "white",
+                          padding: "8px 12px",
+                          textDecoration: "none",
+                          borderRadius: "6px",
+                          fontSize: "12px",
+                          fontWeight: "500"
                         }}
                       >
-                        {team.school}
-                      </strong>
-                      <span style={{ color: "#64748b", marginLeft: "8px" }}>
-                        ({team.conference})
-                      </span>
-                      <div style={{ fontSize: "14px", color: "#374151", marginTop: "4px" }}>
-                        Record: {team.currentSeason?.record} | Conf: {team.currentSeason?.confRecord}
-                      </div>
-                      <div style={{ fontSize: "14px", color: "#374151" }}>
-                        Next: {formatNextGame(team.currentSeason)}
-                      </div>
-                      <div style={{ fontSize: "14px", color: "#059669", fontWeight: "600", marginTop: "2px" }}>
-                        Points: {team.currentSeason?.gamePoints ?? 0}
-                      </div>
+                        ❌ Cut
+                      </Link>
                     </div>
-                    
-                    <Link
-                      to={`/cut/${leagueId}/${encodeURIComponent(team.school)}`}
-                      style={{
-                        position: "absolute",
-                        right: "16px",
-                        top: "16px",
-                        backgroundColor: "#dc2626",
-                        color: "white",
-                        border: "none",
-                        padding: "6px 12px",
-                        cursor: "pointer",
-                        textDecoration: "none",
-                        borderRadius: "6px",
-                        fontSize: "12px",
-                        textAlign: "center"
-                      }}
-                    >
-                      ❌ Cut
-                    </Link>
-                  </>
+                  </div>
                 ) : (
                   <div style={{ 
-                    color: "#9ca3af", 
-                    fontStyle: "italic",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    height: "60px",
-                    fontSize: "14px"
+                    width: "100%",
+                    gap: "12px"
                   }}>
-                    Empty Bench Slot
+                    <Link
+                      to={`/${leagueId}/free-agents`}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: "48px",
+                        height: "48px",
+                        backgroundColor: "#d97706",
+                        color: "white",
+                        borderRadius: "50%",
+                        textDecoration: "none",
+                        fontSize: "24px",
+                        fontWeight: "700",
+                        boxShadow: "0 2px 8px rgba(217, 119, 6, 0.3)",
+                        transition: "all 0.2s ease"
+                      }}
+                    >
+                      +
+                    </Link>
+                    <div style={{
+                      color: "#d97706",
+                      fontSize: "16px",
+                      fontWeight: "600"
+                    }}>
+                      Add Team from Free Agents
+                    </div>
                   </div>
                 )}
               </div>
