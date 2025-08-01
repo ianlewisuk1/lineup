@@ -41,7 +41,8 @@ function MyLeague() {
               logo: teamData.logos1 || teamData.logos2 || null,
               logos1: teamData.logos1 || null,
               logos2: teamData.logos2 || null,
-              colors: teamData.colors || {}
+              colors: teamData.colors || {},
+
             };
           }
         });
@@ -519,8 +520,6 @@ function MyLeague() {
                     </div>
                   </div>
                 )}
-
-                {/* FA Moves removed from here since it's now with points */}
               </div>
             );
           })
