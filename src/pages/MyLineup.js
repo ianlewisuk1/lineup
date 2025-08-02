@@ -21,6 +21,110 @@ function MyLineup() {
   const [isEditingSmackTalk, setIsEditingSmackTalk] = useState(false);
   const [smackTalkSaving, setSmackTalkSaving] = useState(false);
   const [allTeams, setAllTeams] = useState({});
+  const [showSwapModal, setShowSwapModal] = useState(false);
+  const [swapFromIndex, setSwapFromIndex] = useState(null);
+  const [swapFromType, setSwapFromType] = useState(null); // 'starters' or 'bench'
+  const [showCutModal, setShowCutModal] = useState(false);
+  const [teamToCut, setTeamToCut] = useState(null);
+  const [squadPoints, setSquadPoints] = useState(0);
+  const [rosterLockDate, setRosterLockDate] = useState("");
+  const [rosterLockTime, setRosterLockTime] = useState(""); 
+
+
+  const openCutModal = (team, index, section) => {
+    setTeamToCut({ team, index, section });
+    setShowCutModal(true);
+  };
+  const confirmCut = () => {
+    if (teamToCut) {
+      handleCutTeam(teamToCut.team, teamToCut.index, teamToCut.section);
+      setShowCutModal(false);
+      setTeamToCut(null);
+    }
+  };
+
+  const openSwapModal = (index, type) => {
+  setSwapFromIndex(index);
+  setSwapFromType(type);
+  setShowSwapModal(true);
+  };
+
+  // Cut Modal Component
+  const CutModal = () => {
+    if (!showCutModal) return null;
+
+    return (
+      <div style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+        padding: "16px"
+      }}>
+        <div style={{
+          backgroundColor: "white",
+          borderRadius: "16px",
+          padding: "24px",
+          maxWidth: "400px",
+          width: "100%"
+        }}>
+          <h3 style={{ 
+            fontSize: "18px", 
+            fontWeight: "600", 
+            marginBottom: "16px",
+            textAlign: "center"
+          }}>
+            Cut {teamToCut?.team?.school}?
+          </h3>
+          
+          <p style={{ 
+            textAlign: "center", 
+            marginBottom: "24px",
+            color: "#64748b" 
+          }}>
+            This will remove them from your lineup completely.
+          </p>
+
+          <div style={{ display: "flex", gap: "12px" }}>
+            <button
+              onClick={() => setShowCutModal(false)}
+              style={{
+                flex: 1,
+                padding: "12px",
+                backgroundColor: "#6b7280",
+                color: "white",
+                border: "none",
+                borderRadius: "8px",
+                cursor: "pointer"
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmCut}
+              style={{
+                flex: 1,
+                padding: "12px",
+                backgroundColor: "#dc2626",
+                color: "white",
+                border: "none",
+                borderRadius: "8px",
+                cursor: "pointer"
+              }}
+            >
+              Cut Team
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   useEffect(() => {
     const fetchLineup = async () => {
@@ -36,6 +140,15 @@ function MyLineup() {
 
       setTeamName(memberData?.teamName || "Unnamed Squad");
       setSmackTalk(memberData?.smackTalk || "");
+      setSquadPoints(memberData?.points || 0); // ADD THIS LINE
+
+      // Fetch season info for roster lock
+      const seasonRef = doc(db, "config", "season");
+      const seasonSnap = await getDoc(seasonRef);
+      const seasonData = seasonSnap.data();
+      
+      setRosterLockDate(seasonData?.rosterLockDate || "");
+      setRosterLockTime(seasonData?.rosterLockTime || "");
 
       const teamsSnap = await getDocs(collection(db, "teams"));
       const teamsMap = {};
@@ -139,6 +252,31 @@ function MyLineup() {
     });
   };
 
+  const handleCutTeam = async (team, index, section) => {
+  const newStarters = [...starters];
+  const newBench = [...bench];
+  
+  if (section === 'starters') {
+    newStarters[index] = null;
+  } else {
+    newBench[index] = null;
+  }
+  
+  setStarters(newStarters);
+  setBench(newBench);
+  
+  const currentUser = auth.currentUser;
+  if (!currentUser) return;
+
+  const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
+  await updateDoc(memberRef, {
+    "lineup.starters": newStarters.map(t => t?.school || null),
+    "lineup.bench": newBench.map(t => t?.school || null)
+  });
+  
+  alert(`✅ ${team.school} has been cut from your lineup.`);
+  };  
+
   const handleSaveSmackTalk = async () => {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
@@ -165,6 +303,57 @@ function MyLineup() {
     const spread = season.nextOpponentSpread ?? "TBD";
     const prefix = isHome === false ? "@" : isHome === true ? "vs" : "?";
     return `${prefix} ${season.nextOpponent} (${spread})`;
+  };
+
+  const formatRosterLockInfo = () => {
+    if (!rosterLockDate || !rosterLockTime) return "";
+    
+    try {
+      // Parse date string directly without creating Date object
+      // Expected format: "2025-08-23"
+      const dateParts = rosterLockDate.split('-');
+      if (dateParts.length !== 3) {
+        return `${rosterLockDate} at ${rosterLockTime}`;
+      }
+      
+      const year = dateParts[0];
+      const monthNum = parseInt(dateParts[1], 10);
+      const day = parseInt(dateParts[2], 10);
+      
+      // Month names array
+      const monthNames = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+      
+      const monthName = monthNames[monthNum - 1]; // monthNum is 1-based
+      
+      // Parse time - expected format: "11:00" (remove any quotes)
+      const cleanTime = rosterLockTime.trim().replace(/"/g, '');
+      const timeParts = cleanTime.split(':');
+      
+      if (timeParts.length === 0) {
+        return `${monthName} ${day} at ${cleanTime} EST`;
+      }
+      
+      const hour = parseInt(timeParts[0], 10);
+      
+      // Check if hour parsing was successful
+      if (isNaN(hour)) {
+        return `${monthName} ${day} at ${cleanTime} EST`;
+      }
+      
+      // Convert to 12-hour format
+      const isAM = hour < 12;
+      const displayHour = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+      const ampm = isAM ? 'am' : 'pm';
+      
+      return `${monthName} ${day} at ${displayHour}${ampm} EST`;
+      
+    } catch (error) {
+      console.error('Error formatting roster lock date:', error);
+      return `${rosterLockDate} at ${rosterLockTime}`;
+    }
   };
 
   // Team logo component
@@ -319,29 +508,76 @@ function MyLineup() {
     <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
       <LeagueNavBar />
       
-      {/* Header */}
-      <div style={{ 
-        padding: "20px 16px 16px 16px",
-        background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
-        color: "white"
+    {/* Header */}
+    <div style={{ 
+      padding: "20px 16px 16px 16px",
+      background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
+      color: "white"
+    }}>
+      <h1 style={{ 
+        fontSize: "32px",
+        fontWeight: "700", 
+        margin: "0",
+        textAlign: "left"
       }}>
-        <h1 style={{ 
-          fontSize: "24px", 
-          fontWeight: "700", 
-          margin: "0 0 8px 0",
-          textAlign: "center"
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px"
         }}>
+          {/* Team Logo Placeholder */}
+          <div style={{
+            width: "80px",
+            height: "80px",
+            borderRadius: "50%",
+            backgroundColor: "rgba(255, 255, 255, 0.3)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "36px",
+            fontWeight: "700",
+            color: "white"
+          }}>
+            {teamName.charAt(0)}
+          </div>
           {teamName}
-        </h1>
-        <p style={{
-          fontSize: "14px",
-          opacity: "0.9",
-          textAlign: "center",
-          margin: 0
+        </div>
+      </h1>
+      <div style={{
+        display: "flex",
+        justifyContent: "flex-end",
+        alignItems: "center",
+        height: "80px",           // ADDED THIS LINE
+        marginTop: "-80px"        // ADDED THIS LINE to overlay with the logo
+      }}>
+        <div style={{
+          fontSize: "18px",
+          fontWeight: "700",
+          backgroundColor: "white",
+          color: "#1e40af",
+          padding: "8px 16px",
+          borderRadius: "16px",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)"
         }}>
-          My Lineup
-        </p>
+          {squadPoints.toLocaleString()} pts
+        </div>
       </div>
+    </div>
+
+      {/* Roster Lock Info */}
+      {rosterLockDate && rosterLockTime && (
+        <div style={{
+          backgroundColor: "#fef3c7",
+          border: "1px solid #f59e0b",
+          padding: "12px 16px",
+          textAlign: "center",
+          fontSize: "14px",
+          fontWeight: "500",
+          color: "#92400e"
+        }}>
+          ⏰ Roster locks on {formatRosterLockInfo()}
+        </div>
+      )}
 
       <div style={{ padding: "16px" }}>
         {/* Smack Talk Section */}
@@ -540,18 +776,21 @@ function MyLineup() {
                   }}>
                     <TeamCard team={team} showBadge={true} />
                     
-                    <div style={{ 
-                      display: "flex", 
-                      flexDirection: "column", 
-                      gap: "6px",
-                      alignItems: "flex-end",
-                      flexShrink: 0
-                    }}>
+                      <div style={{ 
+                        display: "flex", 
+                        flexDirection: "column", 
+                        gap: "6px",
+                        alignItems: "flex-end", // Remove this line
+                        alignItems: "stretch", // Add this instead
+                        flexShrink: 0,
+                        width: "80px" // Add consistent width
+                      }}>
+                      
                       {hasEmptyBenchSlots && (
                         <button 
                           onClick={() => moveToBench(team, idx)}
                           style={{
-                            backgroundColor: "#d97706",
+                            backgroundColor: "#A78BFA",
                             color: "white",
                             border: "none",
                             padding: "8px 12px",
@@ -564,21 +803,44 @@ function MyLineup() {
                           → Bench
                         </button>
                       )}
+
                       
+                      {/* Drop Button */}
                       <Link
-                        to={`/cut/${leagueId}/${encodeURIComponent(team.school)}`}
+                        to={`/${leagueId}/free-agents?drop=${encodeURIComponent(team.school)}&from=starters&index=${idx}`}
                         style={{
-                          backgroundColor: "#dc2626",
+                          backgroundColor: "#0ea5e9",
                           color: "white",
                           padding: "8px 12px",
                           textDecoration: "none",
                           borderRadius: "6px",
                           fontSize: "12px",
-                          fontWeight: "500"
+                          fontWeight: "500",
+                          textAlign: "center"
+                        }}
+                      >
+                        🔄 Drop
+                      </Link>
+                      
+                      <button
+                        onClick={() => openCutModal(team, idx, 'starters')}
+                        style={{
+                          backgroundColor: "#7f1d1d",
+                          color: "white",
+                          padding: "8px 12px",
+                          border: "none",
+                          borderRadius: "6px",
+                          fontSize: "12px",
+                          fontWeight: "500",
+                          textAlign: "center",
+                          cursor: "pointer",
+                          display: "flex",           // Add this
+                          alignItems: "center",      // Add this
+                          justifyContent: "center"   // Add this
                         }}
                       >
                         ❌ Cut
-                      </Link>
+                      </button>
                     </div>
                   </div>
                 ) : (
@@ -587,7 +849,9 @@ function MyLineup() {
                     alignItems: "center",
                     justifyContent: "center",
                     width: "100%",
-                    gap: "12px"
+                    height: "100%",        // Add this for vertical centering
+                    gap: "12px",
+                    flexDirection: "column" // Add this to stack vertically
                   }}>
                     <Link
                       to={`/${leagueId}/free-agents`}
@@ -624,138 +888,166 @@ function MyLineup() {
         </div>
 
         {/* Bench Section */}
-        <div style={{
-          backgroundColor: "white",
-          borderRadius: "16px",
-          padding: "20px",
-          marginBottom: "16px",
-          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-          border: "1px solid #e2e8f0"
-        }}>
-          <h3 style={{
-            fontSize: "18px",
-            fontWeight: "600",
-            color: "#1e293b",
-            margin: "0 0 16px 0"
-          }}>
-            🪑 Bench (2)
-          </h3>
-          
-          {Array.from({ length: 2 }).map((_, idx) => {
-            const team = bench[idx];
-            return (
-              <div
-                key={idx}
-                style={{
-                  padding: "16px",
-                  marginBottom: idx < 1 ? "8px" : 0,
-                  borderRadius: "12px",
-                  backgroundColor: team?.color || "#f8fafc",
-                  border: team ? "1px solid #fed7aa" : "2px dashed #d97706",
-                  position: "relative",
-                  minHeight: "100px",
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: "16px"
-                }}
-              >
-                {team ? (
-                  <div style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: "12px",
-                    width: "100%"
+                <div style={{
+                  backgroundColor: "white",
+                  borderRadius: "16px",
+                  padding: "20px",
+                  marginBottom: "16px",
+                  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+                  border: "1px solid #e2e8f0"
+                }}>
+                  <h3 style={{
+                    fontSize: "18px",
+                    fontWeight: "600",
+                    color: "#1e293b",
+                    margin: "0 0 16px 0"
                   }}>
-                    <TeamCard team={team} showBadge={true} />
-                    
-                    <div style={{ 
-                      display: "flex", 
-                      flexDirection: "column", 
-                      gap: "6px",
-                      alignItems: "flex-end",
-                      flexShrink: 0
-                    }}>
-                      {hasEmptyStarterSlots && (
-                        <button 
-                          onClick={() => moveToStarters(team, idx)}
-                          style={{
-                            backgroundColor: "#059669",
-                            color: "white",
-                            border: "none",
-                            padding: "8px 12px",
-                            borderRadius: "6px",
-                            fontSize: "12px",
-                            cursor: "pointer",
-                            fontWeight: "500"
-                          }}
-                        >
-                          → Starters
-                        </button>
-                      )}
-                      
-                      <Link
-                        to={`/cut/${leagueId}/${encodeURIComponent(team.school)}`}
+                    🪑 Bench (2)
+                  </h3>
+                  
+                  {Array.from({ length: 2 }).map((_, idx) => {
+                    const team = bench[idx];
+                    return (
+                      <div
+                        key={idx}
                         style={{
-                          backgroundColor: "#dc2626",
-                          color: "white",
-                          padding: "8px 12px",
-                          textDecoration: "none",
-                          borderRadius: "6px",
-                          fontSize: "12px",
-                          fontWeight: "500"
+                          padding: "16px",
+                          marginBottom: idx < 1 ? "8px" : 0,
+                          borderRadius: "12px",
+                          backgroundColor: team?.color || "#f8fafc",
+                          border: team ? "1px solid #fed7aa" : "2px dashed #d97706",
+                          position: "relative",
+                          minHeight: "100px",
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: "16px"
                         }}
                       >
-                        ❌ Cut
-                      </Link>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ 
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: "100%",
-                    gap: "12px"
-                  }}>
-                    <Link
-                      to={`/${leagueId}/free-agents`}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        width: "48px",
-                        height: "48px",
-                        backgroundColor: "#d97706",
-                        color: "white",
-                        borderRadius: "50%",
-                        textDecoration: "none",
-                        fontSize: "24px",
-                        fontWeight: "700",
-                        boxShadow: "0 2px 8px rgba(217, 119, 6, 0.3)",
-                        transition: "all 0.2s ease"
-                      }}
-                    >
-                      +
-                    </Link>
-                    <div style={{
-                      color: "#d97706",
-                      fontSize: "16px",
-                      fontWeight: "600"
-                    }}>
-                      Add Team from Free Agents
-                    </div>
-                  </div>
-                )}
+                        {team ? (
+                          <div style={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: "12px",
+                            width: "100%"
+                          }}>
+                            <TeamCard team={team} showBadge={true} />
+                            
+                            <div style={{ 
+                              display: "flex", 
+                              flexDirection: "column", 
+                              gap: "6px",
+                              alignItems: "stretch",
+                              flexShrink: 0
+                            }}>
+                              
+                              {hasEmptyStarterSlots && (
+                                <button 
+                                  onClick={() => moveToStarters(team, idx)}
+                                  style={{
+                                    backgroundColor: "#059669",
+                                    color: "white",
+                                    border: "none",
+                                    padding: "8px 12px",
+                                    borderRadius: "6px",
+                                    fontSize: "12px",
+                                    cursor: "pointer",
+                                    fontWeight: "500"
+                                  }}
+                                >
+                                  → Starters
+                                </button>
+                              )}
+                              
+                              {/* Drop Button */}
+                              <Link
+                                to={`/${leagueId}/free-agents?drop=${encodeURIComponent(team.school)}&from=bench&index=${idx}`}
+                                style={{
+                                  backgroundColor: "#0ea5e9",
+                                  color: "white",
+                                  padding: "8px 12px",
+                                  textDecoration: "none",
+                                  borderRadius: "6px",
+                                  fontSize: "12px",
+                                  fontWeight: "500",
+                                  textAlign: "center"
+                                }}
+                              >
+                                🔄 Drop
+                              </Link>
+                              
+                              <button
+                                onClick={() => openCutModal(team, idx, 'bench')}
+                                style={{
+                                  backgroundColor: "#7f1d1d",
+                                  color: "white",
+                                  padding: "8px 12px",
+                                  border: "none",
+                                  borderRadius: "6px",
+                                  fontSize: "12px",
+                                  fontWeight: "500",
+                                  textAlign: "center",
+                                  cursor: "pointer",
+                                  display: "flex",           // Add this
+                                  alignItems: "center",      // Add this
+                                  justifyContent: "center"   // Add this
+                                }}
+                              >
+                                ❌ Cut
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ 
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: "100%",
+                            height: "100%",        // ADD THIS
+                            gap: "12px",
+                            flexDirection: "column" // ADD THIS
+                          }}>
+                            <Link
+                              to={`/${leagueId}/free-agents`}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                width: "48px",
+                                height: "48px",
+                                backgroundColor: "#d97706",
+                                color: "white",
+                                borderRadius: "50%",
+                                textDecoration: "none",
+                                fontSize: "24px",
+                                fontWeight: "700",
+                                boxShadow: "0 2px 8px rgba(217, 119, 6, 0.3)",
+                                transition: "all 0.2s ease"
+                              }}
+                            >
+                              +
+                            </Link>
+                            <div style={{
+                              color: "#d97706",
+                              fontSize: "16px",
+                              fontWeight: "600"
+                            }}>
+                              Add Team from Free Agents
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            );
-          })}
-        </div>
-      </div>
 
-      {/* Bottom spacing for navigation */}
-      <div style={{ height: "80px" }} />
-    </div>
-  );
-}
+              {/* Cut Modal */}
+              <CutModal />
+
+              {/* Bottom spacing for navigation */}
+              <div style={{ height: "80px" }} />
+            </div>
+          );
+        }
 
 export default MyLineup;
