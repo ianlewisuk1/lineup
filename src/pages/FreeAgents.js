@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { db, auth } from "../firebase/firebase";
 import {
   collection,
@@ -8,8 +8,282 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { useParams, useNavigate } from "react-router-dom";
-import { Plus, Search, Filter } from "lucide-react";
+import { Plus, Search, Filter, ChevronDown } from "lucide-react";
 import LeagueNavBar from "../components/LeagueNavBar";
+
+// Custom Dropdown Component with matching height and truncation
+const CustomDropdown = ({ 
+  value, 
+  onChange, 
+  options, 
+  placeholder = "Select an option",
+  icon: Icon = Filter 
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const dropdownRef = useRef(null);
+  const listRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+        setHighlightedIndex(-1);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
+  // Handle keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (!isOpen) return;
+
+      switch (event.key) {
+        case 'ArrowDown':
+          event.preventDefault();
+          setHighlightedIndex(prev => 
+            prev < options.length - 1 ? prev + 1 : 0
+          );
+          break;
+        case 'ArrowUp':
+          event.preventDefault();
+          setHighlightedIndex(prev => 
+            prev > 0 ? prev - 1 : options.length - 1
+          );
+          break;
+        case 'Enter':
+          event.preventDefault();
+          if (highlightedIndex >= 0) {
+            handleSelect(options[highlightedIndex]);
+          }
+          break;
+        case 'Escape':
+          setIsOpen(false);
+          setHighlightedIndex(-1);
+          break;
+        default:
+          break;
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isOpen, highlightedIndex, options]);
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (highlightedIndex >= 0 && listRef.current) {
+      const highlightedElement = listRef.current.children[highlightedIndex];
+      if (highlightedElement) {
+        highlightedElement.scrollIntoView({
+          block: 'nearest',
+          behavior: 'smooth'
+        });
+      }
+    }
+  }, [highlightedIndex]);
+
+  const handleSelect = (option) => {
+    onChange(option.value);
+    setIsOpen(false);
+    setHighlightedIndex(-1);
+  };
+
+  const toggleDropdown = () => {
+    setIsOpen(!isOpen);
+    setHighlightedIndex(-1);
+  };
+
+  const selectedOption = options.find(opt => opt.value === value);
+
+  // Truncate text if too long - balanced for readability
+  const truncateText = (text, maxLength = 10) => {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength - 3) + '...';
+  };
+
+  return (
+    <div 
+      ref={dropdownRef}
+      style={{ 
+        position: 'relative', 
+        width: '100%',
+        userSelect: 'none'
+      }}
+    >
+      {/* Dropdown Trigger - matching search input height exactly */}
+      <button
+        type="button"
+        onClick={toggleDropdown}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleDropdown();
+          }
+        }}
+        style={{
+          width: '100%',
+          height: '44px', // Exact match with search input
+          padding: '12px 48px 12px 48px',
+          backgroundColor: 'white',
+          border: `2px solid ${isOpen ? '#1e40af' : '#e5e7eb'}`,
+          borderRadius: '8px',
+          fontSize: '14px',
+          fontFamily: 'inherit',
+          color: selectedOption ? '#1e293b' : '#64748b',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          textAlign: 'left',
+          transition: 'all 0.2s ease',
+          outline: 'none',
+          boxSizing: 'border-box',
+          WebkitAppearance: 'none',
+          MozAppearance: 'none',
+          appearance: 'none'
+        }}
+        onFocus={(e) => e.target.style.borderColor = '#1e40af'}
+        onBlur={(e) => {
+          if (!isOpen) e.target.style.borderColor = '#e5e7eb';
+        }}
+      >
+        {/* Left Icon */}
+        <Icon 
+          size={16} 
+          style={{
+            position: 'absolute',
+            left: '12px',
+            color: '#64748b',
+            pointerEvents: 'none'
+          }}
+        />
+        
+        {/* Selected Text with truncation */}
+        <span style={{
+          flex: 1,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          paddingRight: '8px'
+        }} title={selectedOption ? selectedOption.label : placeholder}>
+          {selectedOption ? truncateText(selectedOption.label) : placeholder}
+        </span>
+        
+        {/* Chevron Icon */}
+        <ChevronDown 
+          size={16} 
+          style={{
+            color: '#64748b',
+            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.2s ease',
+            flexShrink: 0
+          }}
+        />
+      </button>
+
+      {/* Dropdown List */}
+      {isOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            marginTop: '4px',
+            backgroundColor: 'white',
+            border: '2px solid #e5e7eb',
+            borderRadius: '8px',
+            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.15)',
+            zIndex: 1000,
+            maxHeight: '240px',
+            overflowY: 'auto',
+            overflowX: 'hidden'
+          }}
+        >
+          <ul
+            ref={listRef}
+            style={{
+              margin: 0,
+              padding: '4px 0',
+              listStyle: 'none'
+            }}
+          >
+            {options.map((option, index) => (
+              <li
+                key={option.value}
+                onClick={() => handleSelect(option)}
+                onMouseEnter={() => setHighlightedIndex(index)}
+                style={{
+                  padding: '12px 16px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  color: '#1e293b',
+                  backgroundColor: 
+                    highlightedIndex === index ? '#f1f5f9' :
+                    value === option.value ? '#eff6ff' : 'transparent',
+                  borderLeft: value === option.value ? '3px solid #1e40af' : '3px solid transparent',
+                  transition: 'all 0.15s ease',
+                  fontWeight: value === option.value ? '600' : '400'
+                }}
+                onMouseDown={(e) => e.preventDefault()}
+                title={option.label} // Show full text on hover
+              >
+                {option.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Compact Sort Button Component
+const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
+  <button
+    onClick={() => onSort(sortKey)}
+    style={{
+      padding: '6px 10px',
+      backgroundColor: sortConfig.key === sortKey ? '#eff6ff' : 'transparent',
+      border: sortConfig.key === sortKey ? '1px solid #1e40af' : '1px solid #e5e7eb',
+      borderRadius: '4px',
+      fontSize: '12px',
+      fontWeight: '500',
+      color: sortConfig.key === sortKey ? '#1e40af' : '#64748b',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '4px',
+      transition: 'all 0.2s ease'
+    }}
+    onMouseEnter={(e) => {
+      if (sortConfig.key !== sortKey) {
+        e.target.style.backgroundColor = '#f8fafc';
+      }
+    }}
+    onMouseLeave={(e) => {
+      if (sortConfig.key !== sortKey) {
+        e.target.style.backgroundColor = 'transparent';
+      }
+    }}
+  >
+    {label}
+    <span style={{ fontSize: '10px' }}>
+      {sortConfig.key === sortKey ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+    </span>
+  </button>
+);
 
 function FreeAgents() {
   const { leagueId } = useParams();
@@ -27,6 +301,32 @@ function FreeAgents() {
   const [teamToAdd, setTeamToAdd] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: "school", direction: "asc" });
   const [searchQuery, setSearchQuery] = useState("");
+  
+  // Custom notification modal states
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [modalMessage, setModalMessage] = useState("");
+  const [modalTitle, setModalTitle] = useState("");
+
+  // Custom modal helper functions
+  const showSuccess = (title, message) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setShowSuccessModal(true);
+  };
+
+  const showError = (title, message) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setShowErrorModal(true);
+  };
+
+  const closeModals = () => {
+    setShowSuccessModal(false);
+    setShowErrorModal(false);
+    setModalTitle("");
+    setModalMessage("");
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -98,11 +398,9 @@ function FreeAgents() {
     if (!user) return;
 
     if (userTeams.length < 7) {
-      // Show add confirmation modal
       setTeamToAdd(team);
       setShowAddModal(true);
     } else {
-      // Show swap UI for full roster
       setPendingAddTeam(team.school);
       setSelectedDropTeam("");
       setShowSwapUI(true);
@@ -124,7 +422,6 @@ function FreeAgents() {
       const starters = [...(lineup.starters || [])];
       const bench = [...(lineup.bench || [])];
       
-      // Add to first empty starter slot, or first empty bench slot
       const emptyStarterIndex = starters.findIndex(t => !t);
       const emptyBenchIndex = bench.findIndex(t => !t);
       
@@ -133,8 +430,7 @@ function FreeAgents() {
       } else if (emptyBenchIndex !== -1) {
         bench[emptyBenchIndex] = teamToAdd.school;
       } else {
-        // This shouldn't happen since we check length < 7
-        alert("Roster is full!");
+        showError("Roster Full", "Your roster is full! Please drop a team first.");
         return;
       }
 
@@ -143,16 +439,15 @@ function FreeAgents() {
         "lineup.bench": bench
       });
 
-      // Update local state
       setUserTeams([...starters, ...bench].filter(Boolean));
       setShowAddModal(false);
       setTeamToAdd(null);
       
-      alert(`✅ ${teamToAdd.school} has been added to your lineup!`);
+      showSuccess("Team Added!", `${teamToAdd.school} has been successfully added to your lineup!`);
       
     } catch (error) {
       console.error("Error adding team:", error);
-      alert("Failed to add team. Please try again.");
+      showError("Error", "Failed to add team. Please try again.");
     }
   };
 
@@ -171,7 +466,6 @@ function FreeAgents() {
       const starters = [...(lineup.starters || [])];
       const bench = [...(lineup.bench || [])];
       
-      // Find and replace the dropped team with the new team
       const starterIndex = starters.findIndex(t => t === selectedDropTeam);
       const benchIndex = bench.findIndex(t => t === selectedDropTeam);
       
@@ -186,17 +480,16 @@ function FreeAgents() {
         "lineup.bench": bench
       });
 
-      // Update local state
       setUserTeams([...starters, ...bench].filter(Boolean));
       setShowSwapUI(false);
       setPendingAddTeam("");
       setSelectedDropTeam("");
       
-      alert(`✅ Swapped ${selectedDropTeam} for ${pendingAddTeam}!`);
+      showSuccess("Team Swapped!", `Successfully swapped ${selectedDropTeam} for ${pendingAddTeam}!`);
       
     } catch (error) {
       console.error("Error swapping teams:", error);
-      alert("Failed to swap teams. Please try again.");
+      showError("Error", "Failed to swap teams. Please try again.");
     }
   };
 
@@ -210,7 +503,6 @@ function FreeAgents() {
       teams = (teamsByConference[activeConference] || []).filter(team => !draftedTeams[team.school]);
     }
 
-    // Filter by search query
     if (searchQuery) {
       teams = teams.filter(team => 
         team.school.toLowerCase().includes(searchQuery.toLowerCase())
@@ -230,9 +522,9 @@ function FreeAgents() {
     } else if (key === "currentSeason.nextOpponent") {
       aValue = a.currentSeason?.nextOpponent || "";
       bValue = b.currentSeason?.nextOpponent || "";
-    } else if (key === "gamePoints") {
-      aValue = a.currentSeason?.gamePoints || 0;
-      bValue = b.currentSeason?.gamePoints || 0;
+    } else if (key === "points") {
+      aValue = a.points || 0;
+      bValue = b.points || 0;
     } else {
       aValue = a[key] || "";
       bValue = b[key] || "";
@@ -256,60 +548,72 @@ function FreeAgents() {
 
   const formatNextGame = (season) => {
     if (!season?.nextOpponent) return "—";
+    
     const isHome = season.nextGameIsHome;
     const spread = season.nextOpponentSpread ?? "TBD";
     const prefix = isHome === false ? "@" : isHome === true ? "vs" : "?";
-    return `${prefix} ${season.nextOpponent} (${spread})`;
+    
+    // Format the date if available
+    let dateStr = "";
+    if (season.nextGameDate) {
+      try {
+        // Assuming date format is "2025-08-23"
+        const date = new Date(season.nextGameDate);
+        const month = date.getMonth() + 1;
+        const day = date.getDate();
+        dateStr = ` • ${month}/${day}`;
+      } catch (error) {
+        // If date parsing fails, just show without date
+        dateStr = "";
+      }
+    }
+    
+    return `${prefix} ${season.nextOpponent} (${spread})${dateStr}`;
   };
 
-  const TeamCard = ({ team }) => {
-    const [expanded, setExpanded] = useState(false);
+  // Convert conference list to dropdown options
+  const conferenceOptions = conferenceList.map(conf => ({
+    value: conf,
+    label: conf === "National" ? "All Conferences" : conf
+  }));
 
-    const toggleExpanded = () => setExpanded(!expanded);
+  // REDESIGNED COMPACT TEAM CARD with new layout
+  const TeamCard = ({ team }) => {
+    if (!team) return null;
+
+    // Get current week from global season config (you'll need to pass this down or fetch it)
+    const currentWeek = "Preseason"; // This should come from your season config
+    const previousWeek = currentWeek === "Preseason" ? null : `Week ${parseInt(currentWeek.replace("Week ", "")) - 1}`;
+    
+    // Get previous week points
+    const previousWeekPoints = previousWeek && team.weeklyPoints?.[previousWeek] 
+      ? team.weeklyPoints[previousWeek] 
+      : null;
 
     return (
       <div style={{
         backgroundColor: "white",
-        borderRadius: "12px",
-        padding: "16px",
-        marginBottom: "12px",
-        boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+        borderRadius: "8px",
+        padding: "12px",
+        marginBottom: "8px",
+        boxShadow: "0 1px 2px rgba(0, 0, 0, 0.1)",
         border: "1px solid #e2e8f0",
-        transition: "all 0.2s ease",
-        position: "relative" // ← Add this to anchor absolute positioned children
+        transition: "all 0.2s ease"
       }}>
-        {/* Weekly Points Badge */}
-        <div style={{
-          position: "absolute",
-          top: "12px",
-          right: "12px",
-          backgroundColor: team?.gameComplete 
-            ? (team?.currentWeekPoints > 0 ? "#059669" : "#6b7280")
-            : "#f59e0b",
-          color: "white",
-          borderRadius: "6px",
-          padding: "4px 8px",
-          fontSize: "12px",
-          fontWeight: "700",
-          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)"
-        }}>
-          {team?.gameComplete ? (team?.currentWeekPoints || 0) : "?"} pts
-        </div>
-
-        {/* Main Team Header */}
+        {/* Header with team info, sort data, and add button */}
         <div style={{
           display: "flex",
           alignItems: "center",
           gap: "12px",
-          marginBottom: "12px"
+          marginBottom: "10px"
         }}>
           {/* Team Logo */}
           <div style={{
-            width: "48px",
-            height: "48px",
+            width: "32px",
+            height: "32px",
             borderRadius: "50%",
             overflow: "hidden",
-            border: "2px solid #e2e8f0",
+            border: "1px solid #e2e8f0",
             backgroundColor: "#f8fafc",
             flexShrink: 0,
             display: "flex",
@@ -328,24 +632,24 @@ function FreeAgents() {
               />
             ) : (
               <div style={{
-                fontSize: "14px",
+                fontSize: "10px",
                 fontWeight: "700",
                 color: "#64748b"
               }}>
-                {team.school ? team.school.split(' ').map(word => word[0]).join('').slice(0, 3) : '?'}
+                {team.school ? team.school.split(' ').map(word => word[0]).join('').slice(0, 2) : '?'}
               </div>
             )}
           </div>
 
-          {/* Team Info */}
+          {/* Team Name */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 
               onClick={() => handleTeamClick(team.school)}
               style={{
-                fontSize: "18px",
-                fontWeight: "700",
+                fontSize: "14px",
+                fontWeight: "600",
                 color: "#1e293b",
-                margin: "0 0 4px 0",
+                margin: "0 0 2px 0",
                 cursor: "pointer",
                 textDecoration: "underline",
                 overflow: "hidden",
@@ -356,18 +660,48 @@ function FreeAgents() {
               {team.school}
             </h3>
             <p style={{
-              fontSize: "14px",
+              fontSize: "11px",
               color: "#64748b",
-              margin: "0 0 4px 0"
+              margin: "0"
             }}>
               {team.conference || "N/A"}
             </p>
+          </div>
+
+          {/* Sort Data: Name, Overall Points, Record */}
+          <div style={{
+            display: "flex",
+            gap: "8px",
+            fontSize: "10px",
+            alignItems: "center"
+          }}>
             <div style={{
-              fontSize: "12px",
-              color: "#059669",
-              fontWeight: "600"
+              padding: "3px 6px",
+              backgroundColor: "#f8fafc",
+              borderRadius: "4px",
+              textAlign: "center",
+              minWidth: "35px"
             }}>
-              {team.currentSeason?.gamePoints ?? 0} season points
+              <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "1px" }}>
+                Points
+              </div>
+              <div style={{ color: "#059669", fontWeight: "700", fontSize: "9px" }}>
+                {team.points || 0}
+              </div>
+            </div>
+            <div style={{
+              padding: "3px 6px",
+              backgroundColor: "#f8fafc",
+              borderRadius: "4px",
+              textAlign: "center",
+              minWidth: "30px"
+            }}>
+              <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "1px" }}>
+                Record
+              </div>
+              <div style={{ color: "#1e293b", fontWeight: "600", fontSize: "9px" }}>
+                {team.currentSeason?.record || "0-0"}
+              </div>
             </div>
           </div>
 
@@ -375,8 +709,8 @@ function FreeAgents() {
           <button 
             onClick={() => handleAddTeam(team)}
             style={{
-              width: "40px",
-              height: "40px",
+              width: "28px",
+              height: "28px",
               borderRadius: "50%",
               backgroundColor: "#059669",
               border: "none",
@@ -385,7 +719,7 @@ function FreeAgents() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              boxShadow: "0 2px 8px rgba(5, 150, 105, 0.3)",
+              boxShadow: "0 1px 4px rgba(5, 150, 105, 0.3)",
               transition: "all 0.2s ease",
               flexShrink: 0
             }}
@@ -398,177 +732,76 @@ function FreeAgents() {
               e.target.style.transform = "scale(1)";
             }}
           >
-            <Plus size={20} />
+            <Plus size={14} />
           </button>
         </div>
 
-        {/* Quick Info Row */}
+        {/* Second Row: Conf, ATS, Prev */}
         <div style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr 1fr",
-          gap: "12px",
-          marginBottom: "12px",
-          fontSize: "12px"
+          gap: "6px",
+          fontSize: "10px",
+          marginBottom: "6px"
         }}>
           <div style={{
-            padding: "8px 12px",
+            padding: "4px 6px",
             backgroundColor: "#f8fafc",
-            borderRadius: "6px"
+            borderRadius: "4px"
           }}>
-            <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "2px" }}>
-              Record
+            <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "1px" }}>
+              Conf. Record
             </div>
-            <div style={{ color: "#1e293b", fontWeight: "600" }}>
-              {team.currentSeason?.record || "0-0"}
+            <div style={{ color: "#1e293b", fontWeight: "600", fontSize: "9px" }}>
+              {team.currentSeason?.confRecord || "0-0"}
             </div>
           </div>
-          
+
           <div style={{
-            padding: "8px 12px",
+            padding: "4px 6px",
             backgroundColor: "#f8fafc",
-            borderRadius: "6px"
+            borderRadius: "4px"
           }}>
-            <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "2px" }}>
-              ATS
+            <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "1px" }}>
+              ATS Record
             </div>
-            <div style={{ color: "#1e293b", fontWeight: "600" }}>
+            <div style={{ color: "#1e293b", fontWeight: "600", fontSize: "9px" }}>
               {team.currentSeason?.atsRecord || "0-0"}
             </div>
           </div>
-          
+
           <div style={{
-            padding: "8px 12px",
+            padding: "4px 6px",
             backgroundColor: "#f8fafc",
-            borderRadius: "6px"
+            borderRadius: "4px"
           }}>
-            <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "2px" }}>
-              Next
+            <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "1px" }}>
+              Prev Week Pts
             </div>
-            <div style={{ color: "#1e293b", fontWeight: "600" }}>
-              {formatNextGame(team.currentSeason)}
+            <div style={{ color: "#1e293b", fontWeight: "600", fontSize: "9px" }}>
+              {previousWeekPoints !== null ? previousWeekPoints : "N/A"}
             </div>
           </div>
         </div>
 
-        {/* Expand/Collapse Button */}
-        <button
-          onClick={toggleExpanded}
-          style={{
-            width: "100%",
-            padding: "8px",
-            backgroundColor: expanded ? "#f1f5f9" : "#f8fafc",
-            border: "1px solid #e2e8f0",
-            borderRadius: "6px",
-            fontSize: "12px",
-            fontWeight: "500",
-            color: "#64748b",
-            cursor: "pointer",
-            transition: "all 0.2s ease"
-          }}
-        >
-          {expanded ? "Show Less ▲" : "Show More Details ▼"}
-        </button>
-
-        {/* Expanded Details */}
-        {expanded && (
-          <div style={{
-            marginTop: "12px",
-            padding: "12px",
-            backgroundColor: "#f8fafc",
-            borderRadius: "8px",
-            border: "1px solid #e2e8f0"
-          }}>
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "12px",
-              fontSize: "12px",
-              marginBottom: "12px"
-            }}>
-              <div>
-                <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "2px" }}>
-                  Conference Record
-                </div>
-                <div style={{ color: "#1e293b", fontWeight: "600" }}>
-                  {team.currentSeason?.confRecord || "0-0"}
-                </div>
-              </div>
-              <div>
-                <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "2px" }}>
-                  Classification
-                </div>
-                <div style={{ color: "#1e293b", fontWeight: "600" }}>
-                  {team.classification || "FBS"}
-                </div>
-              </div>
-            </div>
-
-            {/* Remaining Schedule */}
-            <div>
-              <div style={{
-                color: "#64748b",
-                fontWeight: "600",
-                fontSize: "12px",
-                marginBottom: "8px",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px"
-              }}>
-                Remaining Schedule
-              </div>
-              <div style={{
-                backgroundColor: "white",
-                borderRadius: "6px",
-                padding: "8px",
-                border: "1px solid #e2e8f0"
-              }}>
-                <div style={{ fontSize: "11px", color: "#64748b" }}>
-                  Schedule details coming soon...
-                </div>
-              </div>
-            </div>
+        {/* Third Row: Next Game (full width, centered) */}
+        <div style={{
+          padding: "6px 8px",
+          backgroundColor: "#f8fafc",
+          borderRadius: "4px",
+          fontSize: "10px",
+          textAlign: "center"
+        }}>
+          <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "2px" }}>
+            Next Game
           </div>
-        )}
+          <div style={{ color: "#1e293b", fontWeight: "600", fontSize: "9px" }}>
+            {formatNextGame(team.currentSeason)}
+          </div>
+        </div>
       </div>
     );
   };
-
-  const SortableHeader = ({ label, sortKey, onSort, sortConfig }) => (
-    <button
-      onClick={() => onSort(sortKey)}
-      style={{
-        padding: "12px 16px",
-        backgroundColor: sortConfig.key === sortKey ? "#f1f5f9" : "transparent",
-        border: "none",
-        borderRadius: "8px",
-        fontSize: "14px",
-        fontWeight: "600",
-        color: "#374151",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: "6px",
-        transition: "all 0.2s ease",
-        userSelect: "none",
-        width: "100%",
-        textAlign: "left"
-      }}
-      onMouseEnter={(e) => {
-        if (sortConfig.key !== sortKey) {
-          e.target.style.backgroundColor = "#f8fafc";
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (sortConfig.key !== sortKey) {
-          e.target.style.backgroundColor = "transparent";
-        }
-      }}
-    >
-      {label}
-      <span style={{ color: "#64748b", fontSize: "12px" }}>
-        {sortConfig.key === sortKey ? (sortConfig.direction === "asc" ? "▲" : "▼") : "⇅"}
-      </span>
-    </button>
-  );
 
   if (loading) {
     return (
@@ -591,9 +824,8 @@ function FreeAgents() {
       backgroundColor: "#f8fafc", 
       minHeight: "100vh",
       position: "relative",
-      overflow: "hidden" // Prevent any overflow elements
+      overflow: "hidden"
     }}>
-      {/* Add CSS to hide any points badges */}
       <style>{`
         [style*="pts"], 
         div:contains("pts"),
@@ -606,13 +838,11 @@ function FreeAgents() {
       
       <LeagueNavBar />
 
-      {/* Header */}
+      {/* Standard Header - matching MyLineup */}
       <div style={{ 
         padding: "20px 16px 16px 16px",
         background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
-        color: "white",
-        position: "relative",
-        zIndex: 1 // Ensure header is above any stray elements
+        color: "white"
       }}>
         <h1 style={{ 
           fontSize: "24px", 
@@ -632,144 +862,90 @@ function FreeAgents() {
         </p>
       </div>
 
-      <div style={{ 
-        padding: "16px",
-        position: "relative",
-        zIndex: 1 // Ensure content is above any stray elements
+      {/* Compact Controls - Search, Filter, and Sort */}
+      <div style={{
+        padding: "12px 16px",
+        backgroundColor: "white",
+        borderBottom: "1px solid #e5e7eb",
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        flexWrap: "wrap"
       }}>
-        {/* Search and Filter Controls */}
+        {/* Search and Conference Filter Row */}
         <div style={{
-          backgroundColor: "white",
-          borderRadius: "12px",
-          padding: "16px",
-          marginBottom: "16px",
-          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-          border: "1px solid #e2e8f0",
-          position: "relative",
-          zIndex: 10 // Ensure this is above any floating elements
+          display: "flex",
+          gap: "8px",
+          flex: "1 1 auto",
+          minWidth: "280px"
         }}>
-          <div style={{
-            display: "flex",
-            gap: "12px",
-            alignItems: "center",
-            marginBottom: "12px",
-            flexWrap: "wrap",
-            position: "relative",
-            zIndex: 11 // Even higher than the container
-          }}>
-            {/* Search Input */}
-            <div style={{ 
-              flex: 1, 
-              minWidth: "200px", 
-              position: "relative",
-              zIndex: 12 // Highest z-index for the input
-            }}>
-              <Search 
-                size={16} 
-                style={{
-                  position: "absolute",
-                  left: "12px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  color: "#64748b"
-                }}
-              />
-              <input
-                type="text"
-                placeholder="Search by team name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "12px 12px 12px 40px",
-                  border: "2px solid #e5e7eb",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  fontFamily: "inherit",
-                  boxSizing: "border-box",
-                  position: "relative",
-                  zIndex: 13 // Ensure input is clickable above floating elements
-                }}
-                onFocus={(e) => e.target.style.borderColor = "#1e40af"}
-                onBlur={(e) => e.target.style.borderColor = "#e5e7eb"}
-              />
-            </div>
-
-            {/* Conference Filter */}
-            <div style={{ minWidth: "180px", position: "relative" }}>
-              <Filter 
-                size={16} 
-                style={{
-                  position: "absolute",
-                  left: "12px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  color: "#64748b",
-                  pointerEvents: "none"
-                }}
-              />
-              <select
-                value={activeConference}
-                onChange={(e) => setActiveConference(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "12px 12px 12px 40px",
-                  border: "2px solid #e5e7eb",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  fontFamily: "inherit",
-                  backgroundColor: "white",
-                  boxSizing: "border-box"
-                }}
-              >
-                {conferenceList.map(conf => (
-                  <option key={conf} value={conf}>
-                    {conf === "National" ? "All Conferences" : conf}
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* Search */}
+          <div style={{ position: "relative", flex: "1 1 0", minWidth: "130px" }}>
+            <Search size={16} style={{
+              position: "absolute",
+              left: "12px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "#64748b"
+            }} />
+            <input
+              type="text"
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: "100%",
+                height: "44px",
+                padding: "12px 12px 12px 40px",
+                border: "2px solid #e5e7eb",
+                borderRadius: "8px",
+                fontSize: "14px",
+                boxSizing: "border-box"
+              }}
+              onFocus={(e) => e.target.style.borderColor = "#1e40af"}
+              onBlur={(e) => e.target.style.borderColor = "#e5e7eb"}
+            />
           </div>
 
-          {/* Sort Controls */}
-          <div style={{
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap"
-          }}>
-            <div style={{
-              fontSize: "12px",
-              color: "#64748b",
-              fontWeight: "600",
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-              padding: "12px 0",
-              minWidth: "60px"
-            }}>
-              Sort by:
-            </div>
-            
-            <SortableHeader 
-              label="School" 
-              sortKey="school" 
-              onSort={toggleSort} 
-              sortConfig={sortConfig} 
-            />
-            <SortableHeader 
-              label="Points" 
-              sortKey="gamePoints" 
-              onSort={toggleSort} 
-              sortConfig={sortConfig} 
-            />
-            <SortableHeader 
-              label="Record" 
-              sortKey="currentSeason.record" 
-              onSort={toggleSort} 
-              sortConfig={sortConfig} 
+          {/* Conference Filter */}
+          <div style={{ flex: "1 1 0", minWidth: "130px" }}>
+            <CustomDropdown
+              value={activeConference}
+              onChange={setActiveConference}
+              options={conferenceOptions}
+              icon={Filter}
             />
           </div>
         </div>
 
+        {/* Sort Options - Only 3 buttons */}
+        <div style={{ display: "flex", gap: "6px", flex: "0 0 auto" }}>
+          <SortButton 
+            label="Name" 
+            sortKey="school" 
+            sortConfig={sortConfig}
+            onSort={toggleSort}
+          />
+          <SortButton 
+            label="Points" 
+            sortKey="points" 
+            sortConfig={sortConfig}
+            onSort={toggleSort}
+          />
+          <SortButton 
+            label="Record" 
+            sortKey="currentSeason.record" 
+            sortConfig={sortConfig}
+            onSort={toggleSort}
+          />
+        </div>
+      </div>
+
+      <div style={{ 
+        padding: "16px",
+        position: "relative",
+        zIndex: 1
+      }}>
         {/* Teams List */}
         {sortedTeams.length === 0 ? (
           <div style={{
@@ -789,7 +965,7 @@ function FreeAgents() {
         ) : (
           <div style={{
             position: "relative",
-            overflow: "hidden" // Ensure no elements leak out
+            overflow: "hidden"
           }}>
             {sortedTeams.map((team) => (
               <TeamCard key={team.id} team={team} />
@@ -972,6 +1148,168 @@ function FreeAgents() {
                   Confirm Swap
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Custom Success Modal */}
+        {showSuccessModal && (
+          <div style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "16px"
+          }}>
+            <div style={{
+              backgroundColor: "white",
+              borderRadius: "16px",
+              padding: "24px",
+              maxWidth: "400px",
+              width: "100%",
+              textAlign: "center",
+              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
+            }}>
+              {/* Success Icon */}
+              <div style={{
+                width: "60px",
+                height: "60px",
+                backgroundColor: "#10b981",
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 16px auto"
+              }}>
+                <div style={{
+                  color: "white",
+                  fontSize: "24px",
+                  fontWeight: "bold"
+                }}>
+                  ✓
+                </div>
+              </div>
+
+              <h3 style={{ 
+                fontSize: "18px", 
+                fontWeight: "600", 
+                marginBottom: "8px",
+                color: "#1e293b"
+              }}>
+                {modalTitle}
+              </h3>
+              
+              <p style={{ 
+                marginBottom: "24px",
+                color: "#64748b",
+                fontSize: "14px"
+              }}>
+                {modalMessage}
+              </p>
+
+              <button
+                onClick={closeModals}
+                style={{
+                  width: "100%",
+                  padding: "12px",
+                  backgroundColor: "#10b981",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  cursor: "pointer"
+                }}
+              >
+                Awesome!
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Custom Error Modal */}
+        {showErrorModal && (
+          <div style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "16px"
+          }}>
+            <div style={{
+              backgroundColor: "white",
+              borderRadius: "16px",
+              padding: "24px",
+              maxWidth: "400px",
+              width: "100%",
+              textAlign: "center",
+              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
+            }}>
+              {/* Error Icon */}
+              <div style={{
+                width: "60px",
+                height: "60px",
+                backgroundColor: "#ef4444",
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 16px auto"
+              }}>
+                <div style={{
+                  color: "white",
+                  fontSize: "24px",
+                  fontWeight: "bold"
+                }}>
+                  !
+                </div>
+              </div>
+
+              <h3 style={{ 
+                fontSize: "18px", 
+                fontWeight: "600", 
+                marginBottom: "8px",
+                color: "#1e293b"
+              }}>
+                {modalTitle}
+              </h3>
+              
+              <p style={{ 
+                marginBottom: "24px",
+                color: "#64748b",
+                fontSize: "14px"
+              }}>
+                {modalMessage}
+              </p>
+
+              <button
+                onClick={closeModals}
+                style={{
+                  width: "100%",
+                  padding: "12px",
+                  backgroundColor: "#6b7280",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  cursor: "pointer"
+                }}
+              >
+                Got it
+              </button>
             </div>
           </div>
         )}
