@@ -115,10 +115,10 @@ function DraftBoard({ draftData, userMap, allTeams }) {
                     const isCurrentPick = pickNumber === (draftData.currentPickIndex + 1) && !draftData.draftComplete;
                     const isEvenRound = roundIndex % 2 === 0;
 
-                    const teamData = Object.values(allTeams || {}).find(
-                      (t) => t.school?.toLowerCase() === team?.toLowerCase()
-                    );
-                    const teamColor = teamData?.color;
+                    // ✅ FIXED: Use direct lookup by document ID instead of searching by school name
+                    const teamData = allTeams?.[team]; // Direct lookup by team ID/name
+                    const teamColor = teamData?.color; // Use single color field from Firestore
+                    
                     const isLightColor = (color) => {
                       if (!color) return true;
                       const hex = color.replace('#', '');
@@ -209,7 +209,10 @@ function DraftBoard({ draftData, userMap, allTeams }) {
                               textAlign: "center",
                               border: teamColor ? "none" : "1px solid #e2e8f0",
                               textShadow: teamColor && !isLightColor(teamColor) ? "0 1px 2px rgba(0,0,0,0.3)" : "none"
-                            }}>{team}</div>
+                            }}>
+                              {/* ✅ FIXED: Display school name instead of document ID */}
+                              {teamData?.school || team}
+                            </div>
                           )}
                         </div>
                       </div>

@@ -237,7 +237,10 @@ function DraftRoom() {
     }
   };
 
-  const handleAutoPick = async () => {
+// 1. FIX AUTO-PICK LOGIC in handleAutoPick function (DraftRoom.js)
+// Replace the entire handleAutoPick function with this:
+
+const handleAutoPick = async () => {
     if (!draftData || draftData.draftComplete) return;
 
     const currentIndex = draftData.currentPickIndex;
@@ -245,46 +248,48 @@ function DraftRoom() {
     
     // Use snake draft logic to get current picker
     const currentUid = getCurrentPicker(draftOrder, currentIndex);
-    const availableTeamNames = draftData.availableTeams;
+    const availableTeamIds = draftData.availableTeams; // These are document IDs
     
-    if (!currentUid || availableTeamNames.length === 0) {
+    if (!currentUid || availableTeamIds.length === 0) {
       console.error("Auto-pick failed - no current UID or no available teams");
       return;
     }
 
     try {
-      // Fetch all teams to get their philMetricDraftRank scores
-      const allTeamsSnap = await getDocs(collection(db, "teams"));
-      
-      // Create a map of team names to their philMetricDraftRank scores
+      // ✅ FIXED: Use allTeams state instead of fetching again, and use document IDs
       const teamRankings = {};
-      allTeamsSnap.docs.forEach(doc => {
-        const data = doc.data();
-        if (data.school && data.philMetricDraftRank !== undefined) {
-          teamRankings[data.school] = data.philMetricDraftRank;
+      
+      // Map document IDs to their philMetricDraftRank scores using allTeams state
+      availableTeamIds.forEach(teamId => {
+        const teamData = allTeams[teamId];
+        if (teamData && teamData.philMetricDraftRank !== undefined) {
+          teamRankings[teamId] = teamData.philMetricDraftRank;
         }
       });
 
       // Filter available teams and sort by philMetricDraftRank (lowest = best)
-      const availableTeamsWithRanks = availableTeamNames
-        .map(teamName => ({
-          name: teamName,
-          rank: teamRankings[teamName] || 999 // Default high rank if not found
+      const availableTeamsWithRanks = availableTeamIds
+        .map(teamId => ({
+          id: teamId,
+          rank: teamRankings[teamId] || 999 // Default high rank if not found
         }))
         .sort((a, b) => a.rank - b.rank); // Sort ascending (lower rank = better)
 
       // Pick the best available team (lowest philMetricDraftRank)
       const bestTeam = availableTeamsWithRanks[0];
+      const teamData = allTeams[bestTeam.id];
+      const teamDisplayName = teamData?.school || bestTeam.id;
       
-      console.log(`🤖 Auto-picking best available team: ${bestTeam.name} (rank: ${bestTeam.rank}) for ${userMap[currentUid]?.displayName}`);
+      console.log(`🤖 Auto-picking best available team: ${teamDisplayName} (rank: ${bestTeam.rank}) for ${userMap[currentUid]?.displayName}`);
       
-      await performPick(bestTeam.name, currentUid, true);
+      // ✅ Use the document ID (bestTeam.id) for the pick
+      await performPick(bestTeam.id, currentUid, true);
 
     } catch (error) {
       console.error("Error in smart auto-pick, falling back to random:", error);
       
       // Fallback to random selection if something goes wrong
-      const randomTeam = availableTeamNames[Math.floor(Math.random() * availableTeamNames.length)];
+      const randomTeam = availableTeamIds[Math.floor(Math.random() * availableTeamIds.length)];
       await performPick(randomTeam, currentUid, true);
     }
   };
@@ -429,23 +434,20 @@ const handleStartDraft = async () => {
 
     const allTeamsSnap = await getDocs(collection(db, "teams"));
 
-    const allTeams = allTeamsSnap.docs
-      .map(doc => {
+    // ✅ FIXED: Properly filter for FBS teams and use their document IDs
+    const teamNames = allTeamsSnap.docs
+      .filter(doc => {
         const data = doc.data();
-        if (!data.school || typeof data.school !== "string" || data.classification?.toLowerCase() !== "fbs") {
-          console.warn("❌ Skipping invalid team:", data);
-          return null;
-        }
-        return data;
+        return data.school && 
+              typeof data.school === "string" && 
+              data.classification?.toLowerCase() === "fbs";
       })
-      .filter(Boolean);
+      .map(doc => doc.id); // Use the document ID (which should match school name)
 
-    if (allTeams.length === 0) {
-      alert("⚠️ No valid FBS teams with names found. Check your /teams collection in Firestore.");
+    if (teamNames.length === 0) {
+      alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
       return;
     }
-
-    const teamNames = allTeamsSnap.docs.map(doc => doc.id);
     
     // ✅ Use custom draft order if admin set it, otherwise use random order
     let managerOrder;
