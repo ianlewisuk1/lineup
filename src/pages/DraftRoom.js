@@ -35,6 +35,7 @@ function DraftRoom() {
   const [countdownInterval, setCountdownInterval] = useState(null);
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [allTeams, setAllTeams] = useState ({});
 
   useEffect(() => {
     const fetchDraft = async () => {
@@ -69,6 +70,15 @@ function DraftRoom() {
       });
 
       setUserMap(nameMap);
+
+      const teamsSnap = await getDocs(collection(db, "teams"));
+        const teamDataMap = {};
+
+        teamsSnap.forEach(doc => {
+          teamDataMap[doc.id] = doc.data();
+        });
+
+        setAllTeams(teamDataMap);
 
       const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
       onSnapshot(draftRef, (snap) => {
@@ -306,7 +316,7 @@ function DraftRoom() {
 
     const newSelected = {
       ...freshDraftData.selectedTeams,
-      [pickingUserId]: [...alreadyPicked, teamName]
+      [pickingUserId]: [...alreadyPicked, teamName.toLowerCase().replace(/\s+/g, "-")]
     };
 
     const newAvailable = freshDraftData.availableTeams.filter(t => t !== teamName);
@@ -435,7 +445,7 @@ const handleStartDraft = async () => {
       return;
     }
 
-    const teamNames = allTeams.map(team => team.school);
+    const teamNames = allTeamsSnap.docs.map(doc => doc.id);
     
     // ✅ Use custom draft order if admin set it, otherwise use random order
     let managerOrder;
@@ -914,14 +924,18 @@ const handleStartDraft = async () => {
       <h3>Available Teams</h3>
       <select value={teamPick} onChange={(e) => setTeamPick(e.target.value)} disabled={disableDrafting}>
         <option value="">-- Select a Team --</option>
-        {draftData.availableTeams.map((team) => (
-          <option key={team} value={team}>{team}</option>
-        ))}
+        {draftData.availableTeams.map((teamId) => {
+          const teamData = allTeams[teamId];
+          const label = teamData?.school || teamId;
+          return (
+            <option key={teamId} value={teamId}>{label}</option>
+          );
+        })}
       </select>
       <button onClick={handlePick} disabled={disableDrafting || !teamPick}>Draft</button>
 
       <h3>Full Draft Board</h3>
-      <DraftBoard draftData={draftData} userMap={userMap} />
+      <DraftBoard draftData={draftData} userMap={userMap} allTeams={allTeams} />
     </div>
   );
 }

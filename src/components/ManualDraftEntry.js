@@ -16,20 +16,19 @@ function ManualDraftEntry({ leagueId, userMap, draftData }) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    // Fetch all FBS teams for selection
     const fetchTeams = async () => {
       const teamsSnap = await getDocs(collection(db, "teams"));
       const teams = teamsSnap.docs
         .map(doc => {
           const data = doc.data();
           if (data.classification?.toLowerCase() === "fbs" && data.school) {
-            return data.school;
+            return { id: doc.id, school: data.school };
           }
           return null;
         })
         .filter(Boolean)
-        .sort();
-      
+        .sort((a, b) => a.school.localeCompare(b.school));
+
       setAvailableTeams(teams);
     };
 
@@ -37,7 +36,6 @@ function ManualDraftEntry({ leagueId, userMap, draftData }) {
   }, []);
 
   useEffect(() => {
-    // Load existing teams for selected manager
     if (selectedManager && draftData.teams[selectedManager]) {
       setManagerTeams(draftData.teams[selectedManager]);
     } else {
@@ -50,30 +48,29 @@ function ManualDraftEntry({ leagueId, userMap, draftData }) {
     setSearchQuery("");
   };
 
-  const handleAddTeam = (teamName) => {
+  const handleAddTeam = (team) => {
     if (managerTeams.length >= 7) {
       alert("This manager already has 7 teams!");
       return;
     }
 
-    // Check if team is already drafted by anyone
     const allDraftedTeams = Object.values(draftData.teams).flat();
-    if (allDraftedTeams.includes(teamName)) {
+    if (allDraftedTeams.includes(team.id)) {
       alert("This team has already been drafted by another manager!");
       return;
     }
 
-    if (managerTeams.includes(teamName)) {
+    if (managerTeams.includes(team.id)) {
       alert("This team is already on this manager's roster!");
       return;
     }
 
-    setManagerTeams([...managerTeams, teamName]);
+    setManagerTeams([...managerTeams, team.id]);
     setSearchQuery("");
   };
 
-  const handleRemoveTeam = (teamName) => {
-    setManagerTeams(managerTeams.filter(team => team !== teamName));
+  const handleRemoveTeam = (teamId) => {
+    setManagerTeams(managerTeams.filter(id => id !== teamId));
   };
 
   const handleSaveManager = async () => {
@@ -110,7 +107,6 @@ function ManualDraftEntry({ leagueId, userMap, draftData }) {
       });
 
       if (allManagersComplete) {
-        // Update all member lineups
         const memberUpdates = Object.entries(updatedTeams).map(async ([uid, teams]) => {
           const starters = teams.slice(0, 5);
           const bench = teams.slice(5);
@@ -125,7 +121,6 @@ function ManualDraftEntry({ leagueId, userMap, draftData }) {
 
         await Promise.all(memberUpdates);
 
-        // Mark league draft as complete
         await updateDoc(doc(db, "leagues", leagueId), {
           draftComplete: true
         });
@@ -147,12 +142,13 @@ function ManualDraftEntry({ leagueId, userMap, draftData }) {
   };
 
   const filteredTeams = availableTeams.filter(team =>
-    team.toLowerCase().includes(searchQuery.toLowerCase())
+    team.school.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const allDraftedTeams = Object.values(draftData.teams).flat();
-  const availableForDraft = filteredTeams.filter(team => 
-    !allDraftedTeams.includes(team) && !managerTeams.includes(team)
+  const availableForDraft = filteredTeams.filter(team =>
+    !allDraftedTeams.includes(team.id) &&
+    !managerTeams.includes(team.id)
   );
 
   const completedManagers = draftData.managersCompleted.length;
@@ -191,7 +187,7 @@ function ManualDraftEntry({ leagueId, userMap, draftData }) {
       {selectedManager && (
         <div>
           <h4>Teams for {userMap[selectedManager]?.displayName}:</h4>
-          
+
           {/* Current Teams */}
           <div style={{ marginBottom: "1rem" }}>
             <h5>Current Teams ({managerTeams.length}/7):</h5>
@@ -199,32 +195,35 @@ function ManualDraftEntry({ leagueId, userMap, draftData }) {
               <p style={{ color: "#666" }}>No teams selected yet</p>
             ) : (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
-                {managerTeams.map((team, index) => (
-                  <span
-                    key={team}
-                    style={{
-                      padding: "0.25rem 0.5rem",
-                      backgroundColor: index < 5 ? "#e3f2fd" : "#fff3e0",
-                      border: "1px solid #ddd",
-                      borderRadius: "4px",
-                      fontSize: "0.9rem"
-                    }}
-                  >
-                    {team} {index < 5 ? "(S)" : "(B)"}
-                    <button
-                      onClick={() => handleRemoveTeam(team)}
+                {managerTeams.map((teamId, index) => {
+                  const teamLabel = availableTeams.find(t => t.id === teamId)?.school || teamId;
+                  return (
+                    <span
+                      key={teamId}
                       style={{
-                        marginLeft: "0.5rem",
-                        backgroundColor: "transparent",
-                        border: "none",
-                        color: "red",
-                        cursor: "pointer"
+                        padding: "0.25rem 0.5rem",
+                        backgroundColor: index < 5 ? "#e3f2fd" : "#fff3e0",
+                        border: "1px solid #ddd",
+                        borderRadius: "4px",
+                        fontSize: "0.9rem"
                       }}
                     >
-                      ×
-                    </button>
-                  </span>
-                ))}
+                      {teamLabel} {index < 5 ? "(S)" : "(B)"}
+                      <button
+                        onClick={() => handleRemoveTeam(teamId)}
+                        style={{
+                          marginLeft: "0.5rem",
+                          backgroundColor: "transparent",
+                          border: "none",
+                          color: "red",
+                          cursor: "pointer"
+                        }}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
             )}
             <p style={{ fontSize: "0.8rem", color: "#666" }}>
@@ -249,7 +248,6 @@ function ManualDraftEntry({ leagueId, userMap, draftData }) {
                   borderRadius: "4px"
                 }}
               />
-              
               <div style={{ 
                 maxHeight: "200px", 
                 overflowY: "auto", 
@@ -259,7 +257,7 @@ function ManualDraftEntry({ leagueId, userMap, draftData }) {
               }}>
                 {availableForDraft.slice(0, 20).map(team => (
                   <div
-                    key={team}
+                    key={team.id}
                     onClick={() => handleAddTeam(team)}
                     style={{
                       padding: "0.5rem",
@@ -270,7 +268,7 @@ function ManualDraftEntry({ leagueId, userMap, draftData }) {
                     onMouseEnter={(e) => e.target.style.backgroundColor = "#f0f0f0"}
                     onMouseLeave={(e) => e.target.style.backgroundColor = "white"}
                   >
-                    {team}
+                    {team.school}
                   </div>
                 ))}
               </div>
