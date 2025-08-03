@@ -523,8 +523,8 @@ function FreeAgents() {
       aValue = a.currentSeason?.nextOpponent || "";
       bValue = b.currentSeason?.nextOpponent || "";
     } else if (key === "points") {
-      aValue = a.points || 0;
-      bValue = b.points || 0;
+      aValue = a.currentSeason?.gamePoints || 0;
+      bValue = b.currentSeason?.gamePoints || 0;
     } else {
       aValue = a[key] || "";
       bValue = b[key] || "";
@@ -683,10 +683,10 @@ function FreeAgents() {
               minWidth: "35px"
             }}>
               <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "1px" }}>
-                Points
+                Fantasy Points
               </div>
               <div style={{ color: "#059669", fontWeight: "700", fontSize: "9px" }}>
-                {team.points || 0}
+                {team.currentSeason?.gamePoints || 0}
               </div>
             </div>
             <div style={{
@@ -766,7 +766,7 @@ function FreeAgents() {
               ATS Record
             </div>
             <div style={{ color: "#1e293b", fontWeight: "600", fontSize: "9px" }}>
-              {team.currentSeason?.atsRecord || "0-0"}
+              {team.currentSeason?.ATS || "0-0"}
             </div>
           </div>
 

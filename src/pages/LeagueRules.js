@@ -1,4 +1,3 @@
-// src/pages/LeagueRules.js
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { db, auth } from "../firebase/firebase";
@@ -11,6 +10,22 @@ import {
   deleteDoc,
   arrayRemove
 } from "firebase/firestore";
+import { 
+  Settings, 
+  Users, 
+  Calendar, 
+  Trophy, 
+  Shield, 
+  Clock, 
+  ChevronUp, 
+  ChevronDown, 
+  Shuffle, 
+  Save, 
+  Trash2,
+  AlertTriangle,
+  CheckCircle,
+  Lock
+} from "lucide-react";
 import LeagueNavBar from "../components/LeagueNavBar";
 
 function LeagueRules() {
@@ -24,82 +39,114 @@ function LeagueRules() {
   const [draftOrder, setDraftOrder] = useState([]);
   const [error, setError] = useState("");
   const [draftStarted, setDraftStarted] = useState(false);
-  const [isReordering, setIsReordering] = useState(false); // Add this flag
+  const [loading, setLoading] = useState(true);
+
+  // Custom modal states
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [modalMessage, setModalMessage] = useState("");
+  const [modalTitle, setModalTitle] = useState("");
+
+  // Helper functions for modals
+  const showSuccess = (title, message) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setShowSuccessModal(true);
+  };
+
+  const showError = (title, message) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setShowErrorModal(true);
+  };
+
+  const closeModals = () => {
+    setShowSuccessModal(false);
+    setShowErrorModal(false);
+    setShowDeleteModal(false);
+    setModalTitle("");
+    setModalMessage("");
+  };
 
   useEffect(() => {
     const fetchData = async () => {
-      const user = auth.currentUser;
-      if (user) setCurrentUserId(user.uid);
+      try {
+        const user = auth.currentUser;
+        if (user) setCurrentUserId(user.uid);
 
-      const leagueRef = doc(db, "leagues", leagueId);
-      const leagueSnap = await getDoc(leagueRef);
-      const data = leagueSnap.data();
-      setLeagueData(data);
-      
-      // Handle draftDate properly for datetime-local input
-      let formattedDraftDate = "";
-      if (data.draftDate) {
-        const draftDateTime = data.draftDate.toDate();
-        // Convert to local time for the form input (avoids timezone shifts)
-        const year = draftDateTime.getFullYear();
-        const month = String(draftDateTime.getMonth() + 1).padStart(2, '0');
-        const day = String(draftDateTime.getDate()).padStart(2, '0');
-        const hours = String(draftDateTime.getHours()).padStart(2, '0');
-        const minutes = String(draftDateTime.getMinutes()).padStart(2, '0');
-        formattedDraftDate = `${year}-${month}-${day}T${hours}:${minutes}`;
-      }
+        const leagueRef = doc(db, "leagues", leagueId);
+        const leagueSnap = await getDoc(leagueRef);
+        const data = leagueSnap.data();
+        setLeagueData(data);
+        
+        // Handle draftDate properly for datetime-local input
+        let formattedDraftDate = "";
+        if (data.draftDate) {
+          const draftDateTime = data.draftDate.toDate();
+          const year = draftDateTime.getFullYear();
+          const month = String(draftDateTime.getMonth() + 1).padStart(2, '0');
+          const day = String(draftDateTime.getDate()).padStart(2, '0');
+          const hours = String(draftDateTime.getHours()).padStart(2, '0');
+          const minutes = String(draftDateTime.getMinutes()).padStart(2, '0');
+          formattedDraftDate = `${year}-${month}-${day}T${hours}:${minutes}`;
+        }
 
-      setFormState({
-        name: data.name,
-        draftType: data.draftType,
-        draftOrderType: data.draftOrderType || "random",
-        draftDate: formattedDraftDate,
-        timePerPick: data.timePerPick || 5,
-        maxManagers: data.maxManagers
-      });
+        setFormState({
+          name: data.name,
+          draftType: data.draftType,
+          draftOrderType: data.draftOrderType || "random",
+          draftDate: formattedDraftDate,
+          timePerPick: data.timePerPick || 5,
+          maxManagers: data.maxManagers
+        });
 
-      // Check if draft has started
-      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-      const draftSnap = await getDoc(draftRef);
-      setDraftStarted(draftSnap.exists() || data.draftComplete);
+        // Check if draft has started
+        const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
+        const draftSnap = await getDoc(draftRef);
+        setDraftStarted(draftSnap.exists() || data.draftComplete);
 
-      if (data?.createdBy) {
-        const userSnap = await getDoc(doc(db, "users", data.createdBy));
-        const userData = userSnap.data();
-        setAdminName(`${userData.firstName || ""} ${userData.lastName || ""}`.trim());
-      }
+        if (data?.createdBy) {
+          const userSnap = await getDoc(doc(db, "users", data.createdBy));
+          const userData = userSnap.data();
+          setAdminName(`${userData.firstName || ""} ${userData.lastName || ""}`.trim());
+        }
 
-      const membersRef = collection(db, "leagues", leagueId, "members");
-      const memberDocs = await getDocs(membersRef);
+        const membersRef = collection(db, "leagues", leagueId, "members");
+        const memberDocs = await getDocs(membersRef);
 
-      const memberList = await Promise.all(
-        memberDocs.docs.map(async (memberDoc) => {
-          const userId = memberDoc.id;
-          const memberData = memberDoc.data();
-          const userSnap = await getDoc(doc(db, "users", userId));
-          const userData = userSnap.exists() ? userSnap.data() : {};
+        const memberList = await Promise.all(
+          memberDocs.docs.map(async (memberDoc) => {
+            const userId = memberDoc.id;
+            const memberData = memberDoc.data();
+            const userSnap = await getDoc(doc(db, "users", userId));
+            const userData = userSnap.exists() ? userSnap.data() : {};
 
-          return {
-            uid: userId,
-            name: `${userData.firstName || ""} ${userData.lastName || ""}`.trim(),
-            username: userData.username || userData.email || "Unknown",
-            teamName: memberData.teamName || "Untitled Team",
-          };
-        })
-      );
+            return {
+              uid: userId,
+              name: `${userData.firstName || ""} ${userData.lastName || ""}`.trim(),
+              username: userData.username || userData.email || "Unknown",
+              teamName: memberData.teamName || "Untitled Team",
+            };
+          })
+        );
 
-      setMembers(memberList);
-      
-      // Initialize draft order with current members if admin sets order
-      if (data.draftOrderType === "admin" && data.customDraftOrder) {
-        // Use saved custom order
-        const orderedMembers = data.customDraftOrder.map(uid => 
-          memberList.find(m => m.uid === uid)
-        ).filter(Boolean);
-        setDraftOrder(orderedMembers);
-      } else if (data.draftOrderType === "admin") {
-        // Initialize with current member list for admin to arrange
-        setDraftOrder([...memberList]);
+        setMembers(memberList);
+        
+        // Initialize draft order
+        if (data.draftOrderType === "admin" && data.customDraftOrder) {
+          const orderedMembers = data.customDraftOrder.map(uid => 
+            memberList.find(m => m.uid === uid)
+          ).filter(Boolean);
+          setDraftOrder(orderedMembers);
+        } else if (data.draftOrderType === "admin") {
+          setDraftOrder([...memberList]);
+        }
+
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching league data:", error);
+        setLoading(false);
       }
     };
 
@@ -110,18 +157,15 @@ function LeagueRules() {
   useEffect(() => {
     if (leagueData?.draftOrderType === "admin" && members.length > 0 && !draftStarted) {
       if (leagueData.customDraftOrder && leagueData.customDraftOrder.length > 0) {
-        // Use saved custom order, but filter out any users that no longer exist
         const orderedMembers = leagueData.customDraftOrder
           .map(uid => members.find(m => m.uid === uid))
           .filter(Boolean);
         
-        // Add any new members that aren't in the saved order
         const orderedUids = new Set(orderedMembers.map(m => m.uid));
         const missingMembers = members.filter(m => !orderedUids.has(m.uid));
         
         const newDraftOrder = [...orderedMembers, ...missingMembers];
         
-        // Only update if the members changed (not just reordered)
         const currentMemberIds = new Set(draftOrder.map(m => m.uid));
         const newMemberIds = new Set(newDraftOrder.map(m => m.uid));
         const memberCountChanged = currentMemberIds.size !== newMemberIds.size;
@@ -132,7 +176,6 @@ function LeagueRules() {
           setDraftOrder(newDraftOrder);
         }
       } else {
-        // Initialize with current member list for admin to arrange
         const currentMemberIds = new Set(draftOrder.map(m => m.uid));
         const newMemberIds = new Set(members.map(m => m.uid));
         const memberCountChanged = currentMemberIds.size !== newMemberIds.size;
@@ -145,20 +188,6 @@ function LeagueRules() {
       }
     }
   }, [members, leagueData?.draftOrderType, leagueData?.customDraftOrder, draftStarted]);
-
-  // Detect when new users are added to members (simplified version)
-  useEffect(() => {
-    // This effect is now simplified since the main logic is handled above
-    // We keep it for logging purposes but most work is done in the previous useEffect
-    if (leagueData?.draftOrderType === "admin" && members.length > 0 && draftOrder.length > 0 && !draftStarted) {
-      const currentDraftOrderIds = new Set(draftOrder.map(m => m.uid));
-      const newMembers = members.filter(m => !currentDraftOrderIds.has(m.uid));
-      
-      if (newMembers.length > 0) {
-        console.log(`Detected ${newMembers.length} new member(s), but handling is done in main useEffect`);
-      }
-    }
-  }, [members.length, leagueData?.draftOrderType, draftStarted]);
 
   const isAdmin = currentUserId && leagueData?.admin === currentUserId;
   const isLeagueFull = members.length === leagueData?.maxManagers;
@@ -186,7 +215,7 @@ function LeagueRules() {
         customDraftOrder: orderUids
       });
       setError("");
-      alert("Draft order saved successfully!");
+      showSuccess("Draft Order Saved!", "The draft order has been successfully saved.");
     } catch (error) {
       console.error("Error saving draft order:", error);
       setError("Failed to save draft order. Please try again.");
@@ -198,97 +227,48 @@ function LeagueRules() {
     setDraftOrder(shuffled);
   };
 
-  const syncDraftOrderWithMembers = async (updatedMembers) => {
-    // Only sync if admin sets order and league isn't full yet
-    if (leagueData?.draftOrderType === "admin" && !draftStarted) {
-      try {
-        // Clear the saved custom draft order since member list changed
-        await updateDoc(doc(db, "leagues", leagueId), {
-          customDraftOrder: [] // Clear it so admin needs to set it again
-        });
-        
-        // Update local draft order state with new member list
-        setDraftOrder([...updatedMembers]);
-        
-        console.log("Draft order cleared due to member changes. Admin needs to set order again.");
-      } catch (error) {
-        console.error("Error clearing draft order:", error);
-      }
-    }
-  };
-
   const handleRemoveManager = async (uid, memberName) => {
-    const confirmRemoval = window.confirm(
-      `Are you sure you want to remove ${memberName} from the league? This action cannot be undone.`
-    );
-    
-    if (confirmRemoval) {
-      try {
-        // Remove from the members subcollection
-        await deleteDoc(doc(db, "leagues", leagueId, "members", uid));
+    try {
+      await deleteDoc(doc(db, "leagues", leagueId, "members", uid));
+      
+      const leagueRef = doc(db, "leagues", leagueId);
+      const currentMembers = leagueData.members || [];
+      const updatedMembers = currentMembers.filter(memberId => memberId !== uid);
+      
+      await updateDoc(leagueRef, {
+        members: updatedMembers
+      });
+      
+      const userRef = doc(db, "users", uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        const currentLeagueIds = userData.leagueIds || [];
+        const updatedLeagueIds = currentLeagueIds.filter(id => id !== leagueId);
         
-        // Remove from the members array field in the main league document
-        const leagueRef = doc(db, "leagues", leagueId);
-        const currentMembers = leagueData.members || [];
-        const updatedMembers = currentMembers.filter(memberId => memberId !== uid);
-        
-        await updateDoc(leagueRef, {
-          members: updatedMembers
+        await updateDoc(userRef, {
+          leagueIds: updatedLeagueIds
         });
-        
-        // Remove league ID from user's leagueIds array
-        const userRef = doc(db, "users", uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          const userData = userSnap.data();
-          const currentLeagueIds = userData.leagueIds || [];
-          const updatedLeagueIds = currentLeagueIds.filter(id => id !== leagueId);
-          
-          await updateDoc(userRef, {
-            leagueIds: updatedLeagueIds
-          });
-        }
-        
-        // Update local state
-        const updatedMembersList = members.filter((m) => m.uid !== uid);
-        setMembers(updatedMembersList);
-        setDraftOrder((prev) => prev.filter((m) => m.uid !== uid));
-        setLeagueData((prev) => ({
-          ...prev,
-          members: updatedMembers
-        }));
-
-        // Sync draft order with updated members
-        await syncDraftOrderWithMembers(updatedMembersList);
-        
-      } catch (error) {
-        console.error("Error removing manager:", error);
-        setError("Failed to remove manager. Please try again.");
       }
+      
+      const updatedMembersList = members.filter((m) => m.uid !== uid);
+      setMembers(updatedMembersList);
+      setDraftOrder((prev) => prev.filter((m) => m.uid !== uid));
+      setLeagueData((prev) => ({
+        ...prev,
+        members: updatedMembers
+      }));
+
+      showSuccess("Manager Removed", `${memberName} has been successfully removed from the league.`);
+      
+    } catch (error) {
+      console.error("Error removing manager:", error);
+      showError("Error", "Failed to remove manager. Please try again.");
     }
   };
 
   const handleDeleteLeague = async () => {
-    const confirmDelete = window.confirm(
-      `Are you sure you want to DELETE the entire league "${leagueData.name}"? This will:\n\n` +
-      `• Delete the league permanently\n` +
-      `• Remove it from all members' league lists\n` +
-      `• Delete all draft data and settings\n\n` +
-      `THIS CANNOT BE UNDONE!`
-    );
-
-    if (!confirmDelete) return;
-
-    const doubleConfirm = window.confirm(
-      `Last chance! Type the league name to confirm deletion.\n\n` +
-      `Expected: "${leagueData.name}"\n\n` +
-      `Are you absolutely sure you want to delete this league?`
-    );
-
-    if (!doubleConfirm) return;
-
     try {
-      // Remove league ID from all members' user documents
       const membersToUpdate = leagueData.members || [];
       
       for (const memberId of membersToUpdate) {
@@ -302,14 +282,12 @@ function LeagueRules() {
         }
       }
 
-      // Delete all member documents in the subcollection
       const membersRef = collection(db, "leagues", leagueId, "members");
       const memberDocs = await getDocs(membersRef);
       for (const memberDoc of memberDocs.docs) {
         await deleteDoc(memberDoc.ref);
       }
 
-      // Delete draft metadata if it exists
       try {
         const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
         await deleteDoc(draftRef);
@@ -317,15 +295,14 @@ function LeagueRules() {
         console.warn("No draft metadata to delete:", error);
       }
 
-      // Delete the main league document
       await deleteDoc(doc(db, "leagues", leagueId));
 
-      alert("League deleted successfully!");
-      navigate("/home");
+      showSuccess("League Deleted", "League has been permanently deleted!");
+      setTimeout(() => navigate("/home"), 2000);
 
     } catch (error) {
       console.error("Error deleting league:", error);
-      setError("Failed to delete league. Please try again.");
+      showError("Error", "Failed to delete league. Please try again.");
     }
   };
 
@@ -335,9 +312,7 @@ function LeagueRules() {
       return;
     }
 
-    // Validate live draft datetime if applicable
     if (formState.draftType === "live" && formState.draftDate) {
-      // Parse the datetime components manually to avoid timezone issues
       const [datePart, timePart] = formState.draftDate.split('T');
       const [year, month, day] = datePart.split('-').map(Number);
       const [hours, minutes] = timePart.split(':').map(Number);
@@ -361,7 +336,6 @@ function LeagueRules() {
     };
 
     if (formState.draftType === "live" && formState.draftDate) {
-      // Parse datetime components manually to maintain timezone consistency
       const [datePart, timePart] = formState.draftDate.split('T');
       const [year, month, day] = datePart.split('-').map(Number);
       const [hours, minutes] = timePart.split(':').map(Number);
@@ -375,26 +349,21 @@ function LeagueRules() {
 
     try {
       await updateDoc(doc(db, "leagues", leagueId), update);
-      setError(""); // Clear any previous errors
-      window.location.reload();
+      setError("");
+      showSuccess("Settings Updated!", "League settings have been successfully updated.");
+      setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
       console.error("Error updating league:", error);
       setError("Failed to update league settings. Please try again.");
     }
   };
 
-  // Get minimum datetime (15 minutes from now)
   const getMinDateTime = () => {
-    const now = new Date();
-    const minTime = new Date(now.getTime() + 15 * 60 * 1000);
-    
-    // Always allow today's date by setting min to start of today
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return today.toISOString().slice(0, 16);
   };
 
-  // Get max date (August 20, 2025) in YYYY-MM-DDTHH:MM format
   const getMaxDate = () => {
     const maxDate = new Date('2025-08-20T23:59');
     return maxDate.toISOString().slice(0, 16);
@@ -411,7 +380,48 @@ function LeagueRules() {
     }
   };
 
-  if (!leagueData) return <div>Loading...</div>;
+  const getDraftDisplayText = (draftType) => {
+    switch (draftType) {
+      case "manual":
+        return "Manual Draft (Commissioner Enters Teams)";
+      case "live":
+        return "Live Draft";
+      default:
+        return draftType;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
+        <LeagueNavBar />
+        <div style={{ 
+          padding: "40px 20px", 
+          textAlign: "center",
+          color: "#64748b",
+          fontSize: "16px"
+        }}>
+          Loading league settings...
+        </div>
+      </div>
+    );
+  }
+
+  if (!leagueData) {
+    return (
+      <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
+        <LeagueNavBar />
+        <div style={{ 
+          padding: "40px 20px", 
+          textAlign: "center",
+          color: "#dc2626",
+          fontSize: "16px"
+        }}>
+          League not found.
+        </div>
+      </div>
+    );
+  }
 
   const weeks = [
     "Aug 23 - Sep 1", "Sep 2 - 7", "Sep 8 - 14", "Sep 15 - 21", "Sep 22 - 28",
@@ -430,376 +440,1111 @@ function LeagueRules() {
   const getWeekColor = (i) => {
     const m = formState.maxManagers;
     const isPlayoff = (m === 8 && i >= 12) || ((m === 10 || m === 12) && i >= 11);
-    if (i < 3) return "red";
-    if (isPlayoff) return "lightblue";
-    return "lightgreen";
-  };
-
-  const getDraftDisplayText = (draftType) => {
-    switch (draftType) {
-      case "manual":
-        return "Manual Draft (Commissioner Enters Teams)";
-      case "live":
-        return "Live Draft";
-      default:
-        return draftType;
-    }
+    if (i < 3) return "#fecaca";
+    if (isPlayoff) return "#bfdbfe";
+    return "#bbf7d0";
   };
 
   return (
-    <div>
+    <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
       <LeagueNavBar />
-      <div style={{ padding: "1rem" }}>
-        <h3>League ID: {leagueId}</h3>
-        <h2>League Rules</h2>
 
+      {/* Header */}
+      <div style={{ 
+        padding: "20px 16px 16px 16px",
+        background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
+        color: "white"
+      }}>
+        <h1 style={{ 
+          fontSize: "24px", 
+          fontWeight: "700", 
+          margin: "0 0 8px 0",
+          textAlign: "center"
+        }}>
+          League Settings
+        </h1>
+        <p style={{
+          fontSize: "14px",
+          opacity: "0.9",
+          textAlign: "center",
+          margin: 0
+        }}>
+          League ID: {leagueId}
+        </p>
+      </div>
+
+      <div style={{ padding: "20px 16px" }}>
+        {/* Draft Status Alert */}
         {draftStarted && (
           <div style={{ 
-            padding: "0.75rem", 
-            backgroundColor: leagueData?.draftComplete ? "#d4edda" : "#fff3cd", 
-            border: `1px solid ${leagueData?.draftComplete ? "#c3e6cb" : "#ffeaa7"}`, 
-            borderRadius: "4px", 
-            marginBottom: "1rem" 
+            padding: "16px", 
+            backgroundColor: leagueData?.draftComplete ? "#ecfdf5" : "#fef3c7", 
+            border: `2px solid ${leagueData?.draftComplete ? "#10b981" : "#f59e0b"}`, 
+            borderRadius: "12px", 
+            marginBottom: "20px",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px"
           }}>
-            <strong>{leagueData?.draftComplete ? "✅ Draft has concluded:" : "⚠️ Draft has started:"}</strong> League settings are now locked and cannot be changed.
+            {leagueData?.draftComplete ? (
+              <CheckCircle size={24} style={{ color: "#059669", flexShrink: 0 }} />
+            ) : (
+              <Lock size={24} style={{ color: "#d97706", flexShrink: 0 }} />
+            )}
+            <div>
+              <div style={{ 
+                fontWeight: "600", 
+                color: leagueData?.draftComplete ? "#059669" : "#92400e",
+                marginBottom: "4px"
+              }}>
+                {leagueData?.draftComplete ? "Draft Completed" : "Draft In Progress"}
+              </div>
+              <div style={{ 
+                fontSize: "14px", 
+                color: leagueData?.draftComplete ? "#047857" : "#a16207"
+              }}>
+                League settings are now locked and cannot be changed.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error Alert */}
+        {error && (
+          <div style={{ 
+            padding: "16px", 
+            backgroundColor: "#fef2f2", 
+            border: "2px solid #ef4444", 
+            borderRadius: "12px", 
+            marginBottom: "20px",
+            display: "flex",
+            alignItems: "center",
+            gap: "12px"
+          }}>
+            <AlertTriangle size={24} style={{ color: "#dc2626", flexShrink: 0 }} />
+            <div style={{ color: "#dc2626", fontSize: "14px" }}>
+              {error}
+            </div>
           </div>
         )}
 
         {isAdmin ? (
-          <div style={{ marginBottom: "1rem" }}>
-            <label>
-              League Name:
-              <input 
-                value={formState.name} 
-                onChange={(e) => handleInputChange("name", e.target.value)}
-                disabled={draftStarted}
-                style={{ opacity: draftStarted ? 0.6 : 1 }}
-              />
-            </label><br />
-            
-            <label>
-              Draft Type:
-              <select 
-                value={formState.draftType} 
-                onChange={(e) => handleInputChange("draftType", e.target.value)}
-                disabled={draftStarted}
-                style={{ opacity: draftStarted ? 0.6 : 1 }}
-              >
-                <option value="manual">Manual Draft (Commissioner Enters Teams)</option>
-                <option value="live">Live Draft</option>
-              </select>
-            </label><br />
-
-            <label>
-              Draft Order:
-              <select 
-                value={formState.draftOrderType} 
-                onChange={(e) => handleInputChange("draftOrderType", e.target.value)}
-                disabled={draftStarted}
-                style={{ opacity: draftStarted ? 0.6 : 1 }}
-              >
-                <option value="random">Random Order (Determined at Draft Start)</option>
-                <option value="admin">Commissioner Sets Order</option>
-              </select>
-            </label><br />
-
-            {formState.draftType === "live" && (
-              <>
-                <label>
-                  Draft Date & Time:
-                  <input 
-                    type="datetime-local" 
-                    value={formState.draftDate} 
-                    onChange={(e) => handleInputChange("draftDate", e.target.value)}
-                    min={getMinDateTime()}
-                    max={getMaxDate()}
-                    disabled={draftStarted}
-                    style={{ opacity: draftStarted ? 0.6 : 1 }}
-                  />
-                </label><br />
-                <div style={{ fontSize: "0.85em", color: "#666", margin: "0.25rem 0" }}>
-                  Draft must be scheduled at least 15 minutes from now.
-                </div>
-                <label>
-                  OTC Interval (minutes):
-                  <select 
-                    value={formState.timePerPick} 
-                    onChange={(e) => handleInputChange("timePerPick", e.target.value)}
-                    disabled={draftStarted}
-                    style={{ opacity: draftStarted ? 0.6 : 1 }}
-                  >
-                    <option value={1}>1 minute</option>
-                    <option value={2}>2 minutes</option>
-                    <option value={5}>5 minutes</option>
-                    <option value={10}>10 minutes</option>
-                  </select>
-                </label><br />
-              </>
-            )}
-            
-            <label>
-              Max Managers:
-              <select 
-                value={formState.maxManagers} 
-                onChange={(e) => handleInputChange("maxManagers", parseInt(e.target.value))}
-                disabled={draftStarted}
-                style={{ opacity: draftStarted ? 0.6 : 1 }}
-              >
-                {[8, 10, 12].map((num) => (
-                  <option key={num} value={num}>{num}</option>
-                ))}
-              </select>
-            </label>
-            
-            {error && <p style={{ color: "red" }}>{error}</p>}
-            
-            <div style={{ marginTop: "1rem" }}>
-              <button 
-                onClick={handleConfirmChanges}
-                disabled={draftStarted}
-                style={{ 
-                  opacity: draftStarted ? 0.6 : 1,
-                  cursor: draftStarted ? "not-allowed" : "pointer",
-                  marginRight: "1rem"
-                }}
-              >
-                {draftStarted ? "Settings Locked" : "Confirm Changes"}
-              </button>
-              
-              <button 
-                onClick={handleDeleteLeague}
-                style={{ 
-                  backgroundColor: "#dc3545",
-                  color: "white",
-                  border: "none",
-                  padding: "0.5rem 1rem",
-                  borderRadius: "4px",
-                  cursor: "pointer"
-                }}
-                onMouseOver={(e) => e.target.style.backgroundColor = "#c82333"}
-                onMouseOut={(e) => e.target.style.backgroundColor = "#dc3545"}
-              >
-                🗑️ Delete League
-              </button>
-            </div>
-          </div>
-        ) : (
           <>
-            <p><strong>League Name:</strong> {leagueData.name}</p>
-            <p><strong>Admin:</strong> {adminName || "Unknown"}</p>
-            <p><strong>League ID:</strong> {leagueId}</p>
-            <p><strong>Draft Type:</strong> {getDraftDisplayText(leagueData.draftType)}</p>
-            <p><strong>Draft Order:</strong> {getDraftOrderTypeDisplay(leagueData.draftOrderType)}</p>
-            {leagueData.draftType === "manual" && (
-              <p><strong>Manual Draft:</strong> Commissioner will enter team selections after offline draft</p>
-            )}
-            {leagueData.draftType === "live" && leagueData.draftDate && (
-              <>
-                <p><strong>Scheduled Draft:</strong> {
-                  leagueData.draftDate?.toDate().toLocaleString("en-US", {
-                    timeZone: "America/New_York", // EDT/EST
-                    weekday: "long",
-                    year: "numeric", 
-                    month: "long", 
-                    day: "numeric",
-                    hour: "numeric", 
-                    minute: "2-digit",
-                    timeZoneName: "short"
-                  })
-                }</p>
-                <p><strong>OTC Interval:</strong> {leagueData.timePerPick} minutes</p>
-              </>
-            )}
-          </>
-        )}
-
-        {/* Draft Order Management Section */}
-        {isAdmin && formState.draftOrderType === "admin" && !draftStarted && (
-          <div style={{ 
-            marginTop: "2rem", 
-            padding: "1rem", 
-            backgroundColor: "#f8f9fa", 
-            borderRadius: "8px",
-            border: "1px solid #dee2e6"
-          }}>
-            <h3>Draft Order Management</h3>
-            
-            {!isLeagueFull ? (
-              <div style={{ 
-                padding: "1rem", 
-                backgroundColor: "#fff3cd", 
-                border: "1px solid #ffeaa7", 
-                borderRadius: "4px", 
-                marginBottom: "1rem" 
+            {/* League Settings */}
+            <div style={{
+              backgroundColor: "white",
+              borderRadius: "12px",
+              padding: "20px",
+              marginBottom: "20px",
+              boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+            }}>
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                marginBottom: "20px"
               }}>
-                <strong>⚠️ League must be full ({leagueData.maxManagers} managers) before you can set the draft order.</strong>
-                <br />
-                Current: {members.length}/{leagueData.maxManagers} managers
+                <Settings size={24} style={{ color: "#1e40af" }} />
+                <h2 style={{
+                  fontSize: "18px",
+                  fontWeight: "600",
+                  color: "#1e293b",
+                  margin: 0
+                }}>
+                  League Configuration
+                </h2>
               </div>
-            ) : (
-              <>
-                <p>Drag and drop to reorder managers. Position 1 gets the first pick.</p>
-                
-                <div style={{ marginBottom: "1rem" }}>
-                  <button 
-                    onClick={randomizeDraftOrder}
-                    style={{ 
-                      backgroundColor: "#6c757d",
-                      color: "white",
-                      border: "none",
-                      padding: "0.5rem 1rem",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      marginRight: "1rem"
+
+              <div style={{ display: "grid", gap: "16px" }}>
+                {/* League Name */}
+                <div>
+                  <label style={{
+                    display: "block",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    color: "#374151",
+                    marginBottom: "6px"
+                  }}>
+                    League Name
+                  </label>
+                  <input 
+                    value={formState.name} 
+                    onChange={(e) => handleInputChange("name", e.target.value)}
+                    disabled={draftStarted}
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      border: "2px solid #e5e7eb",
+                      borderRadius: "8px",
+                      fontSize: "14px",
+                      backgroundColor: draftStarted ? "#f9fafb" : "white",
+                      opacity: draftStarted ? 0.6 : 1,
+                      boxSizing: "border-box"
                     }}
-                  >
-                    🎲 Randomize Order
-                  </button>
-                  
-                  <button 
-                    onClick={saveDraftOrder}
-                    style={{ 
-                      backgroundColor: "#28a745",
-                      color: "white",
-                      border: "none",
-                      padding: "0.5rem 1rem",
-                      borderRadius: "4px",
-                      cursor: "pointer"
-                    }}
-                  >
-                    💾 Save Draft Order
-                  </button>
+                  />
                 </div>
 
-                <div style={{ maxWidth: "600px" }}>
-                  {draftOrder.map((member, index) => (
-                    <div key={member.uid} style={{
-                      display: "flex",
-                      alignItems: "center",
-                      padding: "0.75rem",
-                      margin: "0.5rem 0",
-                      backgroundColor: "white",
-                      border: "1px solid #ccc",
-                      borderRadius: "4px",
-                      cursor: "move"
-                    }}>
-                      <div style={{ 
-                        marginRight: "1rem", 
-                        fontWeight: "bold", 
-                        minWidth: "30px",
-                        textAlign: "center",
-                        backgroundColor: "#007bff",
-                        color: "white",
-                        borderRadius: "50%",
-                        width: "30px",
-                        height: "30px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center"
+                {/* Draft Type */}
+                <div>
+                  <label style={{
+                    display: "block",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    color: "#374151",
+                    marginBottom: "6px"
+                  }}>
+                    Draft Type
+                  </label>
+                  <select 
+                    value={formState.draftType} 
+                    onChange={(e) => handleInputChange("draftType", e.target.value)}
+                    disabled={draftStarted}
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      border: "2px solid #e5e7eb",
+                      borderRadius: "8px",
+                      fontSize: "14px",
+                      backgroundColor: draftStarted ? "#f9fafb" : "white",
+                      opacity: draftStarted ? 0.6 : 1,
+                      boxSizing: "border-box"
+                    }}
+                  >
+                    <option value="manual">Manual Draft (Commissioner Enters Teams)</option>
+                    <option value="live">Live Draft</option>
+                  </select>
+                </div>
+
+                {/* Draft Order */}
+                <div>
+                  <label style={{
+                    display: "block",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    color: "#374151",
+                    marginBottom: "6px"
+                  }}>
+                    Draft Order
+                  </label>
+                  <select 
+                    value={formState.draftOrderType} 
+                    onChange={(e) => handleInputChange("draftOrderType", e.target.value)}
+                    disabled={draftStarted}
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      border: "2px solid #e5e7eb",
+                      borderRadius: "8px",
+                      fontSize: "14px",
+                      backgroundColor: draftStarted ? "#f9fafb" : "white",
+                      opacity: draftStarted ? 0.6 : 1,
+                      boxSizing: "border-box"
+                    }}
+                  >
+                    <option value="random">Random Order (Determined at Draft Start)</option>
+                    <option value="admin">Commissioner Sets Order</option>
+                  </select>
+                </div>
+
+                {/* Live Draft Settings */}
+                {formState.draftType === "live" && (
+                  <>
+                    <div>
+                      <label style={{
+                        display: "block",
+                        fontSize: "14px",
+                        fontWeight: "500",
+                        color: "#374151",
+                        marginBottom: "6px"
                       }}>
-                        {index + 1}
-                      </div>
-                      
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: "bold" }}>{member.name || member.username}</div>
-                        <div style={{ fontSize: "0.9em", color: "#666" }}>{member.teamName}</div>
-                      </div>
-                      
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        <button 
-                          onClick={() => handleDraftOrderChange(index, Math.max(0, index - 1))}
-                          disabled={index === 0}
-                          style={{ 
-                            fontSize: "0.8em", 
-                            padding: "0.25rem 0.5rem", 
-                            marginBottom: "0.25rem",
-                            opacity: index === 0 ? 0.5 : 1,
-                            cursor: index === 0 ? "not-allowed" : "pointer"
-                          }}
-                        >
-                          ↑
-                        </button>
-                        <button 
-                          onClick={() => handleDraftOrderChange(index, Math.min(draftOrder.length - 1, index + 1))}
-                          disabled={index === draftOrder.length - 1}
-                          style={{ 
-                            fontSize: "0.8em", 
-                            padding: "0.25rem 0.5rem",
-                            opacity: index === draftOrder.length - 1 ? 0.5 : 1,
-                            cursor: index === draftOrder.length - 1 ? "not-allowed" : "pointer"
-                          }}
-                        >
-                          ↓
-                        </button>
+                        Draft Date & Time
+                      </label>
+                      <input 
+                        type="datetime-local" 
+                        value={formState.draftDate} 
+                        onChange={(e) => handleInputChange("draftDate", e.target.value)}
+                        min={getMinDateTime()}
+                        max={getMaxDate()}
+                        disabled={draftStarted}
+                        style={{
+                          width: "100%",
+                          padding: "12px",
+                          border: "2px solid #e5e7eb",
+                          borderRadius: "8px",
+                          fontSize: "14px",
+                          backgroundColor: draftStarted ? "#f9fafb" : "white",
+                          opacity: draftStarted ? 0.6 : 1,
+                          boxSizing: "border-box"
+                        }}
+                      />
+                      <div style={{
+                        fontSize: "12px",
+                        color: "#64748b",
+                        marginTop: "4px"
+                      }}>
+                        Draft must be scheduled at least 15 minutes from now.
                       </div>
                     </div>
-                  ))}
+
+                    <div>
+                      <label style={{
+                        display: "block",
+                        fontSize: "14px",
+                        fontWeight: "500",
+                        color: "#374151",
+                        marginBottom: "6px"
+                      }}>
+                        Time Per Pick (minutes)
+                      </label>
+                      <select 
+                        value={formState.timePerPick} 
+                        onChange={(e) => handleInputChange("timePerPick", e.target.value)}
+                        disabled={draftStarted}
+                        style={{
+                          width: "100%",
+                          padding: "12px",
+                          border: "2px solid #e5e7eb",
+                          borderRadius: "8px",
+                          fontSize: "14px",
+                          backgroundColor: draftStarted ? "#f9fafb" : "white",
+                          opacity: draftStarted ? 0.6 : 1,
+                          boxSizing: "border-box"
+                        }}
+                      >
+                        <option value={1}>1 minute</option>
+                        <option value={2}>2 minutes</option>
+                        <option value={5}>5 minutes</option>
+                        <option value={10}>10 minutes</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+
+                {/* Max Managers */}
+                <div>
+                  <label style={{
+                    display: "block",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    color: "#374151",
+                    marginBottom: "6px"
+                  }}>
+                    Max Managers
+                  </label>
+                  <select 
+                    value={formState.maxManagers} 
+                    onChange={(e) => handleInputChange("maxManagers", parseInt(e.target.value))}
+                    disabled={draftStarted}
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      border: "2px solid #e5e7eb",
+                      borderRadius: "8px",
+                      fontSize: "14px",
+                      backgroundColor: draftStarted ? "#f9fafb" : "white",
+                      opacity: draftStarted ? 0.6 : 1,
+                      boxSizing: "border-box"
+                    }}
+                  >
+                    {[8, 10, 12].map((num) => (
+                      <option key={num} value={num}>{num}</option>
+                    ))}
+                  </select>
                 </div>
-              </>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ 
+                display: "flex", 
+                gap: "12px", 
+                marginTop: "20px",
+                flexWrap: "wrap"
+              }}>
+                <button 
+                  onClick={handleConfirmChanges}
+                  disabled={draftStarted}
+                  style={{ 
+                    padding: "12px 24px",
+                    backgroundColor: draftStarted ? "#9ca3af" : "#1e40af",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    cursor: draftStarted ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    transition: "all 0.2s ease"
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!draftStarted) e.target.style.backgroundColor = "#1d4ed8";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!draftStarted) e.target.style.backgroundColor = "#1e40af";
+                  }}
+                >
+                  <Save size={16} />
+                  {draftStarted ? "Settings Locked" : "Save Changes"}
+                </button>
+                
+                <button 
+                  onClick={() => setShowDeleteModal(true)}
+                  style={{ 
+                    padding: "12px 24px",
+                    backgroundColor: "#dc2626",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    transition: "all 0.2s ease"
+                  }}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = "#b91c1c"}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = "#dc2626"}
+                >
+                  <Trash2 size={16} />
+                  Delete League
+                </button>
+              </div>
+            </div>
+
+            {/* Draft Order Management */}
+            {formState.draftOrderType === "admin" && !draftStarted && (
+              <div style={{
+                backgroundColor: "white",
+                borderRadius: "12px",
+                padding: "20px",
+                marginBottom: "20px",
+                boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+              }}>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  marginBottom: "20px"
+                }}>
+                  <Trophy size={24} style={{ color: "#1e40af" }} />
+                  <h2 style={{
+                    fontSize: "18px",
+                    fontWeight: "600",
+                    color: "#1e293b",
+                    margin: 0
+                  }}>
+                    Draft Order Management
+                  </h2>
+                </div>
+                
+                {!isLeagueFull ? (
+                  <div style={{ 
+                    padding: "16px", 
+                    backgroundColor: "#fef3c7", 
+                    border: "2px solid #f59e0b", 
+                    borderRadius: "12px", 
+                    marginBottom: "16px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px"
+                  }}>
+                    <AlertTriangle size={24} style={{ color: "#d97706", flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontWeight: "600", color: "#92400e", marginBottom: "4px" }}>
+                        League must be full before setting draft order
+                      </div>
+                      <div style={{ fontSize: "14px", color: "#a16207" }}>
+                        Current: {members.length}/{leagueData.maxManagers} managers
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p style={{ 
+                      color: "#64748b", 
+                      marginBottom: "16px",
+                      fontSize: "14px"
+                    }}>
+                      Drag and drop to reorder managers. Position 1 gets the first pick.
+                    </p>
+                    
+                    <div style={{ 
+                      display: "flex", 
+                      gap: "12px", 
+                      marginBottom: "20px",
+                      flexWrap: "wrap"
+                    }}>
+                      <button 
+                        onClick={randomizeDraftOrder}
+                        style={{ 
+                          padding: "12px 20px",
+                          backgroundColor: "#6b7280",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "8px",
+                          fontSize: "14px",
+                          fontWeight: "500",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          transition: "all 0.2s ease"
+                        }}
+                        onMouseEnter={(e) => e.target.style.backgroundColor = "#4b5563"}
+                        onMouseLeave={(e) => e.target.style.backgroundColor = "#6b7280"}
+                      >
+                        <Shuffle size={16} />
+                        Randomize Order
+                      </button>
+                      
+                      <button 
+                        onClick={saveDraftOrder}
+                        style={{ 
+                          padding: "12px 20px",
+                          backgroundColor: "#059669",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "8px",
+                          fontSize: "14px",
+                          fontWeight: "500",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          transition: "all 0.2s ease"
+                        }}
+                        onMouseEnter={(e) => e.target.style.backgroundColor = "#047857"}
+                        onMouseLeave={(e) => e.target.style.backgroundColor = "#059669"}
+                      >
+                        <Save size={16} />
+                        Save Draft Order
+                      </button>
+                    </div>
+
+                    <div style={{ maxWidth: "600px" }}>
+                      {draftOrder.map((member, index) => (
+                        <div key={member.uid} style={{
+                          display: "flex",
+                          alignItems: "center",
+                          padding: "12px",
+                          margin: "8px 0",
+                          backgroundColor: "#f8fafc",
+                          border: "2px solid #e2e8f0",
+                          borderRadius: "12px",
+                          transition: "all 0.2s ease"
+                        }}>
+                          <div style={{ 
+                            marginRight: "16px", 
+                            fontWeight: "700", 
+                            minWidth: "40px",
+                            textAlign: "center",
+                            backgroundColor: "#1e40af",
+                            color: "white",
+                            borderRadius: "50%",
+                            width: "40px",
+                            height: "40px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "16px"
+                          }}>
+                            {index + 1}
+                          </div>
+                          
+                          <div style={{ flex: 1 }}>
+                            <div style={{ 
+                              fontWeight: "600", 
+                              color: "#1e293b",
+                              fontSize: "16px",
+                              marginBottom: "2px"
+                            }}>
+                              {member.name || member.username}
+                            </div>
+                            <div style={{ 
+                              fontSize: "14px", 
+                              color: "#64748b" 
+                            }}>
+                              {member.teamName}
+                            </div>
+                          </div>
+                          
+                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <button 
+                              onClick={() => handleDraftOrderChange(index, Math.max(0, index - 1))}
+                              disabled={index === 0}
+                              style={{ 
+                                padding: "6px 12px",
+                                backgroundColor: index === 0 ? "#e5e7eb" : "#1e40af",
+                                color: index === 0 ? "#9ca3af" : "white",
+                                border: "none",
+                                borderRadius: "6px",
+                                fontSize: "12px",
+                                fontWeight: "500",
+                                cursor: index === 0 ? "not-allowed" : "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                transition: "all 0.2s ease"
+                              }}
+                            >
+                              <ChevronUp size={14} />
+                            </button>
+                            <button 
+                              onClick={() => handleDraftOrderChange(index, Math.min(draftOrder.length - 1, index + 1))}
+                              disabled={index === draftOrder.length - 1}
+                              style={{ 
+                                padding: "6px 12px",
+                                backgroundColor: index === draftOrder.length - 1 ? "#e5e7eb" : "#1e40af",
+                                color: index === draftOrder.length - 1 ? "#9ca3af" : "white",
+                                border: "none",
+                                borderRadius: "6px",
+                                fontSize: "12px",
+                                fontWeight: "500",
+                                cursor: index === draftOrder.length - 1 ? "not-allowed" : "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                transition: "all 0.2s ease"
+                              }}
+                            >
+                              <ChevronDown size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
+          </>
+        ) : (
+          /* Non-Admin View */
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: "12px",
+            padding: "20px",
+            marginBottom: "20px",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+          }}>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              marginBottom: "20px"
+            }}>
+              <Shield size={24} style={{ color: "#1e40af" }} />
+              <h2 style={{
+                fontSize: "18px",
+                fontWeight: "600",
+                color: "#1e293b",
+                margin: 0
+              }}>
+                League Information
+              </h2>
+            </div>
+
+            <div style={{ display: "grid", gap: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontWeight: "500", color: "#374151" }}>League Name:</span>
+                <span style={{ color: "#1e293b" }}>{leagueData.name}</span>
+              </div>
+              
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontWeight: "500", color: "#374151" }}>Commissioner:</span>
+                <span style={{ color: "#1e293b" }}>{adminName || "Unknown"}</span>
+              </div>
+              
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontWeight: "500", color: "#374151" }}>Draft Type:</span>
+                <span style={{ color: "#1e293b" }}>{getDraftDisplayText(leagueData.draftType)}</span>
+              </div>
+              
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontWeight: "500", color: "#374151" }}>Draft Order:</span>
+                <span style={{ color: "#1e293b" }}>{getDraftOrderTypeDisplay(leagueData.draftOrderType)}</span>
+              </div>
+
+              {leagueData.draftType === "live" && leagueData.draftDate && (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontWeight: "500", color: "#374151" }}>Draft Date:</span>
+                    <span style={{ color: "#1e293b" }}>
+                      {leagueData.draftDate?.toDate().toLocaleString("en-US", {
+                        timeZone: "America/New_York",
+                        weekday: "long",
+                        year: "numeric", 
+                        month: "long", 
+                        day: "numeric",
+                        hour: "numeric", 
+                        minute: "2-digit",
+                        timeZoneName: "short"
+                      })}
+                    </span>
+                  </div>
+                  
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontWeight: "500", color: "#374151" }}>Time Per Pick:</span>
+                    <span style={{ color: "#1e293b" }}>{leagueData.timePerPick} minutes</span>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
 
-        <h3>Managers</h3>
-        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1.5rem" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid #ccc", textAlign: "left" }}>
-              <th>Name</th>
-              <th>Username</th>
-              <th>Team Name</th>
-              {isAdmin && <th>Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((m, idx) => (
-              <tr key={idx} style={{ borderBottom: "1px solid #eee" }}>
-                <td>{m.name}</td>
-                <td>{m.username}</td>
-                <td>{m.teamName}</td>
-                {isAdmin && (
-                  <td>
+        {/* League Members */}
+        <div style={{
+          backgroundColor: "white",
+          borderRadius: "12px",
+          padding: "20px",
+          marginBottom: "20px",
+          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+        }}>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            marginBottom: "20px"
+          }}>
+            <Users size={24} style={{ color: "#1e40af" }} />
+            <h2 style={{
+              fontSize: "18px",
+              fontWeight: "600",
+              color: "#1e293b",
+              margin: 0
+            }}>
+              League Members ({members.length}/{leagueData.maxManagers})
+            </h2>
+          </div>
+
+          {members.length === 0 ? (
+            <div style={{
+              textAlign: "center",
+              color: "#64748b",
+              padding: "40px 20px",
+              fontSize: "16px"
+            }}>
+              No members in this league yet.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: "8px" }}>
+              {members.map((member, idx) => (
+                <div key={idx} style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "12px",
+                  backgroundColor: "#f8fafc",
+                  borderRadius: "8px",
+                  border: "1px solid #e2e8f0"
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{
+                      fontWeight: "600",
+                      color: "#1e293b",
+                      marginBottom: "2px"
+                    }}>
+                      {member.name || "Unknown"}
+                    </div>
+                    <div style={{
+                      fontSize: "14px",
+                      color: "#64748b"
+                    }}>
+                      {member.teamName} • @{member.username}
+                    </div>
+                  </div>
+                  
+                  {isAdmin && (
                     <button 
-                      onClick={() => handleRemoveManager(m.uid, m.name || m.username)}
+                      onClick={() => handleRemoveManager(member.uid, member.name || member.username)}
                       disabled={draftStarted}
                       style={{ 
-                        opacity: draftStarted ? 0.6 : 1,
-                        cursor: draftStarted ? "not-allowed" : "pointer"
+                        padding: "8px 16px",
+                        backgroundColor: draftStarted ? "#e5e7eb" : "#dc2626",
+                        color: draftStarted ? "#9ca3af" : "white",
+                        border: "none",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                        fontWeight: "500",
+                        cursor: draftStarted ? "not-allowed" : "pointer",
+                        transition: "all 0.2s ease"
                       }}
                     >
                       {draftStarted ? "Locked" : "Remove"}
                     </button>
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <h3>Season Timeline</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(14, minmax(110px, 1fr))", gap: "6px", textAlign: "center" }}>
-          {weeks.map((date, i) => (
-            <div key={i} style={{
-              border: "1px solid #ccc",
-              background: getWeekColor(i),
-              padding: "0.5rem",
-              fontSize: "0.75rem",
-              borderRadius: "4px"
-            }}>
-              <div style={{ fontWeight: "bold" }}>Week {i + 1}</div>
-              <div>{date}</div>
-              <div>{getWeekLabel(i)}</div>
-              {i === 9 && <div><em>Last week of free agency</em></div>}
-              <div>Captain Bonus: {i === 0 ? "No" : "Yes"}</div>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
 
-        <div style={{ marginTop: "1rem", fontSize: "0.85rem" }}>
-          <p><strong style={{ color: "green" }}>Green</strong> = Game bonuses active</p>
-          <p><strong style={{ color: "red" }}>Red</strong> = Game bonuses not active</p>
-          <p><strong style={{ color: "lightblue" }}>Blue</strong> = Playoffs or Championship</p>
+        {/* Season Timeline */}
+        <div style={{
+          backgroundColor: "white",
+          borderRadius: "12px",
+          padding: "20px",
+          marginBottom: "20px",
+          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+        }}>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            marginBottom: "20px"
+          }}>
+            <Calendar size={24} style={{ color: "#1e40af" }} />
+            <h2 style={{
+              fontSize: "18px",
+              fontWeight: "600",
+              color: "#1e293b",
+              margin: 0
+            }}>
+              2025 Season Timeline
+            </h2>
+          </div>
+
+          <div style={{ 
+            display: "grid", 
+            gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", 
+            gap: "8px"
+          }}>
+            {weeks.map((date, i) => (
+              <div key={i} style={{
+                border: "2px solid #e2e8f0",
+                backgroundColor: getWeekColor(i),
+                padding: "12px 8px",
+                fontSize: "12px",
+                borderRadius: "8px",
+                textAlign: "center"
+              }}>
+                <div style={{ fontWeight: "700", marginBottom: "4px" }}>
+                  Week {i + 1}
+                </div>
+                <div style={{ marginBottom: "4px", fontSize: "11px" }}>
+                  {date}
+                </div>
+                <div style={{ 
+                  fontSize: "10px", 
+                  fontWeight: "600",
+                  color: "#374151",
+                  marginBottom: "4px"
+                }}>
+                  {getWeekLabel(i)}
+                </div>
+                {i === 9 && (
+                  <div style={{ 
+                    fontSize: "9px", 
+                    fontStyle: "italic",
+                    color: "#64748b",
+                    marginBottom: "4px"
+                  }}>
+                    Last week of free agency
+                  </div>
+                )}
+                <div style={{ fontSize: "10px", color: "#374151" }}>
+                  Captain Bonus: {i === 0 ? "No" : "Yes"}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: "16px", fontSize: "12px", color: "#64748b" }}>
+            <div style={{ marginBottom: "4px" }}>
+              <span style={{ 
+                display: "inline-block", 
+                width: "12px", 
+                height: "12px", 
+                backgroundColor: "#bbf7d0", 
+                marginRight: "8px",
+                borderRadius: "2px"
+              }}></span>
+              Green = Game bonuses active
+            </div>
+            <div style={{ marginBottom: "4px" }}>
+              <span style={{ 
+                display: "inline-block", 
+                width: "12px", 
+                height: "12px", 
+                backgroundColor: "#fecaca", 
+                marginRight: "8px",
+                borderRadius: "2px"
+              }}></span>
+              Red = Game bonuses not active
+            </div>
+            <div>
+              <span style={{ 
+                display: "inline-block", 
+                width: "12px", 
+                height: "12px", 
+                backgroundColor: "#bfdbfe", 
+                marginRight: "8px",
+                borderRadius: "2px"
+              }}></span>
+              Blue = Playoffs or Championship
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Delete League Modal */}
+      {showDeleteModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+          padding: "16px"
+        }}>
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: "16px",
+            padding: "24px",
+            maxWidth: "500px",
+            width: "100%",
+            textAlign: "center",
+            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
+          }}>
+            <div style={{
+              width: "60px",
+              height: "60px",
+              backgroundColor: "#dc2626",
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 16px auto"
+            }}>
+              <AlertTriangle size={32} style={{ color: "white" }} />
+            </div>
+
+            <h3 style={{ 
+              fontSize: "20px", 
+              fontWeight: "700", 
+              marginBottom: "12px",
+              color: "#1e293b"
+            }}>
+              Delete League "{leagueData.name}"?
+            </h3>
+            
+            <div style={{ 
+              marginBottom: "24px",
+              color: "#64748b",
+              fontSize: "14px",
+              textAlign: "left"
+            }}>
+              <p style={{ marginBottom: "12px" }}>This will permanently:</p>
+              <ul style={{ marginLeft: "20px", marginBottom: "16px" }}>
+                <li>Delete the league and all its data</li>
+                <li>Remove it from all members' league lists</li>
+                <li>Delete all draft data and settings</li>
+              </ul>
+              <p style={{ 
+                fontWeight: "600", 
+                color: "#dc2626",
+                textAlign: "center"
+              }}>
+                THIS CANNOT BE UNDONE!
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button
+                onClick={closeModals}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  backgroundColor: "#6b7280",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  cursor: "pointer"
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteLeague}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  backgroundColor: "#dc2626",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  cursor: "pointer"
+                }}
+              >
+                Delete League
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+          padding: "16px"
+        }}>
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: "16px",
+            padding: "24px",
+            maxWidth: "400px",
+            width: "100%",
+            textAlign: "center",
+            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
+          }}>
+            <div style={{
+              width: "60px",
+              height: "60px",
+              backgroundColor: "#10b981",
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 16px auto"
+            }}>
+              <CheckCircle size={32} style={{ color: "white" }} />
+            </div>
+
+            <h3 style={{ 
+              fontSize: "18px", 
+              fontWeight: "600", 
+              marginBottom: "8px",
+              color: "#1e293b"
+            }}>
+              {modalTitle}
+            </h3>
+            
+            <p style={{ 
+              marginBottom: "24px",
+              color: "#64748b",
+              fontSize: "14px"
+            }}>
+              {modalMessage}
+            </p>
+
+            <button
+              onClick={closeModals}
+              style={{
+                width: "100%",
+                padding: "12px",
+                backgroundColor: "#10b981",
+                color: "white",
+                border: "none",
+                borderRadius: "8px",
+                fontSize: "14px",
+                fontWeight: "500",
+                cursor: "pointer"
+              }}
+            >
+              Great!
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Error Modal */}
+      {showErrorModal && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+          padding: "16px"
+        }}>
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: "16px",
+            padding: "24px",
+            maxWidth: "400px",
+            width: "100%",
+            textAlign: "center",
+            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
+          }}>
+            <div style={{
+              width: "60px",
+              height: "60px",
+              backgroundColor: "#ef4444",
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 16px auto"
+            }}>
+              <AlertTriangle size={32} style={{ color: "white" }} />
+            </div>
+
+            <h3 style={{ 
+              fontSize: "18px", 
+              fontWeight: "600", 
+              marginBottom: "8px",
+              color: "#1e293b"
+            }}>
+              {modalTitle}
+            </h3>
+            
+            <p style={{ 
+              marginBottom: "24px",
+              color: "#64748b",
+              fontSize: "14px"
+            }}>
+              {modalMessage}
+            </p>
+
+            <button
+              onClick={closeModals}
+              style={{
+                width: "100%",
+                padding: "12px",
+                backgroundColor: "#6b7280",
+                color: "white",
+                border: "none",
+                borderRadius: "8px",
+                fontSize: "14px",
+                fontWeight: "500",
+                cursor: "pointer"
+              }}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom spacing */}
+      <div style={{ height: "80px" }} />
     </div>
   );
 }
