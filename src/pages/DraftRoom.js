@@ -800,10 +800,43 @@ const handleStartDraft = async () => {
   const currentManager = currentUid ? userMap[currentUid] : null;
 
   return (
-    <div>
+<div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
       <LeagueNavBar />
-      <h2>Draft Room - Live Draft</h2>
-      <p><strong>League ID:</strong> {leagueId}</p>
+
+      {/* Header */}
+      <div style={{ 
+        padding: "20px 16px 16px 16px",
+        background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
+        color: "white"
+      }}>
+        <h1 style={{ 
+          fontSize: "24px", 
+          fontWeight: "700", 
+          margin: "0 0 8px 0",
+          textAlign: "center"
+        }}>
+          Draft Room - Live Draft
+        </h1>
+        <p style={{
+          fontSize: "14px",
+          opacity: "0.9",
+          textAlign: "center",
+          margin: "0 0 4px 0"
+        }}>
+          {Object.keys(userMap).length} managers joined
+        </p>
+        {leagueId && (
+          <p style={{
+            fontSize: "12px",
+            opacity: "0.8",
+            textAlign: "center",
+            margin: 0,
+            fontFamily: "monospace"
+          }}>
+            League: {leagueId}
+          </p>
+        )}
+      </div>
 
       {/* Draft Completion Modal */}
       {showCompletionModal && (
@@ -882,60 +915,242 @@ const handleStartDraft = async () => {
         </div>
       )}
 
+      {/* Admin Controls Bar */}
       {isLeagueAdmin && draftData && (
-        <button onClick={handleRestartDraft} style={{ marginTop: "1rem", color: "red" }}>
-          Restart Draft
-        </button>
-      )}
-
-      {draftData.draftComplete && (
-        <p style={{ color: "green", fontWeight: "bold" }}>✅ Draft Complete!</p>
-      )}
-
-      {/* Timer Display */}
-      {!draftData.draftComplete && timeRemaining > 0 && (
-        <div style={{ 
-          padding: "1rem", 
-          backgroundColor: "#fff3cd", 
-          border: "1px solid #ffeaa7", 
-          borderRadius: "4px", 
-          marginBottom: "1rem",
-          textAlign: "center"
+        <div style={{
+          backgroundColor: "white",
+          borderBottom: "1px solid #e2e8f0",
+          padding: "12px 16px",
+          display: "flex",
+          justifyContent: "center"
         }}>
-          <h3 style={{ margin: "0 0 0.5rem 0", color: "#856404" }}>
-            Time Remaining: {formatTime(timeRemaining)}
-          </h3>
-          {timeRemaining <= 30 && (
-            <p style={{ margin: 0, color: "#d63031", fontWeight: "bold" }}>
-              ⚠️ Auto-pick in {timeRemaining} seconds!
-            </p>
-          )}
+          <button 
+            onClick={handleRestartDraft}
+            style={{
+              backgroundColor: "#dc2626",
+              color: "white",
+              border: "none",
+              borderRadius: "8px",
+              padding: "8px 16px",
+              fontSize: "14px",
+              fontWeight: "600",
+              cursor: "pointer",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+              transition: "all 0.2s ease"
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = "#b91c1c";
+              e.target.style.transform = "translateY(-1px)";
+              e.target.style.boxShadow = "0 4px 12px rgba(220, 38, 38, 0.3)";
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = "#dc2626";
+              e.target.style.transform = "translateY(0)";
+              e.target.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.1)";
+            }}
+          >
+            🔄 Restart Draft
+          </button>
         </div>
       )}
 
-      {isMyTurn ? (
-        <p>It's <strong>your</strong> turn</p>
-      ) : currentManager ? (
-        <p>It's <strong>{currentManager.displayName}</strong>'s turn</p>
-      ) : (
-        <p>Determining next pick...</p>
-      )}
+      {/* Content Area */}
+      <div style={{ padding: "16px" }}>
+        
+        {draftData.draftComplete && (
+          <div style={{
+            backgroundColor: "#d1fae5",
+            border: "1px solid #10b981",
+            borderRadius: "8px",
+            padding: "12px 16px",
+            marginBottom: "16px",
+            textAlign: "center"
+          }}>
+            <p style={{ 
+              color: "#065f46", 
+              fontWeight: "bold", 
+              margin: 0,
+              fontSize: "16px"
+            }}>
+              ✅ Draft Complete!
+            </p>
+          </div>
+        )}
 
-      <h3>Available Teams</h3>
-      <select value={teamPick} onChange={(e) => setTeamPick(e.target.value)} disabled={disableDrafting}>
-        <option value="">-- Select a Team --</option>
-        {draftData.availableTeams.map((teamId) => {
-          const teamData = allTeams[teamId];
-          const label = teamData?.school || teamId;
-          return (
-            <option key={teamId} value={teamId}>{label}</option>
-          );
-        })}
-      </select>
-      <button onClick={handlePick} disabled={disableDrafting || !teamPick}>Draft</button>
+        {/* Timer Display */}
+        {!draftData.draftComplete && timeRemaining > 0 && (
+          <div style={{ 
+            padding: "16px", 
+            backgroundColor: timeRemaining <= 30 ? "#fef2f2" : "#fff7ed", 
+            border: `2px solid ${timeRemaining <= 30 ? "#ef4444" : "#f97316"}`, 
+            borderRadius: "12px", 
+            marginBottom: "16px",
+            textAlign: "center",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)"
+          }}>
+            <h3 style={{ 
+              margin: "0 0 8px 0", 
+              color: timeRemaining <= 30 ? "#dc2626" : "#ea580c",
+              fontSize: "20px",
+              fontWeight: "700"
+            }}>
+              ⏰ Time Remaining: {formatTime(timeRemaining)}
+            </h3>
+            {timeRemaining <= 30 && (
+              <p style={{ 
+                margin: 0, 
+                color: "#dc2626", 
+                fontWeight: "bold",
+                fontSize: "14px"
+              }}>
+                ⚠️ Auto-pick in {timeRemaining} seconds!
+              </p>
+            )}
+          </div>
+        )}
 
-      <h3>Full Draft Board</h3>
-      <DraftBoard draftData={draftData} userMap={userMap} allTeams={allTeams} />
+{/* Current Turn Display - Only show when draft is NOT complete */}
+        {!draftData.draftComplete && (
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: "12px",
+            padding: "16px",
+            marginBottom: "16px",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+            border: "1px solid #e2e8f0",
+            textAlign: "center"
+          }}>
+            {isMyTurn ? (
+              <p style={{
+                fontSize: "18px",
+                fontWeight: "700",
+                color: "#059669",
+                margin: 0
+              }}>
+                🎯 It's <strong>your</strong> turn to pick!
+              </p>
+            ) : currentManager ? (
+              <p style={{
+                fontSize: "16px",
+                fontWeight: "600",
+                color: "#1e293b",
+                margin: 0
+              }}>
+                Waiting for <strong>{currentManager.displayName}</strong> to pick...
+              </p>
+            ) : (
+              <p style={{
+                fontSize: "16px",
+                color: "#64748b",
+                margin: 0
+              }}>
+                Determining next pick...
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Draft Controls - Only show when draft is NOT complete */}
+        {!draftData.draftComplete && (
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: "12px",
+            padding: "20px",
+            marginBottom: "16px",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+            border: "1px solid #e2e8f0"
+          }}>
+            <h3 style={{
+              fontSize: "18px",
+              fontWeight: "700",
+              color: "#1e293b",
+              margin: "0 0 16px 0"
+            }}>
+              Available Teams
+            </h3>
+            
+            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+              <select 
+                value={teamPick} 
+                onChange={(e) => setTeamPick(e.target.value)} 
+                disabled={disableDrafting}
+                style={{
+                  flex: 1,
+                  padding: "12px 16px",
+                  border: "2px solid #e2e8f0",
+                  borderRadius: "8px",
+                  fontSize: "16px",
+                  backgroundColor: disableDrafting ? "#f8fafc" : "white",
+                  color: disableDrafting ? "#94a3b8" : "#1e293b",
+                  cursor: disableDrafting ? "not-allowed" : "pointer"
+                }}
+              >
+                <option value="">-- Select a Team --</option>
+                {draftData.availableTeams.map((teamId) => {
+                  const teamData = allTeams[teamId];
+                  const label = teamData?.school || teamId;
+                  return (
+                    <option key={teamId} value={teamId}>{label}</option>
+                  );
+                })}
+              </select>
+              
+              <button 
+                onClick={handlePick} 
+                disabled={disableDrafting || !teamPick}
+                style={{
+                  backgroundColor: (disableDrafting || !teamPick) ? "#94a3b8" : "#059669",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "12px 24px",
+                  fontSize: "16px",
+                  fontWeight: "600",
+                  cursor: (disableDrafting || !teamPick) ? "not-allowed" : "pointer",
+                  boxShadow: (disableDrafting || !teamPick) ? "none" : "0 1px 3px rgba(0, 0, 0, 0.1)",
+                  transition: "all 0.2s ease"
+                }}
+                onMouseEnter={(e) => {
+                  if (!disableDrafting && teamPick) {
+                    e.target.style.backgroundColor = "#047857";
+                    e.target.style.transform = "translateY(-1px)";
+                    e.target.style.boxShadow = "0 4px 12px rgba(5, 150, 105, 0.3)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!disableDrafting && teamPick) {
+                    e.target.style.backgroundColor = "#059669";
+                    e.target.style.transform = "translateY(0)";
+                    e.target.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.1)";
+                  }
+                }}
+              >
+                🏈 Draft Team
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Draft Board Section */}
+        <div style={{
+          backgroundColor: "white",
+          borderRadius: "12px",
+          padding: "20px",
+          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+          border: "1px solid #e2e8f0"
+        }}>
+          <h3 style={{
+            fontSize: "18px",
+            fontWeight: "700",
+            color: "#1e293b",
+            margin: "0 0 16px 0"
+          }}>
+            Full Draft Board
+          </h3>
+          <DraftBoard draftData={draftData} userMap={userMap} allTeams={allTeams} />
+        </div>
+        
+      </div>
     </div>
   );
 }
