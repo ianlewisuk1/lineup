@@ -493,24 +493,28 @@ function FreeAgents() {
     }
   };
 
-  const getVisibleFreeAgents = () => {
-    let teams;
-    if (activeConference === "National") {
-      teams = Object.values(teamsByConference)
-        .flat()
-        .filter(team => !draftedTeams[team.school]);
-    } else {
-      teams = (teamsByConference[activeConference] || []).filter(team => !draftedTeams[team.school]);
-    }
+const getVisibleFreeAgents = () => {
+  // Get list of teams by conference
+  let allTeams = activeConference === "National"
+    ? Object.values(teamsByConference).flat()
+    : teamsByConference[activeConference] || [];
 
-    if (searchQuery) {
-      teams = teams.filter(team => 
-        team.school.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
+  // Filter out drafted teams
+  const teams = allTeams.filter(team => {
+    const normalized = team.school?.toLowerCase().replace(/\s+/g, "-");
+    return !draftedTeams[normalized];
+  });
 
-    return teams;
-  };
+  // Apply search query
+  if (searchQuery) {
+    return teams.filter(team =>
+      team.school.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }
+
+  return teams;
+};
+
 
   const sortedTeams = [...getVisibleFreeAgents()].sort((a, b) => {
     const key = sortConfig.key;

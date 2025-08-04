@@ -149,166 +149,234 @@ function AdminLeagueDetail() {
     }
   };
 
-  const handleSimulateDraft = async () => {
-    try {
-      const teamsSnap = await getDocs(collection(db, "teams"));
-      const allTeams = teamsSnap.docs
-        .map(doc => doc.data())
-        .filter(team => team.classification?.toLowerCase() === "fbs" && typeof team.school === "string")
 
-      const shuffledTeams = allTeams.map(t => t.school).sort(() => 0.5 - Math.random());
+// REPLACE your handleSimulateDraft function with this:
+const handleSimulateDraft = async () => {
+  if (!window.confirm("This will simulate a complete draft using the same logic as live drafts. Continue?")) return;
 
-      const draftOrder = members.map(m => m.id);
-      const selectedTeams = {};
-      const memberUpdates = [];
+  try {
+    // ✅ MATCH DRAFTROOM: Get teams the exact same way
+    const teamsSnap = await getDocs(collection(db, "teams"));
+    const teamNames = teamsSnap.docs
+      .filter(doc => {
+        const data = doc.data();
+        return data.school && 
+              typeof data.school === "string" && 
+              data.classification?.toLowerCase() === "fbs";
+      })
+      .map(doc => doc.id); // ✅ Use document ID (matches DraftRoom)
 
-      draftOrder.forEach((uid, idx) => {
-        const picks = shuffledTeams.slice(idx * 7, idx * 7 + 7);
-        selectedTeams[uid] = picks;
-
-        const memberRef = doc(db, "leagues", leagueId, "members", uid);
-        memberUpdates.push(
-          setDoc(memberRef, {
-            lineup: {
-              drafted: picks,
-              starters: picks.slice(0, 5),
-              bench: picks.slice(5)
-            },
-            freeAgentMoves: 0,  // Initialize free agent moves
-            points: 0,         // Initialize points
-            weeklyPoints: 0,   // Initialize weekly points
-            smackTalk: ""      // Initialize smack talk
-          }, { merge: true })
-        );
-      });
-
-      await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), {
-        draftOrder,
-        currentPickIndex: draftOrder.length * 7,
-        availableTeams: [],
-        selectedTeams,
-        draftComplete: true
-      });
-
-      await updateDoc(doc(db, "leagues", leagueId), {
-        draftComplete: true
-      });
-
-      await Promise.all(memberUpdates);
-      alert("✅ Draft simulated.");
-      refresh();
-    } catch (err) {
-      console.error("Error simulating draft:", err);
-      alert("Error: " + err.message);
+    if (teamNames.length === 0) {
+      alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
+      return;
     }
-  };
 
-  const handleSimulateAllButFinalPick = async () => {
-    if (!window.confirm("This will simulate the entire draft except for the final pick using snake draft order and smart team selection. Continue?")) return;
+    // ✅ MATCH DRAFTROOM: Build team rankings map
+    const allTeamsData = {};
+    teamsSnap.docs.forEach(doc => {
+      allTeamsData[doc.id] = doc.data();
+    });
 
-    try {
-      // Get all FBS teams with their rankings
-      const teamsSnap = await getDocs(collection(db, "teams"));
-      const allTeams = teamsSnap.docs
-        .map(doc => doc.data())
-        .filter(team => team.classification?.toLowerCase() === "fbs" && typeof team.school === "string");
+    const draftOrder = members.map(m => m.id);
+    const totalPicks = draftOrder.length * 7;
 
-      if (allTeams.length === 0) {
-        alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
-        return;
+    let availableTeams = [...teamNames];
+    const selectedTeams = {};
+    
+    // Initialize empty arrays for each manager
+    draftOrder.forEach(uid => {
+      selectedTeams[uid] = [];
+    });
+
+    // ✅ MATCH DRAFTROOM: Simulate all picks using exact same logic
+    for (let pickIndex = 0; pickIndex < totalPicks; pickIndex++) {
+      const currentUid = getCurrentPicker(draftOrder, pickIndex);
+      
+      if (!currentUid || availableTeams.length === 0) {
+        console.error(`Simulation failed at pick ${pickIndex}: no current UID or no available teams`);
+        break;
       }
 
-      // Create team rankings map (matches DraftRoom.js logic)
+      // ✅ MATCH DRAFTROOM: Use exact same team selection logic as handleAutoPick
       const teamRankings = {};
-      allTeams.forEach(team => {
-        if (team.school && team.philMetricDraftRank !== undefined) {
-          teamRankings[team.school] = team.philMetricDraftRank;
-        }
-      });
-
-      const teamNames = allTeams.map(team => team.school);
-      const draftOrder = members.map(m => m.id);
-      const totalPicks = draftOrder.length * 7;
-      const finalPickIndex = totalPicks - 1; // Stop before the final pick
-
-      let availableTeams = [...teamNames];
-      const selectedTeams = {};
       
-      // Initialize empty arrays for each manager
-      draftOrder.forEach(uid => {
-        selectedTeams[uid] = [];
+      availableTeams.forEach(teamId => {
+        const teamData = allTeamsData[teamId];
+        if (teamData && teamData.philMetricDraftRank !== undefined) {
+          teamRankings[teamId] = teamData.philMetricDraftRank;
+        }
       });
 
-      // Simulate picks using snake draft order and smart selection
-      for (let pickIndex = 0; pickIndex < finalPickIndex; pickIndex++) {
-        const currentUid = getCurrentPicker(draftOrder, pickIndex);
-        
-        if (!currentUid || availableTeams.length === 0) {
-          console.error(`Simulation failed at pick ${pickIndex}: no current UID or no available teams`);
-          break;
-        }
+      const availableTeamsWithRanks = availableTeams
+        .map(teamId => ({
+          id: teamId,
+          rank: teamRankings[teamId] || 999
+        }))
+        .sort((a, b) => a.rank - b.rank);
 
-        // Smart team selection (matches DraftRoom.js auto-pick logic)
-        const availableTeamsWithRanks = availableTeams
-          .map(teamName => ({
-            name: teamName,
-            rank: teamRankings[teamName] || 999 // Default high rank if not found
-          }))
-          .sort((a, b) => a.rank - b.rank); // Sort ascending (lower rank = better)
+      const bestTeam = availableTeamsWithRanks[0];
+      const pickedTeam = bestTeam.id; // ✅ Use document ID
 
-        // Pick the best available team
-        const bestTeam = availableTeamsWithRanks[0];
-        const pickedTeam = bestTeam.name;
+      // Add to selected teams
+      selectedTeams[currentUid].push(pickedTeam);
+      
+      // Remove from available teams
+      availableTeams = availableTeams.filter(t => t !== pickedTeam);
+    }
 
-        // Add to selected teams
-        selectedTeams[currentUid].push(pickedTeam);
-        
-        // Remove from available teams
-        availableTeams = availableTeams.filter(t => t !== pickedTeam);
+    // ✅ MATCH DRAFTROOM: Create draft metadata in exact same format
+    await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), {
+      draftOrder,
+      currentPickIndex: totalPicks,
+      availableTeams,
+      selectedTeams,
+      draftComplete: true
+    });
 
-        console.log(`Pick ${pickIndex + 1}: ${pickedTeam} (rank: ${bestTeam.rank}) → ${members.find(m => m.id === currentUid)?.displayName}`);
+    // ✅ MATCH DRAFTROOM: Update league status
+    await updateDoc(doc(db, "leagues", leagueId), {
+      draftComplete: true
+    });
+
+    // ✅ MATCH DRAFTROOM: Update member lineups exactly like completeDraft function
+    const memberUpdates = Object.entries(selectedTeams).map(async ([uid, teams]) => {
+      const starters = teams.slice(0, 5);
+      const bench = teams.slice(5);
+
+      const memberRef = doc(db, "leagues", leagueId, "members", uid);
+      await updateDoc(memberRef, {
+        "lineup.drafted": teams,
+        "lineup.starters": starters,
+        "lineup.bench": bench,
+        freeAgentMoves: 0,
+        points: 0,
+        weeklyPoints: 0,
+        smackTalk: ""
+      });
+    });
+
+    await Promise.all(memberUpdates);
+
+    alert("✅ Draft simulated using live draft logic!");
+    refresh();
+
+  } catch (err) {
+    console.error("Error simulating draft:", err);
+    alert("Error: " + err.message);
+  }
+};
+
+// REPLACE your handleSimulateAllButFinalPick function with this:
+const handleSimulateAllButFinalPick = async () => {
+  if (!window.confirm("This will simulate the entire draft except for the final pick using exact live draft logic. Continue?")) return;
+
+  try {
+    // ✅ MATCH DRAFTROOM: Get teams the exact same way
+    const teamsSnap = await getDocs(collection(db, "teams"));
+    const teamNames = teamsSnap.docs
+      .filter(doc => {
+        const data = doc.data();
+        return data.school && 
+              typeof data.school === "string" && 
+              data.classification?.toLowerCase() === "fbs";
+      })
+      .map(doc => doc.id); // ✅ Use document ID (matches DraftRoom)
+
+    if (teamNames.length === 0) {
+      alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
+      return;
+    }
+
+    // ✅ MATCH DRAFTROOM: Build team data map
+    const allTeamsData = {};
+    teamsSnap.docs.forEach(doc => {
+      allTeamsData[doc.id] = doc.data();
+    });
+
+    const draftOrder = members.map(m => m.id);
+    const totalPicks = draftOrder.length * 7;
+    const finalPickIndex = totalPicks - 1; // Stop before the final pick
+
+    let availableTeams = [...teamNames];
+    const selectedTeams = {};
+    
+    // Initialize empty arrays for each manager
+    draftOrder.forEach(uid => {
+      selectedTeams[uid] = [];
+    });
+
+    // ✅ MATCH DRAFTROOM: Simulate picks using exact same logic
+    for (let pickIndex = 0; pickIndex < finalPickIndex; pickIndex++) {
+      const currentUid = getCurrentPicker(draftOrder, pickIndex);
+      
+      if (!currentUid || availableTeams.length === 0) {
+        console.error(`Simulation failed at pick ${pickIndex}: no current UID or no available teams`);
+        break;
       }
 
-      // Update member lineups for completed picks
-      const memberUpdates = [];
-      Object.entries(selectedTeams).forEach(([uid, teams]) => {
-        if (teams.length > 0) {
-          const memberRef = doc(db, "leagues", leagueId, "members", uid);
-          memberUpdates.push(
-            updateDoc(memberRef, {
-              "lineup.drafted": teams,
-              freeAgentMoves: 0,  // Initialize free agent moves
-              smackTalk: ""       // Initialize smack talk
-              // Don't set starters/bench yet since draft isn't complete
-            })
-          );
+      // ✅ MATCH DRAFTROOM: Use exact same team selection logic as handleAutoPick
+      const teamRankings = {};
+      
+      availableTeams.forEach(teamId => {
+        const teamData = allTeamsData[teamId];
+        if (teamData && teamData.philMetricDraftRank !== undefined) {
+          teamRankings[teamId] = teamData.philMetricDraftRank;
         }
       });
 
-      // Create draft metadata (matches DraftRoom.js format)
-      await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), {
-        draftOrder,
-        currentPickIndex: finalPickIndex, // One pick before completion
-        availableTeams,
-        selectedTeams,
-        draftComplete: false,
-        currentPickStartTime: serverTimestamp() // Set timer for final pick
-      });
+      const availableTeamsWithRanks = availableTeams
+        .map(teamId => ({
+          id: teamId,
+          rank: teamRankings[teamId] || 999
+        }))
+        .sort((a, b) => a.rank - b.rank);
 
-      // Update all member lineups
-      await Promise.all(memberUpdates);
+      const bestTeam = availableTeamsWithRanks[0];
+      const pickedTeam = bestTeam.id; // ✅ Use document ID
 
-      const finalPicker = getCurrentPicker(draftOrder, finalPickIndex);
-      const finalPickerName = members.find(m => m.id === finalPicker)?.displayName || "Unknown";
+      // Add to selected teams
+      selectedTeams[currentUid].push(pickedTeam);
       
-      alert(`✅ Draft simulated up to final pick!\n\nFinal pick belongs to: ${finalPickerName}\nRemaining teams: ${availableTeams.length}`);
-      refresh();
-
-    } catch (err) {
-      console.error("Error simulating draft:", err);
-      alert("Error: " + err.message);
+      // Remove from available teams
+      availableTeams = availableTeams.filter(t => t !== pickedTeam);
     }
-  };
+
+    // ✅ MATCH DRAFTROOM: Create draft metadata in exact same format as live draft
+    await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), {
+      draftOrder,
+      currentPickIndex: finalPickIndex, // One pick before completion
+      availableTeams,
+      selectedTeams,
+      draftComplete: false,
+      currentPickStartTime: serverTimestamp() // ✅ Set timer for final pick
+    });
+
+    // ✅ MATCH DRAFTROOM: Update member lineups with current picks (but don't set starters/bench yet)
+    const memberUpdates = Object.entries(selectedTeams).map(async ([uid, teams]) => {
+      if (teams.length > 0) {
+        const memberRef = doc(db, "leagues", leagueId, "members", uid);
+        await updateDoc(memberRef, {
+          "lineup.drafted": teams,
+          freeAgentMoves: 0,
+          smackTalk: ""
+          // Don't set starters/bench yet since draft isn't complete
+        });
+      }
+    });
+
+    await Promise.all(memberUpdates);
+
+    const finalPicker = getCurrentPicker(draftOrder, finalPickIndex);
+    const finalPickerName = members.find(m => m.id === finalPicker)?.displayName || "Unknown";
+    
+    alert(`✅ Draft simulated up to final pick using live draft logic!\n\nFinal pick belongs to: ${finalPickerName}\nRemaining teams: ${availableTeams.length}`);
+    refresh();
+
+  } catch (err) {
+    console.error("Error simulating draft:", err);
+    alert("Error: " + err.message);
+  }
+};
 
   const handleResetDraft = async () => {
     if (!window.confirm("This will delete all draft data and clear every lineup. Continue?")) return;

@@ -3,9 +3,20 @@ import React from "react";
 function DraftBoard({ draftData, userMap, allTeams }) {
   if (!draftData) return null;
 
+  // ✅ SAFETY CHECK: Handle missing draftOrder for manual drafts
+  if (!draftData.draftOrder || !Array.isArray(draftData.draftOrder)) {
+    // For manual drafts, create draftOrder from the teams data
+    const managerIds = Object.keys(draftData.teams || draftData.selectedTeams || {});
+    if (managerIds.length === 0) {
+      return <div>No draft data available</div>;
+    }
+    draftData.draftOrder = managerIds;
+  }
+
   const totalRounds = 7;
   const draftOrder = draftData.draftOrder;
   const numManagers = draftOrder.length;
+  const teamSelections = draftData.selectedTeams || draftData.teams || {};
 
   // Build flat pick sequence in true snake order
   const snakeOrder = [];
@@ -25,7 +36,7 @@ function DraftBoard({ draftData, userMap, allTeams }) {
   for (let i = 0; i < snakeOrder.length; i++) {
     const uid = snakeOrder[i];
     const round = Math.floor(i / numManagers);
-    const userTeams = draftData.selectedTeams[uid] || [];
+    const userTeams = teamSelections[uid] || [];
     const team = userTeams[round];
     flatPicks.push(team ? { uid, team } : null);
   }
