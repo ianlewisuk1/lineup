@@ -167,8 +167,26 @@
         });
         setAllTeams(teamsMap);
 
-        const startersResolved = starterList.map(id => teamsMap[id] || null);
-        const benchResolved = benchList.map(id => teamsMap[id] || null);
+      // Create a reverse lookup map: normalized school name -> team data
+      const schoolToTeamMap = {};
+      Object.values(teamsMap).forEach(team => {
+        if (team.school) {
+          const normalizedSchool = team.school
+            .toLowerCase()
+            .replace(/\s+/g, "-")
+            .replace(/&/g, "")
+            .replace(/[^a-z0-9\-]/g, "");
+          schoolToTeamMap[normalizedSchool] = team;
+        }
+      });
+
+      // Resolve teams using the normalized school names
+      const startersResolved = starterList.map(schoolName => 
+        schoolName ? schoolToTeamMap[schoolName] || null : null
+      );
+      const benchResolved = benchList.map(schoolName => 
+        schoolName ? schoolToTeamMap[schoolName] || null : null
+      );
 
         setStarters(startersResolved);
         setBench(benchResolved);
@@ -197,14 +215,34 @@
       const currentUser = auth.currentUser;
       if (!currentUser) return;
 
+      // NORMALIZE TEAM NAMES BEFORE SAVING
+      const normalizeTeamName = (team) => {
+        if (!team?.school) return null;
+        return team.school
+          .toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/&/g, "")
+          .replace(/[^a-z0-9\-]/g, "");
+      };
+
       const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
       updateDoc(memberRef, {
-        "lineup.starters": newStarters.map(t => t?.school || null),
-        "lineup.bench": newBench.map(t => t?.school || null)
+        "lineup.starters": newStarters.map(t => normalizeTeamName(t)),
+        "lineup.bench": newBench.map(t => normalizeTeamName(t))
       });
     };
 
     const moveToStarters = (benchTeam, benchIndex) => {
+
+      const normalizeTeamName = (team) => {
+        if (!team?.school) return null;
+        return team.school
+          .toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/&/g, "")
+          .replace(/[^a-z0-9\-]/g, "");
+      };
+      
       // Find first empty starter slot
       const emptyStarterIndex = starters.findIndex(t => t === null);
       if (emptyStarterIndex === -1) return; // No empty slots
@@ -223,12 +261,22 @@
 
       const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
       updateDoc(memberRef, {
-        "lineup.starters": newStarters.map(t => t?.school || null),
-        "lineup.bench": newBench.map(t => t?.school || null)
+        "lineup.starters": newStarters.map(t => normalizeTeamName(t)), // CHANGED THIS LINE
+        "lineup.bench": newBench.map(t => normalizeTeamName(t))        // CHANGED THIS LINE
       });
     };
 
     const moveToBench = (starterTeam, starterIndex) => {
+
+      const normalizeTeamName = (team) => {
+        if (!team?.school) return null;
+        return team.school
+          .toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/&/g, "")
+          .replace(/[^a-z0-9\-]/g, "");
+      };
+      
       // Find first empty bench slot
       const emptyBenchIndex = bench.findIndex(t => t === null);
       if (emptyBenchIndex === -1) return; // No empty slots
@@ -247,35 +295,45 @@
 
       const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
       updateDoc(memberRef, {
-        "lineup.starters": newStarters.map(t => t?.school || null),
-        "lineup.bench": newBench.map(t => t?.school || null)
+        "lineup.starters": newStarters.map(t => normalizeTeamName(t)),
+        "lineup.bench": newBench.map(t => normalizeTeamName(t))
       });
     };
 
     const handleCutTeam = async (team, index, section) => {
-    const newStarters = [...starters];
-    const newBench = [...bench];
-    
-    if (section === 'starters') {
-      newStarters[index] = null;
-    } else {
-      newBench[index] = null;
-    }
-    
-    setStarters(newStarters);
-    setBench(newBench);
-    
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
 
-    const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
-    await updateDoc(memberRef, {
-      "lineup.starters": newStarters.map(t => t?.school || null),
-      "lineup.bench": newBench.map(t => t?.school || null)
-    });
-    
-    alert(`✅ ${team.school} has been cut from your lineup.`);
-    };  
+      const normalizeTeamName = (team) => {
+        if (!team?.school) return null;
+        return team.school
+          .toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/&/g, "")
+          .replace(/[^a-z0-9\-]/g, "");
+      };
+
+      const newStarters = [...starters];
+      const newBench = [...bench];
+      
+      if (section === 'starters') {
+        newStarters[index] = null;
+      } else {
+        newBench[index] = null;
+      }
+      
+      setStarters(newStarters);
+      setBench(newBench);
+      
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
+      await updateDoc(memberRef, {
+        "lineup.starters": newStarters.map(t => normalizeTeamName(t)),
+        "lineup.bench": newBench.map(t => normalizeTeamName(t))
+      });
+      
+      alert(`✅ ${team.school} has been cut from your lineup.`);
+    };
 
     const handleSaveSmackTalk = async () => {
       const currentUser = auth.currentUser;

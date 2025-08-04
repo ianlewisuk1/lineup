@@ -329,62 +329,87 @@ function FreeAgents() {
   };
 
   useEffect(() => {
-    const fetchData = async () => {
-      const teamsSnap = await getDocs(collection(db, "teams"));
-      const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
+  const fetchData = async () => {
+  const teamsSnap = await getDocs(collection(db, "teams"));
+  const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
 
-      const teamsMap = {};
-      const drafted = {};
-      membersSnap.forEach(doc => {
-        const { displayName, teamName, lineup } = doc.data();
-        const starters = lineup?.starters || [];
-        const bench = lineup?.bench || [];
-        const current = [...starters, ...bench];
+  const teamsMap = {};
+  const drafted = {};
+  
+  // Build drafted teams object
+  membersSnap.forEach(doc => {
+    const { displayName, teamName, lineup } = doc.data();
+    const starters = lineup?.starters || [];
+    const bench = lineup?.bench || [];
+    const current = [...starters, ...bench];
 
-        current.forEach(team => {
-          drafted[team] = {
-            ownerName: displayName,
-            teamName: teamName || "Unnamed Squad"
-          };
-        });
-      });
+    current.forEach(teamId => {
+      // Teams are stored as document IDs, so use them directly
+      if (teamId && teamId.trim()) {
+        drafted[teamId] = {
+          ownerName: displayName,
+          teamName: teamName || "Unnamed Squad"
+        };
+      }
+    });
+  });
 
-      teamsSnap.forEach(doc => {
-        const data = doc.data();
-        if ((data.classification || "").toUpperCase() !== "FBS") return;
+  // DEBUG CODE - ADD THIS:
+  console.log("=== DETAILED MEMBER DEBUG ===");
+  membersSnap.forEach((doc, index) => {
+    const data = doc.data();
+    console.log(`Member ${index + 1}:`, {
+      displayName: data.displayName,
+      teamName: data.teamName,
+      lineup: data.lineup
+    });
+    
+    if (data.lineup) {
+      console.log(`  - Starters:`, data.lineup.starters);
+      console.log(`  - Bench:`, data.lineup.bench);
+      console.log(`  - Drafted:`, data.lineup.drafted);
+    }
+  });
 
-        const conf = data.conference || "Unknown";
-        if (!teamsMap[conf]) teamsMap[conf] = [];
+  // Build teams map
+  teamsSnap.forEach(doc => {
+    const data = doc.data();
+    if ((data.classification || "").toUpperCase() !== "FBS") return;
 
-        teamsMap[conf].push({
-          id: doc.id,
-          ...data,
-          logo: data.logos1 || data.logos2 || null,
-          currentWeekPoints: data.currentSeason?.currentWeekPoints || null,
-          gameComplete: data.currentSeason?.gameComplete || false,
-          color: data.color || null
-        });
-      });
+    const conf = data.conference || "Unknown";
+    if (!teamsMap[conf]) teamsMap[conf] = [];
 
-      const sortedConf = Object.keys(teamsMap).sort();
-      setConferenceList(["National", ...sortedConf]);
-      setTeamsByConference(teamsMap);
-      setActiveConference("National");
-      setDraftedTeams(drafted);
+    teamsMap[conf].push({
+      id: doc.id,
+      ...data,
+      logo: data.logos1 || data.logos2 || null,
+      currentWeekPoints: data.currentSeason?.currentWeekPoints || null,
+      gameComplete: data.currentSeason?.gameComplete || false,
+      color: data.color || null
+    });
+  });
 
-      const user = auth.currentUser;
-      if (!user) return;
+  // Set state
+  const sortedConf = Object.keys(teamsMap).sort();
+  setConferenceList(["National", ...sortedConf]);
+  setTeamsByConference(teamsMap);
+  setActiveConference("National");
+  setDraftedTeams(drafted);
 
-      const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
-      const memberSnap = await getDoc(memberRef);
-      const lineup = memberSnap.data()?.lineup || {};
+  // Get current user's teams
+  const user = auth.currentUser;
+  if (!user) return;
 
-      const starters = lineup.starters || [];
-      const bench = lineup.bench || [];
-      setUserTeams([...starters, ...bench].filter(Boolean));
+  const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
+  const memberSnap = await getDoc(memberRef);
+  const lineup = memberSnap.data()?.lineup || {};
 
-      setLoading(false);
-    };
+  const starters = lineup.starters || [];
+  const bench = lineup.bench || [];
+  setUserTeams([...starters, ...bench].filter(Boolean));
+
+  setLoading(false);
+  };
 
     fetchData();
   }, [leagueId]);
@@ -422,13 +447,20 @@ function FreeAgents() {
       const starters = [...(lineup.starters || [])];
       const bench = [...(lineup.bench || [])];
       
+      // NORMALIZE THE TEAM NAME BEFORE SAVING
+      const normalizedTeamName = teamToAdd.school
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/&/g, "")
+        .replace(/[^a-z0-9\-]/g, "");
+      
       const emptyStarterIndex = starters.findIndex(t => !t);
       const emptyBenchIndex = bench.findIndex(t => !t);
       
       if (emptyStarterIndex !== -1) {
-        starters[emptyStarterIndex] = teamToAdd.school;
+        starters[emptyStarterIndex] = normalizedTeamName; // Use normalized name
       } else if (emptyBenchIndex !== -1) {
-        bench[emptyBenchIndex] = teamToAdd.school;
+        bench[emptyBenchIndex] = normalizedTeamName; // Use normalized name
       } else {
         showError("Roster Full", "Your roster is full! Please drop a team first.");
         return;
@@ -466,13 +498,20 @@ function FreeAgents() {
       const starters = [...(lineup.starters || [])];
       const bench = [...(lineup.bench || [])];
       
+      // NORMALIZE THE NEW TEAM NAME
+      const normalizedNewTeam = pendingAddTeam
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/&/g, "")
+        .replace(/[^a-z0-9\-]/g, "");
+      
       const starterIndex = starters.findIndex(t => t === selectedDropTeam);
       const benchIndex = bench.findIndex(t => t === selectedDropTeam);
       
       if (starterIndex !== -1) {
-        starters[starterIndex] = pendingAddTeam;
+        starters[starterIndex] = normalizedNewTeam; // Use normalized name
       } else if (benchIndex !== -1) {
-        bench[benchIndex] = pendingAddTeam;
+        bench[benchIndex] = normalizedNewTeam; // Use normalized name
       }
 
       await updateDoc(memberRef, {
@@ -493,27 +532,36 @@ function FreeAgents() {
     }
   };
 
-const getVisibleFreeAgents = () => {
-  // Get list of teams by conference
-  let allTeams = activeConference === "National"
-    ? Object.values(teamsByConference).flat()
-    : teamsByConference[activeConference] || [];
+  const getVisibleFreeAgents = () => {
+    // Get list of teams by conference
+    let allTeams = activeConference === "National"
+      ? Object.values(teamsByConference).flat()
+      : teamsByConference[activeConference] || [];
 
-  // Filter out drafted teams
-  const teams = allTeams.filter(team => {
-    const normalized = team.school?.toLowerCase().replace(/\s+/g, "-");
-    return !draftedTeams[normalized];
-  });
+    // Filter out drafted teams by matching school names
+    const teams = allTeams.filter(team => {
+      // Normalize the team's school name to match the format in drafted teams
+      const normalizedSchoolName = team.school
+        ?.toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/&/g, "")
+        .replace(/[^a-z0-9\-]/g, "");
+      
+      // Check if this normalized school name is in the drafted teams
+      const isDrafted = draftedTeams[normalizedSchoolName];
+      
+      return !isDrafted;
+    });
 
-  // Apply search query
-  if (searchQuery) {
-    return teams.filter(team =>
-      team.school.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }
+    // Apply search query
+    if (searchQuery) {
+      return teams.filter(team =>
+        team.school.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
 
-  return teams;
-};
+    return teams;
+  };
 
 
   const sortedTeams = [...getVisibleFreeAgents()].sort((a, b) => {

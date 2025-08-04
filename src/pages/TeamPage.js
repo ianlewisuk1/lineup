@@ -24,6 +24,7 @@ function TeamPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [modalMessage, setModalMessage] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false); 
   const [modalTitle, setModalTitle] = useState("");
 
   // Custom modal helper functions
@@ -45,6 +46,29 @@ function TeamPage() {
     setModalTitle("");
     setModalMessage("");
   };
+
+  const denormalizeTeamName = (normalizedName) => {
+    if (!normalizedName) return normalizedName;
+    
+    return normalizedName
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+      .replace(/\bAnd\b/g, '&');
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showDropdown && !event.target.closest('[data-dropdown]')) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDropdown]);
 
   useEffect(() => {
     const fetchTeamData = async () => {
@@ -87,6 +111,13 @@ function TeamPage() {
     };
 
     const fetchOwnershipInfo = async (teamName) => {
+      // NORMALIZE THE TEAM NAME FOR CHECKING
+      const normalizedTeamName = teamName
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/&/g, "")
+        .replace(/[^a-z0-9\-]/g, "");
+
       const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
       
       for (const memberDoc of membersSnap.docs) {
@@ -96,9 +127,9 @@ function TeamPage() {
         const bench = lineup.bench || [];
         
         let status = null;
-        if (starters.includes(teamName)) {
+        if (starters.includes(normalizedTeamName)) { // Use normalized name
           status = "starting";
-        } else if (bench.includes(teamName)) {
+        } else if (bench.includes(normalizedTeamName)) { // Use normalized name
           status = "bench";
         }
         
@@ -209,13 +240,20 @@ function TeamPage() {
       const starters = [...(lineup.starters || [])];
       const bench = [...(lineup.bench || [])];
       
+      // NORMALIZE THE TEAM NAME BEFORE SAVING
+      const normalizedTeamName = teamToAdd.school
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/&/g, "")
+        .replace(/[^a-z0-9\-]/g, "");
+      
       const emptyStarterIndex = starters.findIndex(t => !t);
       const emptyBenchIndex = bench.findIndex(t => !t);
       
       if (emptyStarterIndex !== -1) {
-        starters[emptyStarterIndex] = teamToAdd.school;
+        starters[emptyStarterIndex] = normalizedTeamName; // Use normalized name
       } else if (emptyBenchIndex !== -1) {
-        bench[emptyBenchIndex] = teamToAdd.school;
+        bench[emptyBenchIndex] = normalizedTeamName; // Use normalized name
       } else {
         showError("Roster Full", "Your roster is full! Please drop a team first.");
         return;
@@ -275,13 +313,20 @@ function TeamPage() {
       const starters = [...(lineup.starters || [])];
       const bench = [...(lineup.bench || [])];
       
+      // NORMALIZE THE NEW TEAM NAME BEFORE SAVING
+      const normalizedNewTeam = pendingAddTeam
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/&/g, "")
+        .replace(/[^a-z0-9\-]/g, "");
+      
       const starterIndex = starters.findIndex(t => t === selectedDropTeam);
       const benchIndex = bench.findIndex(t => t === selectedDropTeam);
       
       if (starterIndex !== -1) {
-        starters[starterIndex] = pendingAddTeam;
+        starters[starterIndex] = normalizedNewTeam; // CHANGED: Use normalized name
       } else if (benchIndex !== -1) {
-        bench[benchIndex] = pendingAddTeam;
+        bench[benchIndex] = normalizedNewTeam; // CHANGED: Use normalized name
       }
 
       await updateDoc(memberRef, {
@@ -1098,27 +1143,131 @@ function TeamPage() {
               Your roster is full. Select a team to drop:
             </p>
 
-            <select
-              value={selectedDropTeam}
-              onChange={(e) => setSelectedDropTeam(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "12px",
-                border: "2px solid #e5e7eb",
-                borderRadius: "8px",
-                fontSize: "14px",
-                fontFamily: "inherit",
-                marginBottom: "20px",
-                backgroundColor: "white"
-              }}
-            >
-              <option value="">Select a team to drop</option>
-              {userTeams.filter(Boolean).map((team) => (
-                <option key={team} value={team}>
-                  {team}
-                </option>
-              ))}
-            </select>
+            <div data-dropdown style={{ position: "relative", marginBottom: "20px" }}>
+              <label style={{ 
+                display: "block", 
+                marginBottom: "8px", 
+                fontSize: "14px", 
+                fontWeight: "500",
+                color: "#374151"
+              }}>
+                Select a team to drop:
+              </label>
+              
+              <button
+                onClick={() => setShowDropdown(!showDropdown)}
+                style={{
+                  width: "100%",
+                  padding: "16px",
+                  border: "2px solid #e5e7eb",
+                  borderRadius: "12px",
+                  fontSize: "16px",
+                  fontFamily: "inherit",
+                  backgroundColor: "white",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  minHeight: "56px",
+                  color: selectedDropTeam ? "#1e293b" : "#9ca3af",
+                  transition: "all 0.2s ease"
+                }}
+                onMouseEnter={(e) => {
+                  if (!showDropdown) {
+                    e.target.style.borderColor = "#3b82f6";
+                    e.target.style.boxShadow = "0 0 0 3px rgba(59, 130, 246, 0.1)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!showDropdown) {
+                    e.target.style.borderColor = "#e5e7eb";
+                    e.target.style.boxShadow = "none";
+                  }
+                }}
+              >
+                <span>
+                  {selectedDropTeam ? denormalizeTeamName(selectedDropTeam) : "Choose a team to drop"}
+                </span>
+                <svg 
+                  width="20" 
+                  height="20" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2"
+                  style={{
+                    transform: showDropdown ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.2s ease"
+                  }}
+                >
+                  <polyline points="6,9 12,15 18,9"></polyline>
+                </svg>
+              </button>
+
+              {showDropdown && (
+                <div style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  right: 0,
+                  backgroundColor: "white",
+                  border: "2px solid #e5e7eb",
+                  borderRadius: "12px",
+                  boxShadow: "0 10px 25px rgba(0, 0, 0, 0.15)",
+                  zIndex: 1000,
+                  marginTop: "4px",
+                  maxHeight: "300px",
+                  overflowY: "auto"
+                }}>
+                  {userTeams.filter(Boolean).map((team, index) => (
+                    <button
+                      key={team}
+                      onClick={() => {
+                        setSelectedDropTeam(team);
+                        setShowDropdown(false);
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "16px",
+                        border: "none",
+                        backgroundColor: selectedDropTeam === team ? "#f0f9ff" : "white",
+                        color: selectedDropTeam === team ? "#0369a1" : "#1e293b",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        fontSize: "16px",
+                        fontWeight: selectedDropTeam === team ? "600" : "400",
+                        borderBottom: index < userTeams.filter(Boolean).length - 1 ? "1px solid #f1f5f9" : "none",
+                        borderRadius: index === 0 ? "10px 10px 0 0" : 
+                                      index === userTeams.filter(Boolean).length - 1 ? "0 0 10px 10px" : "0",
+                        transition: "all 0.2s ease"
+                      }}
+                      onMouseEnter={(e) => {
+                        if (selectedDropTeam !== team) {
+                          e.target.style.backgroundColor = "#f8fafc";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (selectedDropTeam !== team) {
+                          e.target.style.backgroundColor = "white";
+                        }
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <div style={{
+                          width: "8px",
+                          height: "8px",
+                          borderRadius: "50%",
+                          backgroundColor: selectedDropTeam === team ? "#0369a1" : "#e5e7eb",
+                          transition: "all 0.2s ease"
+                        }} />
+                        {denormalizeTeamName(team)}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <div style={{ display: "flex", gap: "12px" }}>
               <button
