@@ -62,7 +62,7 @@ function DraftBoard({ draftData, userMap, allTeams }) {
           <div style={{ display: "flex", background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)", color: "white" }}>
             {draftOrder.map((uid, index) => {
               const teamName = userMap[uid]?.teamName || "Unnamed Team";
-              const displayName = userMap[uid]?.displayName || "Unknown";
+              const firstName = userMap[uid]?.firstName || "Unknown";
               return (
                 <div key={uid} style={{
                   width: "120px",
@@ -99,7 +99,7 @@ function DraftBoard({ draftData, userMap, allTeams }) {
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap"
-                  }}>{displayName}</div>
+                  }}>{firstName}</div>
                 </div>
               );
             })}

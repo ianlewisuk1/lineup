@@ -68,30 +68,34 @@ function DraftRoom() {
       await Promise.all(
         membersSnap.docs.map(async (memberDoc) => {
           const data = memberDoc.data();
-          nameMap[memberDoc.id] = {
-            displayName: data.displayName || data.email || "Unknown",
-            teamName: data.teamName || "Unnamed Team"
-          };
-
+          
           // Fetch first name from user document
+          let firstName = data.displayName || "Unknown"; // fallback
           try {
             const userDoc = await getDoc(doc(db, "users", memberDoc.id));
             
             if (userDoc.exists()) {
               const userData = userDoc.data();
-              firstNameMap[memberDoc.id] = userData.firstName || userData.displayName || "Unknown";
-            } else {
-              firstNameMap[memberDoc.id] = data.displayName || "Unknown";
+              firstName = userData.firstName || userData.displayName || "Unknown";
             }
           } catch (error) {
-            firstNameMap[memberDoc.id] = data.displayName || "Unknown";
+            console.warn(`Error fetching user data for ${memberDoc.id}:`, error);
           }
+          
+          // Build the combined nameMap with firstName included
+          nameMap[memberDoc.id] = {
+            displayName: data.displayName || data.email || "Unknown",
+            teamName: data.teamName || "Unnamed Team",
+            firstName: firstName // Add firstName to the userMap
+          };
+
+          firstNameMap[memberDoc.id] = firstName;
         })
       );
 
       setUserMap(nameMap);
       setUserFirstNames(firstNameMap);
-
+      
       const teamsSnap = await getDocs(collection(db, "teams"));
         const teamDataMap = {};
 
