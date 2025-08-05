@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { db, auth } from "../firebase/firebase";
 import { collection, getDocs, doc, getDoc } from "firebase/firestore";
-import { Trophy, Users, Star, TrendingUp } from "lucide-react";
+import { Trophy, Users, Star, TrendingUp, Settings } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 
 function MyLeague() {
@@ -858,11 +858,20 @@ function MyLeague() {
           <div className="mb-4">
             <span className="inline-block text-4xl sm:text-5xl mb-2">🏆</span>
           </div>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-2 leading-tight">
-            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              {leagueName ? `${leagueName} Standings` : "League Standings"}
-            </span>
-          </h1>
+          <div className="flex items-center justify-center gap-4 mb-2">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black leading-tight">
+              <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+                {leagueName ? `${leagueName} Standings` : "League Standings"}
+              </span>
+            </h1>
+            <Link
+              to={`/${leagueId}/league-rules`}
+              className="bg-white/10 backdrop-blur-sm border border-white/30 rounded-xl p-3 text-white/80 hover:text-white hover:bg-white/20 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-white/20"
+              title="League Rules & Settings"
+            >
+              <Settings size={24} />
+            </Link>
+          </div>
           <p className="text-lg sm:text-xl text-white/80">
             Current Week: {currentWeek}
           </p>
