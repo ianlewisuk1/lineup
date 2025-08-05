@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { collection, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
 import { db, auth } from "../firebase/firebase";
-import { Plus, ArrowLeft, Calendar, MapPin, Trophy, Users, TrendingUp } from "lucide-react";
-import LeagueNavBar from "../components/LeagueNavBar";
+import { Plus, ArrowLeft, Calendar, MapPin, Trophy, Users, TrendingUp, ChevronDown } from "lucide-react";
+import BottomNavBar from "../components/BottomNavBar";
 
 function TeamPage() {
   const { leagueId, teamName } = useParams();
@@ -45,6 +45,17 @@ function TeamPage() {
     setShowErrorModal(false);
     setModalTitle("");
     setModalMessage("");
+  };
+
+  const handleLogout = async () => {
+    if (window.confirm("Are you sure you want to log out?")) {
+      try {
+        await auth.signOut();
+        navigate("/");
+      } catch (err) {
+        console.error("Logout error:", err);
+      }
+    }
   };
 
   const denormalizeTeamName = (normalizedName) => {
@@ -403,47 +414,22 @@ function TeamPage() {
     
     if (!ownershipInfo) {
       return (
-        <div style={{ 
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "16px", 
-          backgroundColor: "#ecfdf5", 
-          border: "2px solid #10b981", 
-          borderRadius: "12px", 
-          color: "#065f46",
-          marginBottom: "20px",
-          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <Users size={20} />
-            <span style={{ fontWeight: "600" }}>Status: Free Agent</span>
+        <div className="bg-green-500/20 border-2 border-green-400/50 rounded-2xl p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users size={18} className="text-green-300" />
+              <span className="font-semibold text-green-200">Status: Free Agent</span>
+            </div>
+            {auth.currentUser && (
+              <button 
+                onClick={() => handleAddTeam(decodedTeamName)}
+                className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 rounded-xl text-white font-medium transition-all duration-200 transform hover:scale-105"
+              >
+                <Plus size={14} />
+                Add Team
+              </button>
+            )}
           </div>
-          {auth.currentUser && (
-            <button 
-              onClick={() => handleAddTeam(decodedTeamName)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "6px",
-                padding: "8px 16px",
-                backgroundColor: "#10b981",
-                color: "white",
-                border: "none",
-                borderRadius: "8px",
-                cursor: "pointer",
-                fontWeight: "500",
-                transition: "all 0.2s ease"
-              }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = "#059669"}
-              onMouseLeave={(e) => e.target.style.backgroundColor = "#10b981"}
-              title="Add to your team"
-            >
-              <Plus size={16} />
-              Add Team
-            </button>
-          )}
         </div>
       );
     }
@@ -451,25 +437,24 @@ function TeamPage() {
     const { status, ownerName, teamName: ownerTeamName } = ownershipInfo;
     const isStarting = status === "starting";
     const statusText = isStarting ? "Starting Lineup" : "Riding the Bench";
-    const bgColor = isStarting ? "#eff6ff" : "#fef3c7";
-    const borderColor = isStarting ? "#3b82f6" : "#f59e0b";
-    const textColor = isStarting ? "#1e40af" : "#92400e";
 
     return (
-      <div style={{ 
-        padding: "16px", 
-        backgroundColor: bgColor, 
-        border: `2px solid ${borderColor}`, 
-        borderRadius: "12px", 
-        color: textColor,
-        marginBottom: "20px",
-        boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-          <Trophy size={20} />
-          <span style={{ fontWeight: "600" }}>Status: {statusText}</span>
+      <div className={`border-2 rounded-2xl p-4 mb-6 ${
+        isStarting 
+          ? 'bg-blue-500/20 border-blue-400/50' 
+          : 'bg-yellow-500/20 border-yellow-400/50'
+      }`}>
+        <div className="flex items-center gap-2 mb-1">
+          <Trophy size={18} className={isStarting ? 'text-blue-300' : 'text-yellow-300'} />
+          <span className={`font-semibold ${
+            isStarting ? 'text-blue-200' : 'text-yellow-200'
+          }`}>
+            Status: {statusText}
+          </span>
         </div>
-        <div style={{ marginLeft: "28px", fontSize: "14px" }}>
+        <div className={`ml-6 text-sm ${
+          isStarting ? 'text-blue-200/80' : 'text-yellow-200/80'
+        }`}>
           Owned by <strong>{ownerName}</strong> ({ownerTeamName})
         </div>
       </div>
@@ -478,19 +463,16 @@ function TeamPage() {
 
   if (loading) {
     return (
-      <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-        <LeagueNavBar />
-        <div style={{ 
-          padding: "40px 20px", 
-          textAlign: "center",
-          color: "#64748b",
-          fontSize: "16px"
-        }}>
-          <div style={{ marginBottom: "16px", fontSize: "18px", fontWeight: "600" }}>
-            Loading {decodeURIComponent(teamName)}...
-          </div>
-          <div style={{ fontSize: "14px", color: "#94a3b8" }}>
-            {loadingStage}
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+        {/* Animated Background Elements */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        </div>
+        <div className="relative z-10 flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="text-4xl mb-4 animate-spin">⚡</div>
+            <p className="text-xl text-white/80 mb-2">Loading {decodeURIComponent(teamName)}...</p>
+            <p className="text-sm text-white/60">{loadingStage}</p>
           </div>
         </div>
       </div>
@@ -500,164 +482,110 @@ function TeamPage() {
   const decodedTeamName = decodeURIComponent(teamName);
 
   return (
-    <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-      <LeagueNavBar />
-      
-      {/* Header */}
-      <div style={{ 
-        padding: "20px 16px 16px 16px",
-        background: teamInfo?.hexColor ? `linear-gradient(135deg, ${teamInfo.hexColor} 0%, ${teamInfo.hexColor}CC 100%)` : "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
-        color: "white"
-      }}>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      </div>
+
+      <BottomNavBar leagueId={leagueId} isDraftComplete={true} />
+
+      {/* Navigation - matching DraftRoom exactly */}
+      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
+        <Link to="/home" className="flex items-center space-x-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
+            L
+          </div>
+          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            Lineup
+          </span>
+        </Link>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
+          >
+            Logout
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-24">
+        
+        {/* Back Button */}
         <button 
           onClick={() => navigate(-1)} 
-          style={{ 
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            marginBottom: "16px", 
-            padding: "8px 16px",
-            backgroundColor: "rgba(255,255,255,0.2)",
-            color: "white",
-            border: "none",
-            borderRadius: "8px",
-            cursor: "pointer",
-            fontSize: "14px",
-            fontWeight: "500",
-            transition: "all 0.2s ease"
-          }}
-          onMouseEnter={(e) => e.target.style.backgroundColor = "rgba(255,255,255,0.3)"}
-          onMouseLeave={(e) => e.target.style.backgroundColor = "rgba(255,255,255,0.2)"}
+          className="flex items-center gap-2 mb-6 px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/30 rounded-xl text-white hover:bg-white/20 transition-all duration-300"
         >
           <ArrowLeft size={16} />
           Back
         </button>
-        
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ flex: 1 }}>
-            <h1 style={{ 
-              fontSize: "32px", 
-              fontWeight: "700", 
-              margin: "0 0 8px 0"
-            }}>
-              {decodedTeamName}
-            </h1>
-            
-            {teamInfo && (
-              <p style={{
-                fontSize: "18px",
-                opacity: "0.9",
-                margin: 0
-              }}>
-                {teamInfo.conference || "Independent"} • {teamInfo.currentSeason?.record || "0-0"}
-              </p>
-            )}
-          </div>
-          
-          <div style={{
-            width: "80px",
-            height: "80px",
-            borderRadius: "50%",
-            backgroundColor: "rgba(255,255,255,0.2)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-            border: "3px solid rgba(255,255,255,0.3)"
-          }}>
+
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="mb-4">
             {teamInfo?.logos1 ? (
               <img 
                 src={teamInfo.logos1} 
                 alt={`${decodedTeamName} logo`}
-                style={{
-                  width: "60px",
-                  height: "60px",
-                  borderRadius: "50%",
-                  objectFit: "contain",
-                  backgroundColor: "white"
-                }}
-                onLoad={(e) => {
-                  console.log("Logo loaded successfully:", teamInfo.logo);
-                }}
-                onError={(e) => {
-                  console.error("Logo failed to load:", teamInfo.logo);
-                  e.target.style.display = 'none';
-                  e.target.parentElement.innerHTML = '<div style="color: white; font-size: 20px; font-weight: bold; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">' + decodedTeamName.substring(0, 2).toUpperCase() + '</div>';
-                }}
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-full mx-auto border-2 border-white/20 bg-white/10 p-2"
               />
             ) : (
-              <div style={{
-                color: "white", 
-                fontSize: "20px", 
-                fontWeight: "bold",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "100%",
-                height: "100%"
-              }}>
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full mx-auto border-2 border-white/20 bg-white/10 flex items-center justify-center text-xl sm:text-2xl font-bold text-white/80">
                 {decodedTeamName.substring(0, 2).toUpperCase()}
               </div>
             )}
           </div>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-2 leading-tight">
+            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              {decodedTeamName}
+            </span>
+          </h1>
+          {teamInfo && (
+            <p className="text-lg sm:text-xl text-white/80">
+              {teamInfo.conference || "Independent"} • {teamInfo.currentSeason?.record || "0-0"}
+            </p>
+          )}
         </div>
-      </div>
 
-      <div style={{ padding: "20px 16px" }}>
         {/* Ownership Status */}
         {renderOwnershipStatus()}
         
         {/* Team Stats */}
         {teamInfo?.currentSeason && (
-          <div style={{ 
-            marginBottom: "24px", 
-            padding: "20px", 
-            backgroundColor: "white", 
-            borderRadius: "12px",
-            boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-          }}>
-            <h3 style={{ 
-              margin: "0 0 16px 0", 
-              fontSize: "16px", 
-              fontWeight: "600",
-              color: "#1e293b",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px"
-            }}>
-              <TrendingUp size={18} />
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
+            <h3 className="flex items-center gap-2 text-xl font-bold text-white mb-6">
+              <TrendingUp size={20} />
               2025 Season Stats
             </h3>
             
-            <div style={{ 
-              display: "grid", 
-              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", 
-              gap: "12px" 
-            }}>
-              <div>
-                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "2px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Conference Record</div>
-                <div style={{ fontSize: "16px", fontWeight: "700", color: "#1e293b" }}>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div className="bg-white/5 rounded-xl p-3 text-center">
+                <div className="text-xs text-white/60 font-medium mb-1">Conference Record</div>
+                <div className="text-lg font-bold text-white">
                   {teamInfo.currentSeason.confRecord || "0-0"}
                 </div>
               </div>
               
-              <div>
-                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "2px", textTransform: "uppercase", letterSpacing: "0.5px" }}>ATS Record</div>
-                <div style={{ fontSize: "16px", fontWeight: "700", color: "#1e293b" }}>
+              <div className="bg-white/5 rounded-xl p-3 text-center">
+                <div className="text-xs text-white/60 font-medium mb-1">ATS Record</div>
+                <div className="text-lg font-bold text-white">
                   {teamInfo.currentSeason.ats === "PENDING SCHEDULE" ? "TBD" : (teamInfo.currentSeason.ats || "0-0")}
                 </div>
               </div>
               
-              <div>
-                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "2px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Fantasy Points</div>
-                <div style={{ fontSize: "16px", fontWeight: "700", color: "#059669" }}>
+              <div className="bg-white/5 rounded-xl p-3 text-center">
+                <div className="text-xs text-white/60 font-medium mb-1">Fantasy Points</div>
+                <div className="text-lg font-bold text-green-300">
                   {teamInfo.currentSeason.gamePoints || 0}
                 </div>
               </div>
               
-              <div>
-                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "2px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Avg Weekly Fantasy</div>
-                <div style={{ fontSize: "16px", fontWeight: "700", color: "#0ea5e9" }}>
+              <div className="bg-white/5 rounded-xl p-3 text-center">
+                <div className="text-xs text-white/60 font-medium mb-1">Avg Weekly Fantasy</div>
+                <div className="text-lg font-bold text-blue-300">
                   {(() => {
                     const weeklyPoints = teamInfo.currentSeason.weeklyPoints || {};
                     const gamesPlayed = parseInt(teamInfo.currentSeason.gamesPlayed) || 0;
@@ -674,163 +602,83 @@ function TeamPage() {
                 </div>
               </div>
               
-              <div>
-                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "2px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Season Total Pts</div>
-                <div style={{ fontSize: "16px", fontWeight: "700", color: "#7c3aed" }}>
+              <div className="bg-white/5 rounded-xl p-3 text-center">
+                <div className="text-xs text-white/60 font-medium mb-1">Season Total Pts</div>
+                <div className="text-lg font-bold text-purple-300">
                   {teamInfo.currentSeason.seasonTotalPoints || 0}
                 </div>
               </div>
               
-              <div>
-                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "2px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Games Played</div>
-                <div style={{ fontSize: "16px", fontWeight: "700", color: "#1e293b" }}>
+              <div className="bg-white/5 rounded-xl p-3 text-center">
+                <div className="text-xs text-white/60 font-medium mb-1">Games Played</div>
+                <div className="text-lg font-bold text-white">
                   {teamInfo.currentSeason.gamesPlayed || "0"}
                 </div>
               </div>
               
-              <div>
-                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "2px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Avg Points For</div>
-                <div style={{ fontSize: "16px", fontWeight: "700", color: "#059669" }}>
+              <div className="bg-white/5 rounded-xl p-3 text-center">
+                <div className="text-xs text-white/60 font-medium mb-1">Avg Points For</div>
+                <div className="text-lg font-bold text-green-300">
                   {teamInfo.currentSeason.avgPointsFor || "0"}
                 </div>
               </div>
               
-              <div>
-                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "2px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Avg Points Against</div>
-                <div style={{ fontSize: "16px", fontWeight: "700", color: "#dc2626" }}>
+              <div className="bg-white/5 rounded-xl p-3 text-center">
+                <div className="text-xs text-white/60 font-medium mb-1">Avg Points Against</div>
+                <div className="text-lg font-bold text-red-300">
                   {teamInfo.currentSeason.avgPointsAgainst || "0"}
                 </div>
               </div>
-              
-              <div>
-                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "2px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total Pts For</div>
-                <div style={{ fontSize: "16px", fontWeight: "700", color: "#059669" }}>
-                  {teamInfo.currentSeason.totalPointsFor || "0"}
-                </div>
-              </div>
-              
-              <div>
-                <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "2px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total Pts Against</div>
-                <div style={{ fontSize: "16px", fontWeight: "700", color: "#dc2626" }}>
-                  {teamInfo.currentSeason.totalPointsAgainst || "0"}
-                </div>
-              </div>
-              
-              {teamInfo.currentSeason.division && (
-                <div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "2px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Division</div>
-                  <div style={{ fontSize: "16px", fontWeight: "700", color: "#1e293b" }}>
-                    {teamInfo.currentSeason.division}
-                  </div>
-                </div>
-              )}
-              
-              {teamInfo.currentSeason.nextOpponent && (
-                <div style={{ gridColumn: "span 2" }}>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginBottom: "2px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Next Opponent</div>
-                  <div style={{ fontSize: "14px", fontWeight: "600", color: "#1e293b" }}>
-                    {teamInfo.currentSeason.nextGameIsHome === false ? "@" : "vs"} {teamInfo.currentSeason.nextOpponent}
-                    {teamInfo.currentSeason.nextOpponentSpread && teamInfo.currentSeason.nextOpponentSpread !== "TBD" && (
-                      <span style={{ color: "#64748b", fontWeight: "400" }}> ({teamInfo.currentSeason.nextOpponentSpread})</span>
-                    )}
-                  </div>
-                  {teamInfo.currentSeason.nextGameDate && (
-                    <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
-                      {new Date(teamInfo.currentSeason.nextGameDate).toLocaleDateString('en-US', { 
-                        weekday: 'short', 
-                        month: 'short', 
-                        day: 'numeric' 
-                      })}
-                    </div>
+            </div>
+
+            {/* Next Game - Full Width if exists */}
+            {teamInfo.currentSeason.nextOpponent && (
+              <div className="mt-4 bg-white/5 rounded-xl p-4 text-center">
+                <div className="text-xs text-white/60 font-medium mb-2">Next Game</div>
+                <div className="text-lg font-bold text-white">
+                  {teamInfo.currentSeason.nextGameIsHome === false ? "@" : "vs"} {teamInfo.currentSeason.nextOpponent}
+                  {teamInfo.currentSeason.nextOpponentSpread && teamInfo.currentSeason.nextOpponentSpread !== "TBD" && (
+                    <span className="text-white/60 font-normal"> ({teamInfo.currentSeason.nextOpponentSpread})</span>
                   )}
                 </div>
-              )}
-            </div>
+                {teamInfo.currentSeason.nextGameDate && (
+                  <div className="text-sm text-white/60 mt-1">
+                    {new Date(teamInfo.currentSeason.nextGameDate).toLocaleDateString('en-US', { 
+                      weekday: 'short', 
+                      month: 'short', 
+                      day: 'numeric' 
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
         {/* Schedule */}
-        <div style={{ 
-          backgroundColor: "white", 
-          borderRadius: "12px",
-          overflow: "hidden",
-          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-        }}>
-          <div style={{ 
-            padding: "20px 20px 16px 20px", 
-            borderBottom: "2px solid #f1f5f9"
-          }}>
-            <h3 style={{ 
-              margin: 0, 
-              fontSize: "18px", 
-              fontWeight: "600",
-              color: "#1e293b",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px"
-            }}>
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 overflow-hidden">
+          <div className="p-6 border-b border-white/10">
+            <h3 className="flex items-center gap-2 text-xl font-bold text-white">
               <Calendar size={20} />
               2025 Schedule ({schedule.length} games)
             </h3>
           </div>
           
           {schedule.length === 0 ? (
-            <div style={{ padding: "40px 20px", textAlign: "center", color: "#64748b" }}>
+            <div className="p-8 text-center text-white/60">
               No schedule found for {decodedTeamName}
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <div className="overflow-x-auto">
+              <table className="w-full">
                 <thead>
-                  <tr style={{ backgroundColor: "#f8fafc" }}>
-                    <th style={{ 
-                      padding: "12px 16px", 
-                      textAlign: "left", 
-                      borderBottom: "2px solid #e2e8f0",
-                      fontSize: "14px",
-                      fontWeight: "600",
-                      color: "#374151"
-                    }}>Week</th>
-                    <th style={{ 
-                      padding: "12px 16px", 
-                      textAlign: "left", 
-                      borderBottom: "2px solid #e2e8f0",
-                      fontSize: "14px",
-                      fontWeight: "600",
-                      color: "#374151"
-                    }}>Date</th>
-                    <th style={{ 
-                      padding: "12px 16px", 
-                      textAlign: "left", 
-                      borderBottom: "2px solid #e2e8f0",
-                      fontSize: "14px",
-                      fontWeight: "600",
-                      color: "#374151"
-                    }}>Opponent</th>
-                    <th style={{ 
-                      padding: "12px 16px", 
-                      textAlign: "left", 
-                      borderBottom: "2px solid #e2e8f0",
-                      fontSize: "14px",
-                      fontWeight: "600",
-                      color: "#374151"
-                    }}>Venue</th>
-                    <th style={{ 
-                      padding: "12px 16px", 
-                      textAlign: "left", 
-                      borderBottom: "2px solid #e2e8f0",
-                      fontSize: "14px",
-                      fontWeight: "600",
-                      color: "#374151"
-                    }}>Result</th>
-                    <th style={{ 
-                      padding: "12px 16px", 
-                      textAlign: "center", 
-                      borderBottom: "2px solid #e2e8f0",
-                      fontSize: "14px",
-                      fontWeight: "600",
-                      color: "#374151"
-                    }}>Fantasy Pts</th>
+                  <tr className="bg-white/5">
+                    <th className="px-2 py-3 text-center text-xs font-semibold text-white/80 w-16">Wk</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/80 w-24">Date</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/80">Opponent</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/80">Venue</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/80">Result</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/80 w-20">Fantasy Pts</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -842,76 +690,55 @@ function TeamPage() {
                     return (
                       <tr 
                         key={index} 
-                        style={{ 
-                          borderBottom: index < schedule.length - 1 ? "1px solid #f1f5f9" : "none",
-                          transition: "background-color 0.2s ease"
-                        }}
-                        onMouseEnter={(e) => e.target.parentElement.style.backgroundColor = "#f8fafc"}
-                        onMouseLeave={(e) => e.target.parentElement.style.backgroundColor = "white"}
+                        className={`border-b border-white/5 hover:bg-white/5 transition-colors duration-200 ${
+                          index % 2 === 0 ? 'bg-white/2' : ''
+                        }`}
                       >
-                        <td style={{ padding: "12px 16px", fontWeight: "600", color: "#1e293b" }}>
+                        <td className="px-2 py-3 font-semibold text-white text-center">
                           {game.week}
                         </td>
-                        <td style={{ padding: "12px 16px" }}>
-                          <div style={{ fontSize: "14px", color: "#1e293b" }}>{dateInfo.weekday}</div>
-                          <div style={{ fontSize: "13px", color: "#64748b" }}>{dateInfo.date}</div>
+                        <td className="px-4 py-3 text-center">
+                          <div className="text-sm text-white">{dateInfo.weekday}</div>
+                          <div className="text-xs text-white/60">{dateInfo.date}</div>
                         </td>
-                        <td style={{ padding: "12px 16px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            <span style={{ 
-                              fontSize: "13px", 
-                              color: "#64748b",
-                              fontWeight: "500"
-                            }}>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="text-xs text-white/60 font-medium">
                               {opponentInfo.prefix}
                             </span>
-                            <span style={{ 
-                              fontSize: "14px", 
-                              color: "#1e293b",
-                              fontWeight: "600"
-                            }}>
+                            <span className="text-sm font-semibold text-white">
                               {opponentInfo.opponent}
                             </span>
                           </div>
                         </td>
-                        <td style={{ padding: "12px 16px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            <MapPin size={14} style={{ color: "#64748b" }} />
-                            <span style={{ fontSize: "14px", color: "#64748b" }}>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <MapPin size={12} className="text-white/40" />
+                            <span className="text-sm text-white/60">
                               {game.venue || "TBD"}
                             </span>
                           </div>
                         </td>
-                        <td style={{ padding: "12px 16px" }}>
+                        <td className="px-4 py-3 text-center">
                           {gameResult ? (
-                            <div style={{ 
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "6px",
-                              padding: "4px 8px",
-                              borderRadius: "6px",
-                              backgroundColor: gameResult.won ? "#ecfdf5" : "#fef2f2",
-                              color: gameResult.won ? "#065f46" : "#991b1b",
-                              fontSize: "13px",
-                              fontWeight: "600"
-                            }}>
+                            <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold ${
+                              gameResult.won 
+                                ? 'bg-green-500/20 text-green-300' 
+                                : 'bg-red-500/20 text-red-300'
+                            }`}>
                               {gameResult.result} {gameResult.score}
                             </div>
                           ) : (
-                            <span style={{ color: "#94a3b8", fontSize: "14px" }}>TBD</span>
+                            <span className="text-white/40 text-sm">TBD</span>
                           )}
                         </td>
-                        <td style={{ padding: "12px 16px", textAlign: "center" }}>
+                        <td className="px-4 py-3 text-center">
                           {game.gameComplete && game.fantasyPoints !== undefined && game.fantasyPoints !== null ? (
-                            <span style={{ 
-                              color: "#059669", 
-                              fontSize: "14px",
-                              fontWeight: "600"
-                            }}>
+                            <span className="text-green-300 text-sm font-semibold">
                               {game.fantasyPoints}
                             </span>
                           ) : (
-                            <span style={{ color: "#94a3b8", fontSize: "14px" }}>—</span>
+                            <span className="text-white/40 text-sm">—</span>
                           )}
                         </td>
                       </tr>
@@ -922,180 +749,37 @@ function TeamPage() {
             </div>
           )}
         </div>
-
-        {/* Swap UI */}
-        {showSwapUI && (
-          <div style={{ 
-            marginTop: "24px", 
-            padding: "20px", 
-            border: "2px solid #e5e7eb", 
-            borderRadius: "12px", 
-            backgroundColor: "white",
-            boxShadow: "0 4px 6px rgba(0,0,0,0.1)"
-          }}>
-            <h4 style={{ margin: "0 0 12px 0", fontSize: "18px", fontWeight: "600", color: "#1e293b" }}>
-              Swap in: {pendingAddTeam}
-            </h4>
-            <p style={{ margin: "0 0 16px 0", color: "#64748b" }}>
-              Your roster is full (7/7 teams). Choose a team to drop:
-            </p>
-            
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{ 
-                display: "block", 
-                marginBottom: "8px", 
-                fontSize: "14px", 
-                fontWeight: "500",
-                color: "#374151"
-              }}>
-                Drop Team:
-              </label>
-              <select
-                value={selectedDropTeam}
-                onChange={(e) => setSelectedDropTeam(e.target.value)}
-                style={{ 
-                  width: "100%",
-                  padding: "12px", 
-                  border: "2px solid #e5e7eb",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  backgroundColor: "white"
-                }}
-              >
-                <option value="">Select one of your teams</option>
-                {userTeams.map((team) => (
-                  <option key={team} value={team}>
-                    {team}
-                  </option>
-                ))}
-              </select>
-            </div>
-            
-            <div style={{ display: "flex", gap: "12px" }}>
-              <button
-                onClick={handleConfirmSwap}
-                disabled={!selectedDropTeam}
-                style={{ 
-                  padding: "12px 24px",
-                  backgroundColor: selectedDropTeam ? "#1e40af" : "#9ca3af",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  cursor: selectedDropTeam ? "pointer" : "not-allowed",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  transition: "all 0.2s ease"
-                }}
-              >
-                Confirm Swap
-              </button>
-              <button
-                onClick={() => {
-                  setShowSwapUI(false);
-                  setPendingAddTeam("");
-                  setSelectedDropTeam("");
-                }}
-                style={{ 
-                  padding: "12px 24px",
-                  backgroundColor: "white",
-                  color: "#64748b",
-                  border: "2px solid #e5e7eb",
-                  borderRadius: "8px",
-                  cursor: "pointer",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  transition: "all 0.2s ease"
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.backgroundColor = "#f8fafc";
-                  e.target.style.borderColor = "#d1d5db";
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.backgroundColor = "white";
-                  e.target.style.borderColor = "#e5e7eb";
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Bottom spacing */}
-      <div style={{ height: "80px" }} />
-      
       {/* Add Team Modal */}
       {showAddModal && teamToAdd && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-          padding: "16px"
-        }}>
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "16px",
-            padding: "24px",
-            maxWidth: "400px",
-            width: "100%"
-          }}>
-            <h3 style={{ 
-              fontSize: "18px", 
-              fontWeight: "600", 
-              marginBottom: "16px",
-              textAlign: "center"
-            }}>
-              Add {teamToAdd.school}?
-            </h3>
-            
-            <p style={{ 
-              textAlign: "center", 
-              marginBottom: "24px",
-              color: "#64748b" 
-            }}>
-              This will add them to your lineup.
-            </p>
-
-            <div style={{ display: "flex", gap: "12px" }}>
-              <button
-                onClick={() => {
-                  setShowAddModal(false);
-                  setTeamToAdd(null);
-                }}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  backgroundColor: "#6b7280",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  cursor: "pointer"
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmAddTeam}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  backgroundColor: "#059669",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  cursor: "pointer"
-                }}
-              >
-                Add Team
-              </button>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <div className="text-center">
+              <div className="text-4xl mb-4">🏈</div>
+              <h3 className="text-xl font-bold text-white mb-4">
+                Add {teamToAdd.school}?
+              </h3>
+              <p className="text-white/80 mb-6">
+                This will add them to your lineup.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setTeamToAdd(null);
+                  }}
+                  className="flex-1 px-4 py-3 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all duration-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmAddTeam}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-white font-bold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-green-500/40"
+                >
+                  Add Team
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1103,206 +787,78 @@ function TeamPage() {
 
       {/* Swap UI Modal */}
       {showSwapUI && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-          padding: "16px"
-        }}>
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "16px",
-            padding: "24px",
-            maxWidth: "400px",
-            width: "100%",
-            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
-          }}>
-            <h3 style={{ 
-              fontSize: "18px", 
-              fontWeight: "600", 
-              marginBottom: "16px",
-              textAlign: "center",
-              color: "#1e293b"
-            }}>
-              Add {pendingAddTeam}
-            </h3>
-            
-            <p style={{ 
-              textAlign: "center", 
-              marginBottom: "20px",
-              color: "#64748b",
-              fontSize: "14px"
-            }}>
-              Your roster is full. Select a team to drop:
-            </p>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <div className="text-center">
+              <div className="text-4xl mb-4">🔄</div>
+              <h3 className="text-xl font-bold text-white mb-4">
+                Add {pendingAddTeam}
+              </h3>
+              <p className="text-white/80 mb-6">
+                Your roster is full. Select a team to drop:
+              </p>
 
-            <div data-dropdown style={{ position: "relative", marginBottom: "20px" }}>
-              <label style={{ 
-                display: "block", 
-                marginBottom: "8px", 
-                fontSize: "14px", 
-                fontWeight: "500",
-                color: "#374151"
-              }}>
-                Select a team to drop:
-              </label>
-              
-              <button
-                onClick={() => setShowDropdown(!showDropdown)}
-                style={{
-                  width: "100%",
-                  padding: "16px",
-                  border: "2px solid #e5e7eb",
-                  borderRadius: "12px",
-                  fontSize: "16px",
-                  fontFamily: "inherit",
-                  backgroundColor: "white",
-                  textAlign: "left",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  minHeight: "56px",
-                  color: selectedDropTeam ? "#1e293b" : "#9ca3af",
-                  transition: "all 0.2s ease"
-                }}
-                onMouseEnter={(e) => {
-                  if (!showDropdown) {
-                    e.target.style.borderColor = "#3b82f6";
-                    e.target.style.boxShadow = "0 0 0 3px rgba(59, 130, 246, 0.1)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!showDropdown) {
-                    e.target.style.borderColor = "#e5e7eb";
-                    e.target.style.boxShadow = "none";
-                  }
-                }}
-              >
-                <span>
-                  {selectedDropTeam ? denormalizeTeamName(selectedDropTeam) : "Choose a team to drop"}
-                </span>
-                <svg 
-                  width="20" 
-                  height="20" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2"
-                  style={{
-                    transform: showDropdown ? "rotate(180deg)" : "rotate(0deg)",
-                    transition: "transform 0.2s ease"
-                  }}
+              <div data-dropdown className="relative mb-6">
+                <button
+                  onClick={() => setShowDropdown(!showDropdown)}
+                  className="w-full p-4 bg-white/10 backdrop-blur-sm border-2 border-white/30 rounded-xl text-white focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 focus:outline-none flex items-center justify-between transition-all duration-300"
                 >
-                  <polyline points="6,9 12,15 18,9"></polyline>
-                </svg>
-              </button>
+                  <span className={selectedDropTeam ? 'text-white' : 'text-white/50'}>
+                    {selectedDropTeam ? denormalizeTeamName(selectedDropTeam) : "Choose a team to drop"}
+                  </span>
+                  <ChevronDown 
+                    size={16} 
+                    className={`text-white/60 transition-transform duration-200 ${
+                      showDropdown ? 'rotate-180' : 'rotate-0'
+                    }`}
+                  />
+                </button>
 
-              {showDropdown && (
-                <div style={{
-                  position: "absolute",
-                  top: "100%",
-                  left: 0,
-                  right: 0,
-                  backgroundColor: "white",
-                  border: "2px solid #e5e7eb",
-                  borderRadius: "12px",
-                  boxShadow: "0 10px 25px rgba(0, 0, 0, 0.15)",
-                  zIndex: 1000,
-                  marginTop: "4px",
-                  maxHeight: "300px",
-                  overflowY: "auto"
-                }}>
-                  {userTeams.filter(Boolean).map((team, index) => (
-                    <button
-                      key={team}
-                      onClick={() => {
-                        setSelectedDropTeam(team);
-                        setShowDropdown(false);
-                      }}
-                      style={{
-                        width: "100%",
-                        padding: "16px",
-                        border: "none",
-                        backgroundColor: selectedDropTeam === team ? "#f0f9ff" : "white",
-                        color: selectedDropTeam === team ? "#0369a1" : "#1e293b",
-                        textAlign: "left",
-                        cursor: "pointer",
-                        fontSize: "16px",
-                        fontWeight: selectedDropTeam === team ? "600" : "400",
-                        borderBottom: index < userTeams.filter(Boolean).length - 1 ? "1px solid #f1f5f9" : "none",
-                        borderRadius: index === 0 ? "10px 10px 0 0" : 
-                                      index === userTeams.filter(Boolean).length - 1 ? "0 0 10px 10px" : "0",
-                        transition: "all 0.2s ease"
-                      }}
-                      onMouseEnter={(e) => {
-                        if (selectedDropTeam !== team) {
-                          e.target.style.backgroundColor = "#f8fafc";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (selectedDropTeam !== team) {
-                          e.target.style.backgroundColor = "white";
-                        }
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <div style={{
-                          width: "8px",
-                          height: "8px",
-                          borderRadius: "50%",
-                          backgroundColor: selectedDropTeam === team ? "#0369a1" : "#e5e7eb",
-                          transition: "all 0.2s ease"
-                        }} />
+                {showDropdown && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white/10 backdrop-blur-lg border-2 border-white/20 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto">
+                    {userTeams.filter(Boolean).map((team, index) => (
+                      <button
+                        key={team}
+                        onClick={() => {
+                          setSelectedDropTeam(team);
+                          setShowDropdown(false);
+                        }}
+                        className={`w-full p-3 text-left transition-all duration-150 ${
+                          selectedDropTeam === team 
+                            ? 'bg-blue-500/20 text-blue-200 font-semibold' 
+                            : 'text-white hover:bg-white/10'
+                        } ${index === 0 ? 'rounded-t-xl' : ''} ${
+                          index === userTeams.filter(Boolean).length - 1 ? 'rounded-b-xl' : 'border-b border-white/10'
+                        }`}
+                      >
                         {denormalizeTeamName(team)}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-            <div style={{ display: "flex", gap: "12px" }}>
-              <button
-                onClick={() => setShowSwapUI(false)}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  backgroundColor: "#6b7280",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  cursor: "pointer"
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmSwap}
-                disabled={!selectedDropTeam}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  backgroundColor: selectedDropTeam ? "#059669" : "#94a3b8",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  cursor: selectedDropTeam ? "pointer" : "not-allowed"
-                }}
-              >
-                Confirm Swap
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowSwapUI(false)}
+                  className="flex-1 px-4 py-3 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all duration-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmSwap}
+                  disabled={!selectedDropTeam}
+                  className={`
+                    flex-1 px-4 py-3 rounded-xl font-bold transition-all duration-300 transform
+                    ${selectedDropTeam 
+                      ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white hover:scale-105 shadow-lg hover:shadow-green-500/40' 
+                      : 'bg-white/20 text-white/40 cursor-not-allowed'
+                    }
+                  `}
+                >
+                  Confirm Swap
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1310,78 +866,24 @@ function TeamPage() {
 
       {/* Custom Success Modal */}
       {showSuccessModal && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-          padding: "16px"
-        }}>
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "16px",
-            padding: "24px",
-            maxWidth: "400px",
-            width: "100%",
-            textAlign: "center",
-            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
-          }}>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full text-center shadow-2xl">
             {/* Success Icon */}
-            <div style={{
-              width: "60px",
-              height: "60px",
-              backgroundColor: "#10b981",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 16px auto"
-            }}>
-              <div style={{
-                color: "white",
-                fontSize: "24px",
-                fontWeight: "bold"
-              }}>
-                ✓
-              </div>
+            <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="text-white text-2xl font-bold">✓</div>
             </div>
 
-            <h3 style={{ 
-              fontSize: "18px", 
-              fontWeight: "600", 
-              marginBottom: "8px",
-              color: "#1e293b"
-            }}>
+            <h3 className="text-xl font-bold text-white mb-2">
               {modalTitle}
             </h3>
             
-            <p style={{ 
-              marginBottom: "24px",
-              color: "#64748b",
-              fontSize: "14px"
-            }}>
+            <p className="text-white/80 mb-6">
               {modalMessage}
             </p>
 
             <button
               onClick={closeModals}
-              style={{
-                width: "100%",
-                padding: "12px",
-                backgroundColor: "#10b981",
-                color: "white",
-                border: "none",
-                borderRadius: "8px",
-                fontSize: "14px",
-                fontWeight: "500",
-                cursor: "pointer"
-              }}
+              className="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-white font-bold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-green-500/40"
             >
               Awesome!
             </button>
@@ -1391,78 +893,24 @@ function TeamPage() {
 
       {/* Custom Error Modal */}
       {showErrorModal && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-          padding: "16px"
-        }}>
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "16px",
-            padding: "24px",
-            maxWidth: "400px",
-            width: "100%",
-            textAlign: "center",
-            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
-          }}>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full text-center shadow-2xl">
             {/* Error Icon */}
-            <div style={{
-              width: "60px",
-              height: "60px",
-              backgroundColor: "#ef4444",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 16px auto"
-            }}>
-              <div style={{
-                color: "white",
-                fontSize: "24px",
-                fontWeight: "bold"
-              }}>
-                !
-              </div>
+            <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="text-white text-2xl font-bold">!</div>
             </div>
 
-            <h3 style={{ 
-              fontSize: "18px", 
-              fontWeight: "600", 
-              marginBottom: "8px",
-              color: "#1e293b"
-            }}>
+            <h3 className="text-xl font-bold text-white mb-2">
               {modalTitle}
             </h3>
             
-            <p style={{ 
-              marginBottom: "24px",
-              color: "#64748b",
-              fontSize: "14px"
-            }}>
+            <p className="text-white/80 mb-6">
               {modalMessage}
             </p>
 
             <button
               onClick={closeModals}
-              style={{
-                width: "100%",
-                padding: "12px",
-                backgroundColor: "#6b7280",
-                color: "white",
-                border: "none",
-                borderRadius: "8px",
-                fontSize: "14px",
-                fontWeight: "500",
-                cursor: "pointer"
-              }}
+              className="w-full px-4 py-3 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all duration-300"
             >
               Got it
             </button>
