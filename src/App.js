@@ -52,8 +52,15 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const hideLoggedInBar = ["/", "/login", "/signup", "/forgot-password"].includes(location.pathname);
-
+  const hideTopNav = [
+    "/", "/login", "/signup", "/forgot-password", "/how-to-play", 
+    "/create-league", "/join-league", "/home"
+  ].includes(location.pathname) || location.pathname.endsWith('/draft-room') || location.pathname.endsWith('/scouting') || location.pathname.endsWith('/league-rules') ;
+  const hideLoggedInBar = [
+    "/", "/login", "/signup", "/forgot-password", "/how-to-play", 
+    "/create-league", "/join-league", "/home"
+  ].includes(location.pathname) || location.pathname.endsWith('/draft-room') || location.pathname.endsWith('/scouting') || location.pathname.endsWith('/league-rules') ;
+  
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
       setUser(currentUser);
@@ -87,22 +94,24 @@ function App() {
 
   return (
     <>
-      <nav style={{ marginBottom: "10px" }}>
-        {user ? <Link to="/home">Home</Link> : <Link to="/">Home</Link>}{" "}
-        {user ? (
-          <>
-            | <Link to="/create-league">Create League</Link>{" "}
-            | <Link to="/join-league">Join League</Link>{" "}
-            | <button onClick={handleLogout}>Logout</button>
-          </>
-        ) : (
-          <>
-            | <Link to="/signup">Sign Up</Link>{" "}
-            | <Link to="/login">Login</Link>{" "}
-            | <Link to="/how-to-play">How to Play</Link>
-          </>
-        )}
-      </nav>
+      {!hideTopNav && (
+        <nav style={{ marginBottom: "10px" }}>
+          {user ? <Link to="/home">Home</Link> : <Link to="/">Home</Link>}{" "}
+          {user ? (
+            <>
+              | <Link to="/create-league">Create League</Link>{" "}
+              | <Link to="/join-league">Join League</Link>{" "}
+              | <button onClick={handleLogout}>Logout</button>
+            </>
+          ) : (
+            <>
+              | <Link to="/signup">Sign Up</Link>{" "}
+              | <Link to="/login">Login</Link>{" "}
+              | <Link to="/how-to-play">How to Play</Link>
+            </>
+          )}
+        </nav>
+      )}
 
       {!hideLoggedInBar && user && (
         <div style={{ marginBottom: "10px" }}>

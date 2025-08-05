@@ -15,8 +15,8 @@ import {
 } from "firebase/firestore";
 import DraftBoard from "../components/DraftBoard";
 import ManualDraftEntry from "../components/ManualDraftEntry";
-import { useParams, useNavigate } from "react-router-dom";
-import LeagueNavBar from "../components/LeagueNavBar";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import BottomNavBar from "../components/BottomNavBar";
 
 function DraftRoom() {
   const { leagueId } = useParams();
@@ -651,127 +651,126 @@ const handleStartDraft = async () => {
     setShowCompletionModal(false);
   };
 
+  const handleLogout = async () => {
+    if (window.confirm("Are you sure you want to log out?")) {
+      try {
+        await auth.signOut();
+        navigate("/");
+      } catch (err) {
+        console.error("Logout error:", err);
+      }
+    }
+  };
+
   const currentCount = Object.keys(userMap).length;
   const missing = maxManagers ? maxManagers - currentCount : 0;
   const isFull = missing === 0;
   const isManualDraft = leagueData?.draftType === "manual";
 
   if (loading || Object.keys(userMap).length === 0) {
-    return <p>Loading draft room...</p>;
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        </div>
+        <div className="relative z-10 flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="text-4xl mb-4 animate-spin">⚡</div>
+            <p className="text-xl text-white/80">Loading league...</p>
+          </div>
+        </div>
+      </div>
+    );
   }
-
-// REPLACE your entire Manual Draft Flow section (lines 468-689) with this:
 
 // Manual Draft Flow
 if (isManualDraft) {
   if (!draftData) {
     return (
-      <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-        <LeagueNavBar />
-
-        {/* Header - Same as Live Draft */}
-        <div style={{ 
-          padding: "20px 16px 16px 16px",
-          background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
-          color: "white"
-        }}>
-          <h1 style={{ 
-            fontSize: "24px", 
-            fontWeight: "700", 
-            margin: "0 0 8px 0",
-            textAlign: "center"
-          }}>
-            Draft Room - Manual Draft
-          </h1>
-          <p style={{
-            fontSize: "14px",
-            opacity: "0.9",
-            textAlign: "center",
-            margin: "0 0 4px 0"
-          }}>
-            {Object.keys(userMap).length} managers joined
-          </p>
-          <p style={{
-            fontSize: "12px",
-            opacity: "0.8",
-            textAlign: "center",
-            margin: 0
-          }}>
-            Commissioner will enter draft results after offline draft
-          </p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+        {/* Animated Background Elements */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
         </div>
 
-        {/* Content Area */}
-        <div style={{ padding: "16px" }}>
-          
+        <BottomNavBar leagueId={leagueId} isDraftComplete={false} />
+
+        {/* Navigation */}
+        <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
+          <Link to="/home" className="flex items-center space-x-3">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
+              L
+            </div>
+            <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              Lineup
+            </span>
+          </Link>
+          <div className="flex items-center space-x-4">
+            <button 
+              onClick={handleLogout}
+              className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
+            >
+              Logout
+            </button>
+          </div>
+        </nav>
+
+        {/* Main Content */}
+            <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-24">
+            <div className="text-center mb-8">
+            <div className="mb-4">
+              <span className="inline-block text-4xl sm:text-5xl mb-2">📝</span>
+            </div>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-2 leading-tight">
+              <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+                Draft Room
+              </span>
+            </h1>
+            <p className="text-xl sm:text-2xl font-semibold text-white mb-4">
+              {leagueData?.name || "Unnamed League"}
+            </p>
+            <p className="text-lg sm:text-xl text-white/80">
+              Manual Draft • {Object.keys(userMap).length} managers joined
+            </p>
+            <p className="text-sm sm:text-base text-white/60">
+              Commissioner will enter draft results after offline draft
+            </p>
+          </div>
+
           {/* League Status */}
           {!isFull ? (
-            <div style={{
-              backgroundColor: "white",
-              borderRadius: "12px",
-              padding: "20px",
-              marginBottom: "16px",
-              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-              border: "1px solid #e2e8f0"
-            }}>
-              <div style={{
-                backgroundColor: "#fef3c7",
-                border: "1px solid #f59e0b",
-                borderRadius: "8px",
-                padding: "12px 16px",
-                marginBottom: "16px",
-                textAlign: "center"
-              }}>
-                <p style={{ 
-                  color: "#92400e", 
-                  fontWeight: "bold", 
-                  margin: 0,
-                  fontSize: "16px"
-                }}>
-                  🟡 Waiting for {missing} more manager{missing !== 1 ? 's' : ''} to join
-                </p>
+            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
+              <div className="text-center mb-6">
+                <div className="text-3xl mb-4">👥</div>
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4">
+                  Waiting for Players
+                </h3>
+                <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4 mb-6">
+                  <p className="text-amber-200 font-semibold text-lg">
+                    🟡 Waiting for {missing} more manager{missing !== 1 ? 's' : ''} to join
+                  </p>
+                </div>
               </div>
 
-              <h3 style={{
-                fontSize: "18px",
-                fontWeight: "700",
-                color: "#1e293b",
-                margin: "0 0 16px 0"
-              }}>
+              <h4 className="text-lg font-bold text-white mb-4">
                 Current Members ({Object.keys(userMap).length}/{maxManagers})
-              </h3>
+              </h4>
 
-              <div style={{ display: "grid", gap: "8px" }}>
+              <div className="grid gap-3">
                 {Object.values(userMap).map((user, i) => (
-                  <div key={i} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    padding: "12px",
-                    backgroundColor: "#f8fafc",
-                    borderRadius: "8px",
-                    border: "1px solid #e2e8f0"
-                  }}>
-                    <div style={{
-                      width: "32px",
-                      height: "32px",
-                      borderRadius: "50%",
-                      backgroundColor: "#1e40af",
-                      color: "white",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "12px",
-                      fontWeight: "700",
-                      marginRight: "12px"
-                    }}>
-                      {i + 1}
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: "600", color: "#1e293b" }}>
-                        {user.displayName}
+                  <div key={i} className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+                        {i + 1}
                       </div>
-                      <div style={{ fontSize: "12px", color: "#64748b" }}>
-                        {user.teamName}
+                      <div>
+                        <div className="font-semibold text-white">
+                          {user.displayName}
+                        </div>
+                        <div className="text-sm text-white/70">
+                          {user.teamName}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -779,89 +778,53 @@ if (isManualDraft) {
               </div>
             </div>
           ) : (
-            <div style={{
-              backgroundColor: "white",
-              borderRadius: "12px",
-              padding: "20px",
-              marginBottom: "16px",
-              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-              border: "1px solid #e2e8f0",
-              textAlign: "center"
-            }}>
-              <div style={{
-                backgroundColor: "#d1fae5",
-                border: "1px solid #10b981",
-                borderRadius: "8px",
-                padding: "16px",
-                marginBottom: "16px"
-              }}>
-                <p style={{ 
-                  color: "#065f46", 
-                  fontWeight: "bold", 
-                  margin: "0 0 8px 0",
-                  fontSize: "18px"
-                }}>
-                  ✅ All Managers Ready!
-                </p>
-                <p style={{ 
-                  color: "#047857", 
-                  margin: 0,
-                  fontSize: "14px"
-                }}>
-                  League is full with {Object.keys(userMap).length} managers
-                </p>
-              </div>
-
-              {isLeagueAdmin ? (
-                <div>
-                  <p style={{
-                    fontSize: "16px",
-                    color: "#1e293b",
-                    marginBottom: "20px"
-                  }}>
-                    Ready to enter draft results from your offline draft.
+            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
+              <div className="text-center">
+                <div className="text-4xl sm:text-5xl mb-4">✅</div>
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4">
+                  All Managers Ready!
+                </h3>
+                <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-4 mb-6">
+                  <p className="text-green-200 font-semibold text-lg">
+                    League is full with {Object.keys(userMap).length} managers
                   </p>
-                  <button 
-                    onClick={handleStartManualDraft}
-                    style={{
-                      background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "12px",
-                      padding: "14px 28px",
-                      fontSize: "16px",
-                      fontWeight: "700",
-                      cursor: "pointer",
-                      boxShadow: "0 4px 12px rgba(5, 150, 105, 0.3)",
-                      transition: "all 0.3s ease",
-                      textShadow: "0 1px 2px rgba(0, 0, 0, 0.2)",
-                      letterSpacing: "0.5px",
-                      minWidth: "200px"
-                    }}
-                    onMouseEnter={(e) => {
-                      e.target.style.background = "linear-gradient(135deg, #047857 0%, #065f46 100%)";
-                      e.target.style.transform = "translateY(-2px)";
-                      e.target.style.boxShadow = "0 8px 20px rgba(5, 150, 105, 0.4)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.background = "linear-gradient(135deg, #059669 0%, #047857 100%)";
-                      e.target.style.transform = "translateY(0)";
-                      e.target.style.boxShadow = "0 4px 12px rgba(5, 150, 105, 0.3)";
-                    }}
-                  >
-                    📝 Enter Draft Results
-                  </button>
                 </div>
-              ) : (
-                <p style={{
-                  fontSize: "16px",
-                  color: "#64748b"
-                }}>
-                  Waiting for commissioner to enter draft results...
-                </p>
-              )}
+
+                {isLeagueAdmin ? (
+                  <div className="space-y-4">
+                    <p className="text-white/80 text-lg">
+                      Ready to enter draft results from your offline draft.
+                    </p>
+                    <button 
+                      onClick={handleStartManualDraft}
+                      className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-lg font-bold transition-all duration-300 transform hover:scale-105 shadow-2xl hover:shadow-green-500/40"
+                    >
+                      📝 Enter Draft Results
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-white/80 text-lg">
+                    Waiting for commissioner to enter draft results...
+                  </p>
+                )}
+              </div>
             </div>
           )}
+
+          {/* Info Card */}
+          <div className="bg-blue-500/20 border border-blue-400/30 rounded-2xl p-6">
+            <div className="text-center">
+              <h4 className="text-lg font-semibold text-blue-200 mb-3">
+                How Manual Draft Works
+              </h4>
+              <div className="text-blue-200 text-sm space-y-2 leading-relaxed">
+                <p>• Conduct your draft offline with friends</p>
+                <p>• Each manager drafts 7 college teams (5 starters + 2 bench)</p>
+                <p>• Commissioner enters all results into the system</p>
+                <p>• Teams earn points when they win games</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -871,7 +834,7 @@ if (isManualDraft) {
   if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftData.teams !== undefined)) {
     return (
       <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-        <LeagueNavBar />
+        <BottomNavBar leagueId={leagueId} isDraftComplete={draftData?.draftComplete || false} />
 
         {/* Header - Same as Live Draft */}
         <div style={{ 
@@ -1021,7 +984,7 @@ if (isManualDraft) {
   // If we have draft data but it's not manual format, treat as error
   return (
     <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-      <LeagueNavBar />
+      <BottomNavBar leagueId={leagueId} isDraftComplete={false} />
 
       {/* Header - Error State */}
       <div style={{ 
@@ -1115,94 +1078,201 @@ if (isManualDraft) {
   );
 }
 
-  // Live Draft Flow (existing logic)
-  if (!draftData) {
-    return (
-      <div>
-        <LeagueNavBar />
-        <h2>Draft Room - Live Draft</h2>
-        
+// Live Draft Flow (existing logic)
+if (!draftData) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      </div>
+
+      <BottomNavBar leagueId={leagueId} isDraftComplete={false} />
+
+      {/* Navigation */}
+      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
+        <Link to="/home" className="flex items-center space-x-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
+            L
+          </div>
+          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            Lineup
+          </span>
+        </Link>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
+          >
+            Logout
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+        <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-8 pb-24">          {/* Header */}
+        <div className="text-center mb-8">
+          <div className="mb-4">
+            <span className="inline-block text-4xl sm:text-5xl mb-2">🚀</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-2 leading-tight">
+            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              Draft Room
+            </span>
+          </h1>
+          <p className="text-xl sm:text-2xl font-semibold text-white mb-4">
+            {leagueData?.name || "Unnamed League"}
+          </p>
+          <p className="text-lg sm:text-xl text-white/80">
+            Live Draft • {Object.keys(userMap).length} managers joined
+          </p>
+        </div>
+
         {/* Pre-Draft Countdown */}
         {draftCountdown > 0 && (
-          <div style={{ 
-            padding: "1.5rem", 
-            backgroundColor: "#e3f2fd", 
-            border: "2px solid #2196f3", 
-            borderRadius: "8px", 
-            marginBottom: "1rem",
-            textAlign: "center"
-          }}>
-            <h2 style={{ margin: "0 0 0.5rem 0", color: "#1976d2" }}>
-              🚀 Draft starts in: {formatCountdown(draftCountdown)}
-            </h2>
-            <p style={{ margin: 0, color: "#1565c0" }}>
-              Scheduled for: {leagueData?.draftDate?.toDate().toLocaleString("en-US", {
-                timeZone: "America/New_York",
-                weekday: "long",
-                year: "numeric", 
-                month: "long", 
-                day: "numeric",
-                hour: "numeric", 
-                minute: "2-digit",
-                timeZoneName: "short"
-              })}
-            </p>
-            {draftCountdown <= 60 && (
-              <p style={{ margin: "0.5rem 0 0 0", color: "#d32f2f", fontWeight: "bold" }}>
-                ⚠️ Get ready! Draft starting soon!
-              </p>
-            )}
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
+            <div className="text-center">
+              <div className="text-4xl sm:text-5xl mb-4">⏰</div>
+                <h2 className="text-xl sm:text-2xl font-bold mb-4 text-white">
+                  Draft starts in: {formatCountdown(draftCountdown)}
+                </h2>
+              <div className="bg-blue-500/20 border border-blue-400/30 rounded-xl p-4 mb-4">
+                <p className="text-blue-200 text-sm sm:text-base">
+                  <strong>Scheduled for:</strong><br />
+                  {leagueData?.draftDate?.toDate().toLocaleString("en-US", {
+                    timeZone: "America/New_York",
+                    weekday: "long",
+                    year: "numeric", 
+                    month: "long", 
+                    day: "numeric",
+                    hour: "numeric", 
+                    minute: "2-digit",
+                    timeZoneName: "short"
+                  })}
+                </p>
+              </div>
+              {draftCountdown <= 60 && (
+                <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4">
+                  <p className="text-amber-200 font-bold">
+                    ⚠️ Get ready! Draft starting soon!
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
+        {/* Draft Time Arrived */}
         {draftCountdown === 0 && leagueData?.draftDate && (
-          <div style={{ 
-            padding: "1rem", 
-            backgroundColor: "#c8e6c9", 
-            border: "2px solid #4caf50", 
-            borderRadius: "8px", 
-            marginBottom: "1rem",
-            textAlign: "center"
-          }}>
-            <h3 style={{ margin: "0", color: "#388e3c" }}>
-              🎯 Draft time has arrived!
-            </h3>
+          <div className="bg-green-500/20 border border-green-400/30 rounded-2xl p-6 mb-8">
+            <div className="text-center">
+              <div className="text-4xl mb-4">🎯</div>
+              <h3 className="text-2xl font-bold text-green-200">
+                Draft time has arrived!
+              </h3>
+            </div>
           </div>
         )}
 
-        <p>No draft has been started yet.</p>
+        {/* League Status */}
+        {!isFull ? (
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
+            <div className="text-center mb-6">
+              <div className="text-3xl mb-4">👥</div>
+              <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">
+                Waiting for Players
+              </h3>
+              <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4">
+                <p className="text-amber-200 font-semibold">
+                  🟡 Waiting for {missing} more manager{missing !== 1 ? 's' : ''} to join
+                </p>
+              </div>
+            </div>
 
-        {!isFull && (
-          <div style={{ color: "orange", marginBottom: "1rem" }}>
-            <p>🟡 Waiting for {missing} more user(s) to join.</p>
-            <p>Current members:</p>
-            <ul>
+            <h4 className="text-lg font-bold text-white mb-4">
+              Current Members ({Object.keys(userMap).length}/{maxManagers})
+            </h4>
+
+            <div className="grid gap-3">
               {Object.values(userMap).map((user, i) => (
-                <li key={i}>{user.displayName}</li>
+                <div key={i} className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+                      {i + 1}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-white">
+                        {user.displayName}
+                      </div>
+                      <div className="text-sm text-white/70">
+                        {user.teamName}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
+            <div className="text-center">
+              <div className="text-4xl sm:text-5xl mb-4">✅</div>
+              <h3 className="text-xl sm:text-2xl font-bold text-white mb-4">
+                All Managers Ready!
+              </h3>
+              <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-4 mb-6">
+                <p className="text-green-200 font-semibold">
+                  League is full with {Object.keys(userMap).length} managers
+                </p>
+              </div>
+
+              {isLeagueAdmin && (
+                <div className="space-y-4">
+                  <p className="text-white/80">
+                    Ready to start the draft?
+                  </p>
+                  <button 
+                    onClick={draftCountdown > 0 ? handleStartDraftEarly : handleStartDraft}
+                    className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-lg font-bold transition-all duration-300 transform hover:scale-105 shadow-2xl hover:shadow-green-500/40"
+                  >
+                    {draftCountdown > 0 ? "🚀 Start Draft Early" : "🚀 Start Live Draft"}
+                  </button>
+                  {draftCountdown > 0 && (
+                    <p className="text-sm text-white/60 mt-2">
+                      Or wait for automatic start when countdown reaches zero
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!isLeagueAdmin && isFull && draftCountdown === 0 && (
+                <p className="text-white/80">
+                  All managers have joined. Waiting for commissioner to start the draft.
+                </p>
+              )}
+            </div>
           </div>
         )}
 
-        {isLeagueAdmin && isFull && (
-          <div>
-            <button onClick={draftCountdown > 0 ? handleStartDraftEarly : handleStartDraft}>
-              {draftCountdown > 0 ? "Start Draft Early" : "Start Live Draft"}
-            </button>
-            {draftCountdown > 0 && (
-              <p style={{ fontSize: "0.9em", color: "#666", marginTop: "0.5rem" }}>
-                Or wait for automatic start when countdown reaches zero
-              </p>
-            )}
+        {/* Info Card */}
+        <div className="bg-blue-500/20 border border-blue-400/30 rounded-2xl p-6">
+          <div className="text-center">
+            <h4 className="text-lg font-semibold text-blue-200 mb-3">
+              How the Draft Works
+            </h4>
+            <div className="text-blue-200 text-sm space-y-2 leading-relaxed">
+              <p>• Each manager drafts 7 college teams (5 starters + 2 bench)</p>
+              <p>• Snake draft order - picks reverse each round</p>
+              <p>• {leagueData?.timePerPick || 2} minutes per pick with auto-pick if time expires</p>
+              <p>• Teams earn points when they win games</p>
+            </div>
           </div>
-        )}
-
-        {!isLeagueAdmin && isFull && draftCountdown === 0 && (
-          <p>All managers have joined. Waiting for commissioner to start the draft.</p>
-        )}
+        </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   const isMyTurn = draftData && draftData.draftOrder 
     ? getCurrentPicker(draftData.draftOrder, draftData.currentPickIndex) === userId 
@@ -1221,7 +1291,7 @@ if (isManualDraft) {
 
   return (
   <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-      <LeagueNavBar />
+      <BottomNavBar leagueId={leagueId} isDraftComplete={draftData?.draftComplete || false} />
 
       {/* Header */}
       <div style={{ 

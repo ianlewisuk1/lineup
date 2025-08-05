@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { db } from "../firebase/firebase";
+import { db, auth } from "../firebase/firebase";
 import { collection, getDocs } from "firebase/firestore";
-import { useParams, useNavigate } from "react-router-dom";
-import LeagueNavBar from "../components/LeagueNavBar";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import BottomNavBar from "../components/BottomNavBar";
 
 function Scouting() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
   const [teams, setTeams] = useState([]);
   const [allTeams, setAllTeams] = useState({});
+  const [loading, setLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState({ key: "philMetricDraftRank", direction: "asc" });
   const [conferenceFilter, setConferenceFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
@@ -36,6 +37,8 @@ function Scouting() {
         .map((doc) => doc.data())
         .filter((team) => (team.classification || "").toLowerCase() === "fbs");
       setTeams(fbsTeams);
+
+      setLoading(false);
     };
 
     fetchTeams();
@@ -43,6 +46,17 @@ function Scouting() {
 
   const handleTeamClick = (teamName) => {
     navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
+  };
+
+  const handleLogout = async () => {
+    if (window.confirm("Are you sure you want to log out?")) {
+      try {
+        await auth.signOut();
+        navigate("/");
+      } catch (err) {
+        console.error("Logout error:", err);
+      }
+    }
   };
 
   const sortBy = (key) => {
@@ -153,140 +167,121 @@ function Scouting() {
     );
   };
 
-  return (
-    <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-      <LeagueNavBar />
-
-      {/* Header */}
-      <div style={{ 
-        padding: "20px 16px 16px 16px",
-        background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
-        color: "white"
-      }}>
-        <h1 style={{ 
-          fontSize: "24px", 
-          fontWeight: "700", 
-          margin: "0 0 8px 0",
-          textAlign: "center"
-        }}>
-          Team Scouting
-        </h1>
-        <p style={{
-          fontSize: "14px",
-          opacity: "0.9",
-          textAlign: "center",
-          margin: 0
-        }}>
-          {filteredTeams.length} teams • Analyze stats and find your next pick
-        </p>
-      </div>
-
-      {/* Filters */}
-      <div style={{
-        backgroundColor: "white",
-        borderBottom: "1px solid #e2e8f0",
-        padding: "16px"
-      }}>
-        <div style={{ 
-          display: "flex", 
-          gap: "12px", 
-          alignItems: "center",
-          flexWrap: "wrap",
-          justifyContent: "center"
-        }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <label style={{ fontSize: "12px", fontWeight: "600", color: "#64748b" }}>
-              Search Teams
-            </label>
-            <input
-              type="text"
-              placeholder="Search by school name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                padding: "10px 12px",
-                fontSize: "14px",
-                border: "2px solid #e2e8f0",
-                borderRadius: "8px",
-                width: "200px",
-                outline: "none",
-                transition: "border-color 0.2s ease"
-              }}
-              onFocus={(e) => e.target.style.borderColor = "#1e40af"}
-              onBlur={(e) => e.target.style.borderColor = "#e2e8f0"}
-            />
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            <label style={{ fontSize: "12px", fontWeight: "600", color: "#64748b" }}>
-              Conference
-            </label>
-            <select
-              value={conferenceFilter}
-              onChange={(e) => setConferenceFilter(e.target.value)}
-              style={{
-                padding: "10px 12px",
-                fontSize: "14px",
-                border: "2px solid #e2e8f0",
-                borderRadius: "8px",
-                backgroundColor: "white",
-                cursor: "pointer",
-                outline: "none"
-              }}
-            >
-              <option value="All">All Conferences</option>
-              <option value="P4">Power 4 Only</option>
-              {uniqueConferences.map((conf) => (
-                <option key={conf} value={conf}>
-                  {conf}
-                </option>
-              ))}
-            </select>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        </div>
+        <div className="relative z-10 flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="text-4xl mb-4 animate-spin">⚡</div>
+            <p className="text-xl text-white/80">Loading team database...</p>
           </div>
         </div>
       </div>
+    );
+  }
 
-      {/* Content Area */}
-      <div style={{ padding: "16px" }}>
-        {/* Table Container */}
-        <div style={{
-          backgroundColor: "white",
-          borderRadius: "12px",
-          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-          border: "1px solid #e2e8f0",
-          overflow: "hidden"
-        }}>
-          {/* Table Header Info */}
-          <div style={{
-            padding: "16px 20px",
-            borderBottom: "1px solid #e2e8f0",
-            background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)"
-          }}>
-            <h3 style={{
-              fontSize: "16px",
-              fontWeight: "700",
-              color: "#1e293b",
-              margin: "0 0 4px 0"
-            }}>
-              FBS Team Database
-            </h3>
-            <p style={{
-              fontSize: "12px",
-              color: "#64748b",
-              margin: 0
-            }}>
-              Click any column header to sort • Click team name to view details
-            </p>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      </div>
+
+      <BottomNavBar leagueId={leagueId} isDraftComplete={false} />
+
+      {/* Navigation */}
+      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
+        <Link to="/home" className="flex items-center space-x-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
+            L
           </div>
+          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            Lineup
+          </span>
+        </Link>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
+          >
+            Logout
+          </button>
+        </div>
+      </nav>
 
-          {/* Scrollable Table */}
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ 
-              width: "100%", 
-              borderCollapse: "collapse", 
-              fontSize: "13px",
-              minWidth: "1000px"
-            }}>
+      {/* Main Content */}
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 py-4 pb-20">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="mb-4">
+            <span className="inline-block text-4xl sm:text-5xl mb-2">🔍</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4 leading-tight">
+            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              Team Scouting
+            </span>
+          </h1>
+          <p className="text-lg sm:text-xl text-white/80">
+            {filteredTeams.length} teams • Analyze stats and find your next pick
+          </p>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
+          <div className="flex flex-wrap gap-6 justify-center">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-white/80 uppercase tracking-wide">
+                Search Teams
+              </label>
+              <input
+                type="text"
+                placeholder="Search by school name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="px-4 py-3 text-slate-900 bg-white/90 border-2 border-white/20 rounded-xl w-64 outline-none transition-all duration-300 focus:border-purple-400 focus:bg-white placeholder:text-slate-500"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-white/80 uppercase tracking-wide">
+                Conference
+              </label>
+              <select
+                value={conferenceFilter}
+                onChange={(e) => setConferenceFilter(e.target.value)}
+                className="px-4 py-3 text-slate-900 bg-white/90 border-2 border-white/20 rounded-xl cursor-pointer outline-none transition-all duration-300 focus:border-purple-400 focus:bg-white"
+              >
+                <option value="All">All Conferences</option>
+                <option value="P4">Power 4 Only</option>
+                {uniqueConferences.map((conf) => (
+                  <option key={conf} value={conf}>
+                    {conf}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Table Container */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 overflow-hidden">
+        {/* Table Header Info */}
+        <div className="p-6 border-b border-white/20 bg-white/5">
+          <h3 className="text-lg font-bold text-white mb-2">
+            FBS Team Database
+          </h3>
+          <p className="text-sm text-white/70">
+            Click any column header to sort • Click team name to view details
+          </p>
+        </div>
+
+        {/* Scrollable Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[1000px]" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)", color: "white" }}>
                   <Th label="School" sortKey="school" sortBy={sortBy} sortConfig={sortConfig} />
@@ -305,14 +300,9 @@ function Scouting() {
                 {sortedTeams.map((team, i) => (
                   <tr 
                     key={i}
-                    style={{
-                      backgroundColor: i % 2 === 0 ? "#fafafa" : "white",
-                      transition: "background-color 0.2s ease"
-                    }}
-                    onMouseEnter={(e) => e.target.parentElement.style.backgroundColor = "#f1f5f9"}
-                    onMouseLeave={(e) => e.target.parentElement.style.backgroundColor = i % 2 === 0 ? "#fafafa" : "white"}
+                    className={`transition-colors duration-200 hover:bg-white/10 ${i % 2 === 0 ? "bg-white/5" : "bg-transparent"}`}
                   >
-                    <td style={tdStyle}>
+                    <td style={{...tdStyle, textAlign: "left"}}>
                       <div style={{ display: "flex", alignItems: "center" }}>
                         <TeamLogo teamName={team.school} size={24} />
                         <div>
@@ -320,7 +310,7 @@ function Scouting() {
                             onClick={() => handleTeamClick(team.school)}
                             style={{ 
                               cursor: "pointer", 
-                              color: "#1e40af", 
+                              color: "#60a5fa", 
                               fontWeight: "600",
                               textDecoration: "none",
                               fontSize: "14px"
@@ -375,7 +365,7 @@ function Scouting() {
                       {team.prevYearPoints ? (
                         <span style={{
                           fontWeight: "600",
-                          color: "#1e40af"
+                          color: "white"
                         }}>
                           {team.prevYearPoints}
                         </span>
@@ -387,7 +377,7 @@ function Scouting() {
                       {team.predictedWins ? (
                         <span style={{
                           fontWeight: "600",
-                          color: team.predictedWins >= 8 ? "#059669" : team.predictedWins >= 6 ? "#d97706" : "#64748b"
+                          color: "white"
                         }}>
                           {team.predictedWins}
                         </span>
@@ -399,17 +389,14 @@ function Scouting() {
             </table>
           </div>
 
-          {/* No Results */}
-          {sortedTeams.length === 0 && (
-            <div style={{
-              padding: "40px 20px",
-              textAlign: "center"
-            }}>
-              <p style={{ color: "#64748b", fontSize: "16px", margin: 0 }}>
-                No teams found matching your criteria.
-              </p>
-            </div>
-          )}
+            {/* No Results */}
+            {sortedTeams.length === 0 && (
+              <div className="p-10 text-center">
+                <p className="text-white/70 text-base">
+                  No teams found matching your criteria.
+                </p>
+              </div>
+            )}
         </div>
       </div>
     </div>
@@ -451,8 +438,10 @@ const thStyle = {
 
 const tdStyle = {
   padding: "12px 16px",
-  borderBottom: "1px solid #f1f5f9",
-  verticalAlign: "middle"
+  borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+  verticalAlign: "middle",
+  color: "white",
+  textAlign: "center"
 };
 
 export default Scouting;

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { db, auth } from "../firebase/firebase";
 import {
   doc,
@@ -8,7 +8,7 @@ import {
   setDoc,
   arrayUnion
 } from "firebase/firestore";
-import { Users, ArrowLeft, UserPlus, Trophy, AlertCircle } from "lucide-react";
+import { Users, UserPlus, Trophy, AlertCircle } from "lucide-react";
 
 function JoinLeague() {
   const navigate = useNavigate();
@@ -50,7 +50,7 @@ function JoinLeague() {
         return;
       }
 
-      // ✅ Guard against joining the same league twice
+      // Guard against joining the same league twice
       const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
       const memberSnap = await getDoc(memberRef);
       if (memberSnap.exists()) {
@@ -81,9 +81,9 @@ function JoinLeague() {
           currentRoster: []
         },
         points: 0,
-        weeklyPoints: 0,           // Current week's points (number)
-        weeklyPointsHistory: {},   // Historical weekly points (object)
-        freeAgentMoves: 0          // Number of FA moves made
+        weeklyPoints: 0,
+        weeklyPointsHistory: {},
+        freeAgentMoves: 0
       }, { merge: true });
 
       setSuccess("Successfully joined the league!");
@@ -98,387 +98,179 @@ function JoinLeague() {
   };
 
   return (
-    <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh", width: "100%", overflowX: "hidden" }}>
-      {/* Header */}
-      <div style={{ 
-        padding: "20px 16px 16px 16px",
-        background: "linear-gradient(135deg, #059669 0%, #10b981 100%)",
-        color: "white"
-      }}>
-        <div style={{ maxWidth: "100%", width: "100%" }}>
-          <button 
-            onClick={() => navigate(-1)} 
-            style={{ 
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginBottom: "16px", 
-              padding: "8px 16px",
-              backgroundColor: "rgba(255,255,255,0.2)",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: "500",
-              transition: "all 0.2s ease"
-            }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = "rgba(255,255,255,0.3)"}
-            onMouseLeave={(e) => e.target.style.backgroundColor = "rgba(255,255,255,0.2)"}
-          >
-            <ArrowLeft size={16} />
-            Back
-          </button>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      </div>
 
-          <h1 style={{ 
-            fontSize: "clamp(24px, 5vw, 32px)", 
-            fontWeight: "700", 
-            margin: "0 0 8px 0",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            flexWrap: "wrap"
-          }}>
-            <Users size={32} />
-            Join a League
+      {/* Navigation */}
+      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
+        <Link to="/home" className="flex items-center space-x-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
+            L
+          </div>
+          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            Lineup
+          </span>
+        </Link>
+        <Link 
+          to="/home"
+          className="px-4 py-2 sm:px-6 sm:py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
+        >
+          ← Back to Home
+        </Link>
+      </nav>
+
+      {/* Main Content */}
+      <div className="relative z-10 max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        {/* Header */}
+        <div className="text-center mb-8 sm:mb-12">
+          <div className="mb-4 sm:mb-6">
+            <span className="inline-block text-4xl sm:text-5xl mb-2 sm:mb-4">🤝</span>
+          </div>
+          <h1 className="text-3xl sm:text-5xl font-black mb-4 sm:mb-6 leading-tight">
+            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              Join a League
+            </span>
           </h1>
-          
-          <p style={{
-            fontSize: "clamp(14px, 3vw, 18px)",
-            opacity: "0.9",
-            margin: 0
-          }}>
+          <p className="text-lg sm:text-xl text-white/80 max-w-md mx-auto">
             Enter your league details to join the competition
           </p>
         </div>
-      </div>
 
-      <div style={{ padding: "20px 16px", width: "100%", boxSizing: "border-box" }}>
-        <div style={{ maxWidth: "500px", margin: "0 auto" }}>
-          {/* Success Message */}
-          {success && (
-            <div style={{ 
-              padding: "16px", 
-              backgroundColor: "#ecfdf5", 
-              border: "2px solid #10b981", 
-              borderRadius: "12px", 
-              color: "#065f46",
-              marginBottom: "24px",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-              display: "flex",
-              alignItems: "center",
-              gap: "12px"
-            }}>
-              <Trophy size={20} />
-              <div style={{ fontWeight: "600" }}>{success}</div>
+        {/* Success Message */}
+        {success && (
+          <div className="mb-8 p-4 bg-green-500/20 border border-green-400/30 rounded-xl">
+            <div className="flex items-center space-x-3">
+              <Trophy size={20} className="text-green-400" />
+              <p className="text-green-200 font-medium">{success}</p>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Error Message */}
-          {error && (
-            <div style={{ 
-              padding: "16px", 
-              backgroundColor: "#fef2f2", 
-              border: "2px solid #ef4444", 
-              borderRadius: "12px", 
-              color: "#991b1b",
-              marginBottom: "24px",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-              display: "flex",
-              alignItems: "center",
-              gap: "12px"
-            }}>
-              <AlertCircle size={20} />
-              <div style={{ fontWeight: "600" }}>{error}</div>
+        {/* Error Message */}
+        {error && (
+          <div className="mb-8 p-4 bg-red-500/20 border border-red-400/30 rounded-xl">
+            <div className="flex items-center space-x-3">
+              <AlertCircle size={20} className="text-red-400" />
+              <p className="text-red-200 font-medium">{error}</p>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Main Form Card */}
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "16px",
-            padding: "32px",
-            boxShadow: "0 4px 6px rgba(0,0,0,0.07)",
-            border: "1px solid #e5e7eb"
-          }}>
-            <div style={{ textAlign: "center", marginBottom: "32px" }}>
-              <div style={{
-                width: "80px",
-                height: "80px",
-                borderRadius: "50%",
-                backgroundColor: "#f0fdf4",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 16px auto",
-                border: "3px solid #10b981"
-              }}>
-                <UserPlus size={40} style={{ color: "#059669" }} />
-              </div>
-              
-              <h2 style={{ 
-                fontSize: "24px", 
-                fontWeight: "600", 
-                color: "#1e293b",
-                margin: "0 0 8px 0"
-              }}>
-                Ready to Join?
-              </h2>
-              <p style={{ 
-                color: "#64748b", 
-                fontSize: "16px",
-                margin: 0,
-                lineHeight: "1.5"
-              }}>
-                Fill out the form below to join your fantasy league
+        {/* Join Form */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <UserPlus size={32} className="text-white" />
+            </div>
+            
+            <h2 className="text-2xl font-bold text-white mb-2">
+              Ready to Join?
+            </h2>
+            <p className="text-white/80">
+              Fill out the form below to join your fantasy league
+            </p>
+          </div>
+
+          <form onSubmit={handleJoinLeague} className="space-y-6">
+            {/* League ID Input */}
+            <div>
+              <label className="block text-sm font-medium text-white/80 mb-2">
+                League ID *
+              </label>
+              <input
+                type="text"
+                placeholder="Enter the League ID you received"
+                value={leagueId}
+                onChange={(e) => setLeagueId(e.target.value)}
+                required
+                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
+              />
+              <p className="mt-1 text-xs text-white/60">
+                Ask the league commissioner for this ID
               </p>
             </div>
 
-            <form onSubmit={handleJoinLeague} style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-              {/* League ID Input */}
-              <div>
-                <label style={{ 
-                  display: "block", 
-                  marginBottom: "8px", 
-                  fontSize: "14px", 
-                  fontWeight: "600",
-                  color: "#374151"
-                }}>
-                  League ID *
-                </label>
-                <input
-                  type="text"
-                  placeholder="Enter the League ID you received"
-                  value={leagueId}
-                  onChange={(e) => setLeagueId(e.target.value)}
-                  required
-                  style={{
-                    width: "100%",
-                    padding: "16px",
-                    border: "2px solid #e5e7eb",
-                    borderRadius: "12px",
-                    fontSize: "16px",
-                    fontFamily: "inherit",
-                    backgroundColor: "white",
-                    transition: "all 0.2s ease",
-                    boxSizing: "border-box"
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = "#059669";
-                    e.target.style.boxShadow = "0 0 0 3px rgba(5, 150, 105, 0.1)";
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = "#e5e7eb";
-                    e.target.style.boxShadow = "none";
-                  }}
-                />
-                <p style={{ 
-                  fontSize: "12px", 
-                  color: "#64748b", 
-                  margin: "6px 0 0 0" 
-                }}>
-                  Ask the league commissioner for this ID
-                </p>
-              </div>
+            {/* Display Name Input */}
+            <div>
+              <label className="block text-sm font-medium text-white/80 mb-2">
+                Your Username *
+              </label>
+              <input
+                type="text"
+                placeholder="How others will see you"
+                value={displayName}
+                maxLength={15}
+                onChange={(e) => setDisplayName(e.target.value)}
+                required
+                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
+              />
+              <p className="mt-1 text-xs text-white/60">
+                {displayName.length}/15 characters
+              </p>
+            </div>
 
-              {/* Display Name Input */}
-              <div>
-                <label style={{ 
-                  display: "block", 
-                  marginBottom: "8px", 
-                  fontSize: "14px", 
-                  fontWeight: "600",
-                  color: "#374151"
-                }}>
-                  Your Username *
-                </label>
-                <input
-                  type="text"
-                  placeholder="How others will see you"
-                  value={displayName}
-                  maxLength={15}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  required
-                  style={{
-                    width: "100%",
-                    padding: "16px",
-                    border: "2px solid #e5e7eb",
-                    borderRadius: "12px",
-                    fontSize: "16px",
-                    fontFamily: "inherit",
-                    backgroundColor: "white",
-                    transition: "all 0.2s ease",
-                    boxSizing: "border-box"
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = "#059669";
-                    e.target.style.boxShadow = "0 0 0 3px rgba(5, 150, 105, 0.1)";
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = "#e5e7eb";
-                    e.target.style.boxShadow = "none";
-                  }}
-                />
-                <p style={{ 
-                  fontSize: "12px", 
-                  color: "#64748b", 
-                  margin: "6px 0 0 0" 
-                }}>
-                  {displayName.length}/15 characters
-                </p>
-              </div>
+            {/* Team Name Input */}
+            <div>
+              <label className="block text-sm font-medium text-white/80 mb-2">
+                Team Name *
+              </label>
+              <input
+                type="text"
+                placeholder="Name your fantasy team"
+                value={teamName}
+                maxLength={15}
+                onChange={(e) => setTeamName(e.target.value)}
+                required
+                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
+              />
+              <p className="mt-1 text-xs text-white/60">
+                {teamName.length}/15 characters
+              </p>
+            </div>
 
-              {/* Team Name Input */}
-              <div>
-                <label style={{ 
-                  display: "block", 
-                  marginBottom: "8px", 
-                  fontSize: "14px", 
-                  fontWeight: "600",
-                  color: "#374151"
-                }}>
-                  Team Name *
-                </label>
-                <input
-                  type="text"
-                  placeholder="Name your fantasy team"
-                  value={teamName}
-                  maxLength={15}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  required
-                  style={{
-                    width: "100%",
-                    padding: "16px",
-                    border: "2px solid #e5e7eb",
-                    borderRadius: "12px",
-                    fontSize: "16px",
-                    fontFamily: "inherit",
-                    backgroundColor: "white",
-                    transition: "all 0.2s ease",
-                    boxSizing: "border-box"
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = "#059669";
-                    e.target.style.boxShadow = "0 0 0 3px rgba(5, 150, 105, 0.1)";
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = "#e5e7eb";
-                    e.target.style.boxShadow = "none";
-                  }}
-                />
-                <p style={{ 
-                  fontSize: "12px", 
-                  color: "#64748b", 
-                  margin: "6px 0 0 0" 
-                }}>
-                  {teamName.length}/15 characters
-                </p>
-              </div>
+            {/* Submit Button */}
+            <button 
+              type="submit" 
+              disabled={loading || !leagueId.trim() || !displayName.trim() || !teamName.trim()}
+              className={`w-full py-4 px-8 rounded-xl text-lg font-bold transition-all duration-300 transform flex items-center justify-center space-x-3 ${
+                loading || !leagueId.trim() || !displayName.trim() || !teamName.trim()
+                  ? 'bg-white/20 text-white/50 cursor-not-allowed' 
+                  : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white hover:scale-105 shadow-2xl hover:shadow-green-500/40'
+              }`}
+            >
+              {loading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <span>Joining League...</span>
+                </>
+              ) : (
+                <>
+                  <UserPlus size={20} />
+                  <span>Join League</span>
+                </>
+              )}
+            </button>
+          </form>
+        </div>
 
-              {/* Submit Button */}
-              <button 
-                type="submit" 
-                disabled={loading || !leagueId.trim() || !displayName.trim() || !teamName.trim()}
-                style={{
-                  width: "100%",
-                  padding: "16px",
-                  backgroundColor: loading || !leagueId.trim() || !displayName.trim() || !teamName.trim() ? "#9ca3af" : "#059669",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "12px",
-                  fontSize: "16px",
-                  fontWeight: "600",
-                  cursor: loading || !leagueId.trim() || !displayName.trim() || !teamName.trim() ? "not-allowed" : "pointer",
-                  transition: "all 0.2s ease",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                  marginTop: "8px"
-                }}
-                onMouseEnter={(e) => {
-                  if (!loading && leagueId.trim() && displayName.trim() && teamName.trim()) {
-                    e.target.style.backgroundColor = "#047857";
-                    e.target.style.transform = "translateY(-1px)";
-                    e.target.style.boxShadow = "0 4px 12px rgba(5, 150, 105, 0.3)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!loading && leagueId.trim() && displayName.trim() && teamName.trim()) {
-                    e.target.style.backgroundColor = "#059669";
-                    e.target.style.transform = "translateY(0px)";
-                    e.target.style.boxShadow = "none";
-                  }
-                }}
-              >
-                {loading ? (
-                  <>
-                    <div style={{
-                      width: "20px",
-                      height: "20px",
-                      border: "2px solid rgba(255,255,255,0.3)",
-                      borderTop: "2px solid white",
-                      borderRadius: "50%",
-                      animation: "spin 1s linear infinite"
-                    }} />
-                    Joining League...
-                  </>
-                ) : (
-                  <>
-                    <UserPlus size={20} />
-                    Join League
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-
-          {/* Info Card */}
-          <div style={{
-            backgroundColor: "#f0f9ff",
-            borderRadius: "12px",
-            padding: "20px",
-            marginTop: "24px",
-            border: "1px solid #bae6fd"
-          }}>
-            <h3 style={{ 
-              fontSize: "16px", 
-              fontWeight: "600", 
-              color: "#0369a1",
-              margin: "0 0 12px 0",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px"
-            }}>
-              <AlertCircle size={18} />
-              Need Help?
-            </h3>
-            <ul style={{ 
-              color: "#0284c7", 
-              fontSize: "14px",
-              margin: 0,
-              paddingLeft: "20px",
-              lineHeight: "1.6"
-            }}>
-              <li>Ask your league commissioner for the League ID</li>
-              <li>Choose a unique username that others will recognize</li>
-              <li>Pick a creative team name - you can change it later</li>
-              <li>Both username and team name are limited to 15 characters</li>
-            </ul>
-          </div>
+        {/* Help Info Card */}
+        <div className="bg-blue-500/20 border border-blue-400/30 rounded-2xl p-6">
+          <h3 className="text-lg font-semibold text-blue-200 mb-4 flex items-center space-x-2">
+            <AlertCircle size={18} />
+            <span>Need Help?</span>
+          </h3>
+          <ul className="text-blue-200 text-sm space-y-2 leading-relaxed">
+            <li>• Ask your league commissioner for the League ID</li>
+            <li>• Choose a unique username that others will recognize</li>
+            <li>• Pick a creative team name - you can change it later</li>
+            <li>• Both username and team name are limited to 15 characters</li>
+          </ul>
         </div>
       </div>
-
-      {/* Bottom spacing */}
-      <div style={{ height: "80px" }} />
-
-      {/* Add spinning animation */}
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }

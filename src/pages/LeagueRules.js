@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { db, auth } from "../firebase/firebase";
 import {
   doc,
@@ -24,9 +24,10 @@ import {
   Trash2,
   AlertTriangle,
   CheckCircle,
-  Lock
+  Lock,
+  ArrowLeft
 } from "lucide-react";
-import LeagueNavBar from "../components/LeagueNavBar";
+import BottomNavBar from "../components/BottomNavBar";
 
 function LeagueRules() {
   const { leagueId } = useParams();
@@ -393,15 +394,15 @@ function LeagueRules() {
 
   if (loading) {
     return (
-      <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-        <LeagueNavBar />
-        <div style={{ 
-          padding: "40px 20px", 
-          textAlign: "center",
-          color: "#64748b",
-          fontSize: "16px"
-        }}>
-          Loading league settings...
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white overflow-x-hidden">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        </div>
+        <div className="relative z-10 flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="text-4xl mb-4 animate-spin">⚙️</div>
+            <p className="text-xl text-white/80">Loading league settings...</p>
+          </div>
         </div>
       </div>
     );
@@ -409,15 +410,14 @@ function LeagueRules() {
 
   if (!leagueData) {
     return (
-      <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-        <LeagueNavBar />
-        <div style={{ 
-          padding: "40px 20px", 
-          textAlign: "center",
-          color: "#dc2626",
-          fontSize: "16px"
-        }}>
-          League not found.
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white overflow-x-hidden">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        </div>
+        <div className="relative z-10 flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <p className="text-xl text-red-400">League not found.</p>
+          </div>
         </div>
       </div>
     );
@@ -440,70 +440,82 @@ function LeagueRules() {
   const getWeekColor = (i) => {
     const m = formState.maxManagers;
     const isPlayoff = (m === 8 && i >= 12) || ((m === 10 || m === 12) && i >= 11);
-    if (i < 3) return "#fecaca";
-    if (isPlayoff) return "#bfdbfe";
-    return "#bbf7d0";
+    if (i < 3) return "from-red-400/20 to-red-500/20 border-red-400/30";
+    if (isPlayoff) return "from-blue-400/20 to-blue-500/20 border-blue-400/30";
+    return "from-green-400/20 to-green-500/20 border-green-400/30";
   };
 
   return (
-    <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-      <LeagueNavBar />
-
-      {/* Header */}
-      <div style={{ 
-        padding: "20px 16px 16px 16px",
-        background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
-        color: "white"
-      }}>
-        <h1 style={{ 
-          fontSize: "24px", 
-          fontWeight: "700", 
-          margin: "0 0 8px 0",
-          textAlign: "center"
-        }}>
-          League Settings
-        </h1>
-        <p style={{
-          fontSize: "14px",
-          opacity: "0.9",
-          textAlign: "center",
-          margin: 0
-        }}>
-          League ID: {leagueId}
-        </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white overflow-x-hidden">
+      
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
       </div>
 
-      <div style={{ padding: "20px 16px" }}>
+      {/* Navigation */}
+      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
+        <Link to="/home" className="flex items-center space-x-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
+            L
+          </div>
+          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            Lineup
+          </span>
+        </Link>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={() => navigate(`/${leagueId}/my-lineup`)}
+            className="flex items-center space-x-2 px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
+          >
+            <ArrowLeft size={16} />
+            <span>Back to League</span>
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <div className="relative z-10 w-full max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 pb-32">
+        {/* Header */}
+        <div className="text-center mb-8 sm:mb-12">
+          <div className="mb-4 sm:mb-6">
+            <span className="inline-block text-4xl sm:text-5xl mb-2 sm:mb-4">⚙️</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4 leading-tight">
+            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              League Settings
+            </span>
+          </h1>
+          <p className="text-lg sm:text-xl text-white/80 max-w-2xl mx-auto break-all">
+            League ID: {leagueId}
+          </p>
+        </div>
+
         {/* Draft Status Alert */}
         {draftStarted && (
-          <div style={{ 
-            padding: "16px", 
-            backgroundColor: leagueData?.draftComplete ? "#ecfdf5" : "#fef3c7", 
-            border: `2px solid ${leagueData?.draftComplete ? "#10b981" : "#f59e0b"}`, 
-            borderRadius: "12px", 
-            marginBottom: "20px",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px"
-          }}>
-            {leagueData?.draftComplete ? (
-              <CheckCircle size={24} style={{ color: "#059669", flexShrink: 0 }} />
-            ) : (
-              <Lock size={24} style={{ color: "#d97706", flexShrink: 0 }} />
-            )}
-            <div>
-              <div style={{ 
-                fontWeight: "600", 
-                color: leagueData?.draftComplete ? "#059669" : "#92400e",
-                marginBottom: "4px"
-              }}>
-                {leagueData?.draftComplete ? "Draft Completed" : "Draft In Progress"}
-              </div>
-              <div style={{ 
-                fontSize: "14px", 
-                color: leagueData?.draftComplete ? "#047857" : "#a16207"
-              }}>
-                League settings are now locked and cannot be changed.
+          <div className={`mb-8 p-6 rounded-2xl border backdrop-blur-lg w-full ${
+            leagueData?.draftComplete 
+              ? 'bg-green-500/20 border-green-400/30' 
+              : 'bg-yellow-500/20 border-yellow-400/30'
+          }`}>
+            <div className="flex items-center space-x-4">
+              {leagueData?.draftComplete ? (
+                <CheckCircle size={32} className="text-green-400 flex-shrink-0" />
+              ) : (
+                <Lock size={32} className="text-yellow-400 flex-shrink-0" />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className={`text-xl font-bold mb-2 ${
+                  leagueData?.draftComplete ? 'text-green-300' : 'text-yellow-300'
+                }`}>
+                  {leagueData?.draftComplete ? "Draft Completed" : "Draft In Progress"}
+                </div>
+                <div className={`text-sm ${
+                  leagueData?.draftComplete ? 'text-green-200' : 'text-yellow-200'
+                }`}>
+                  League settings are now locked and cannot be changed.
+                </div>
               </div>
             </div>
           </div>
@@ -511,885 +523,422 @@ function LeagueRules() {
 
         {/* Error Alert */}
         {error && (
-          <div style={{ 
-            padding: "16px", 
-            backgroundColor: "#fef2f2", 
-            border: "2px solid #ef4444", 
-            borderRadius: "12px", 
-            marginBottom: "20px",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px"
-          }}>
-            <AlertTriangle size={24} style={{ color: "#dc2626", flexShrink: 0 }} />
-            <div style={{ color: "#dc2626", fontSize: "14px" }}>
-              {error}
+          <div className="mb-8 p-6 rounded-2xl border bg-red-500/20 border-red-400/30 backdrop-blur-lg w-full">
+            <div className="flex items-center space-x-4">
+              <AlertTriangle size={32} className="text-red-400 flex-shrink-0" />
+              <div className="text-red-200 break-words min-w-0 flex-1">{error}</div>
             </div>
           </div>
         )}
 
-        {isAdmin ? (
-          <>
-            {/* League Settings */}
-            <div style={{
-              backgroundColor: "white",
-              borderRadius: "12px",
-              padding: "20px",
-              marginBottom: "20px",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-            }}>
-              <div style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                marginBottom: "20px"
-              }}>
-                <Settings size={24} style={{ color: "#1e40af" }} />
-                <h2 style={{
-                  fontSize: "18px",
-                  fontWeight: "600",
-                  color: "#1e293b",
-                  margin: 0
-                }}>
-                  League Configuration
-                </h2>
-              </div>
-
-              <div style={{ display: "grid", gap: "16px" }}>
-                {/* League Name */}
-                <div>
-                  <label style={{
-                    display: "block",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "6px"
-                  }}>
-                    League Name
-                  </label>
-                  <input 
-                    value={formState.name} 
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    disabled={draftStarted}
-                    style={{
-                      width: "100%",
-                      padding: "12px",
-                      border: "2px solid #e5e7eb",
-                      borderRadius: "8px",
-                      fontSize: "14px",
-                      backgroundColor: draftStarted ? "#f9fafb" : "white",
-                      opacity: draftStarted ? 0.6 : 1,
-                      boxSizing: "border-box"
-                    }}
-                  />
+        <div className="w-full space-y-8 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-8">
+          {isAdmin ? (
+            <>
+              {/* League Settings */}
+              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 w-full">
+                <div className="flex items-center space-x-4 mb-6">
+                  <Settings size={32} className="text-purple-400 flex-shrink-0" />
+                  <h2 className="text-2xl font-bold text-white min-w-0">League Configuration</h2>
                 </div>
 
-                {/* Draft Type */}
-                <div>
-                  <label style={{
-                    display: "block",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "6px"
-                  }}>
-                    Draft Type
-                  </label>
-                  <select 
-                    value={formState.draftType} 
-                    onChange={(e) => handleInputChange("draftType", e.target.value)}
-                    disabled={draftStarted}
-                    style={{
-                      width: "100%",
-                      padding: "12px",
-                      border: "2px solid #e5e7eb",
-                      borderRadius: "8px",
-                      fontSize: "14px",
-                      backgroundColor: draftStarted ? "#f9fafb" : "white",
-                      opacity: draftStarted ? 0.6 : 1,
-                      boxSizing: "border-box"
-                    }}
-                  >
-                    <option value="manual">Manual Draft (Commissioner Enters Teams)</option>
-                    <option value="live">Live Draft</option>
-                  </select>
-                </div>
-
-                {/* Draft Order */}
-                <div>
-                  <label style={{
-                    display: "block",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "6px"
-                  }}>
-                    Draft Order
-                  </label>
-                  <select 
-                    value={formState.draftOrderType} 
-                    onChange={(e) => handleInputChange("draftOrderType", e.target.value)}
-                    disabled={draftStarted}
-                    style={{
-                      width: "100%",
-                      padding: "12px",
-                      border: "2px solid #e5e7eb",
-                      borderRadius: "8px",
-                      fontSize: "14px",
-                      backgroundColor: draftStarted ? "#f9fafb" : "white",
-                      opacity: draftStarted ? 0.6 : 1,
-                      boxSizing: "border-box"
-                    }}
-                  >
-                    <option value="random">Random Order (Determined at Draft Start)</option>
-                    <option value="admin">Commissioner Sets Order</option>
-                  </select>
-                </div>
-
-                {/* Live Draft Settings */}
-                {formState.draftType === "live" && (
-                  <>
-                    <div>
-                      <label style={{
-                        display: "block",
-                        fontSize: "14px",
-                        fontWeight: "500",
-                        color: "#374151",
-                        marginBottom: "6px"
-                      }}>
-                        Draft Date & Time
-                      </label>
-                      <input 
-                        type="datetime-local" 
-                        value={formState.draftDate} 
-                        onChange={(e) => handleInputChange("draftDate", e.target.value)}
-                        min={getMinDateTime()}
-                        max={getMaxDate()}
-                        disabled={draftStarted}
-                        style={{
-                          width: "100%",
-                          padding: "12px",
-                          border: "2px solid #e5e7eb",
-                          borderRadius: "8px",
-                          fontSize: "14px",
-                          backgroundColor: draftStarted ? "#f9fafb" : "white",
-                          opacity: draftStarted ? 0.6 : 1,
-                          boxSizing: "border-box"
-                        }}
-                      />
-                      <div style={{
-                        fontSize: "12px",
-                        color: "#64748b",
-                        marginTop: "4px"
-                      }}>
-                        Draft must be scheduled at least 15 minutes from now.
-                      </div>
-                    </div>
-
-                    <div>
-                      <label style={{
-                        display: "block",
-                        fontSize: "14px",
-                        fontWeight: "500",
-                        color: "#374151",
-                        marginBottom: "6px"
-                      }}>
-                        Time Per Pick (minutes)
-                      </label>
-                      <select 
-                        value={formState.timePerPick} 
-                        onChange={(e) => handleInputChange("timePerPick", e.target.value)}
-                        disabled={draftStarted}
-                        style={{
-                          width: "100%",
-                          padding: "12px",
-                          border: "2px solid #e5e7eb",
-                          borderRadius: "8px",
-                          fontSize: "14px",
-                          backgroundColor: draftStarted ? "#f9fafb" : "white",
-                          opacity: draftStarted ? 0.6 : 1,
-                          boxSizing: "border-box"
-                        }}
-                      >
-                        <option value={1}>1 minute</option>
-                        <option value={2}>2 minutes</option>
-                        <option value={5}>5 minutes</option>
-                        <option value={10}>10 minutes</option>
-                      </select>
-                    </div>
-                  </>
-                )}
-
-                {/* Max Managers */}
-                <div>
-                  <label style={{
-                    display: "block",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    color: "#374151",
-                    marginBottom: "6px"
-                  }}>
-                    Max Managers
-                  </label>
-                  <select 
-                    value={formState.maxManagers} 
-                    onChange={(e) => handleInputChange("maxManagers", parseInt(e.target.value))}
-                    disabled={draftStarted}
-                    style={{
-                      width: "100%",
-                      padding: "12px",
-                      border: "2px solid #e5e7eb",
-                      borderRadius: "8px",
-                      fontSize: "14px",
-                      backgroundColor: draftStarted ? "#f9fafb" : "white",
-                      opacity: draftStarted ? 0.6 : 1,
-                      boxSizing: "border-box"
-                    }}
-                  >
-                    {[8, 10, 12].map((num) => (
-                      <option key={num} value={num}>{num}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div style={{ 
-                display: "flex", 
-                gap: "12px", 
-                marginTop: "20px",
-                flexWrap: "wrap"
-              }}>
-                <button 
-                  onClick={handleConfirmChanges}
-                  disabled={draftStarted}
-                  style={{ 
-                    padding: "12px 24px",
-                    backgroundColor: draftStarted ? "#9ca3af" : "#1e40af",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "8px",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    cursor: draftStarted ? "not-allowed" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    transition: "all 0.2s ease"
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!draftStarted) e.target.style.backgroundColor = "#1d4ed8";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!draftStarted) e.target.style.backgroundColor = "#1e40af";
-                  }}
-                >
-                  <Save size={16} />
-                  {draftStarted ? "Settings Locked" : "Save Changes"}
-                </button>
-                
-                <button 
-                  onClick={() => setShowDeleteModal(true)}
-                  style={{ 
-                    padding: "12px 24px",
-                    backgroundColor: "#dc2626",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "8px",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    transition: "all 0.2s ease"
-                  }}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = "#b91c1c"}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = "#dc2626"}
-                >
-                  <Trash2 size={16} />
-                  Delete League
-                </button>
-              </div>
-            </div>
-
-            {/* Draft Order Management */}
-            {formState.draftOrderType === "admin" && !draftStarted && (
-              <div style={{
-                backgroundColor: "white",
-                borderRadius: "12px",
-                padding: "20px",
-                marginBottom: "20px",
-                boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-              }}>
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  marginBottom: "20px"
-                }}>
-                  <Trophy size={24} style={{ color: "#1e40af" }} />
-                  <h2 style={{
-                    fontSize: "18px",
-                    fontWeight: "600",
-                    color: "#1e293b",
-                    margin: 0
-                  }}>
-                    Draft Order Management
-                  </h2>
-                </div>
-                
-                {!isLeagueFull ? (
-                  <div style={{ 
-                    padding: "16px", 
-                    backgroundColor: "#fef3c7", 
-                    border: "2px solid #f59e0b", 
-                    borderRadius: "12px", 
-                    marginBottom: "16px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "12px"
-                  }}>
-                    <AlertTriangle size={24} style={{ color: "#d97706", flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontWeight: "600", color: "#92400e", marginBottom: "4px" }}>
-                        League must be full before setting draft order
-                      </div>
-                      <div style={{ fontSize: "14px", color: "#a16207" }}>
-                        Current: {members.length}/{leagueData.maxManagers} managers
-                      </div>
-                    </div>
+                <div className="space-y-6 w-full">
+                  {/* League Name */}
+                  <div className="w-full">
+                    <label className="block text-sm font-medium text-white/80 mb-2">
+                      League Name
+                    </label>
+                    <input 
+                      value={formState.name || ''} 
+                      onChange={(e) => handleInputChange("name", e.target.value)}
+                      disabled={draftStarted}
+                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:border-purple-400 focus:outline-none transition-colors disabled:opacity-50"
+                    />
                   </div>
-                ) : (
-                  <>
-                    <p style={{ 
-                      color: "#64748b", 
-                      marginBottom: "16px",
-                      fontSize: "14px"
-                    }}>
-                      Drag and drop to reorder managers. Position 1 gets the first pick.
-                    </p>
-                    
-                    <div style={{ 
-                      display: "flex", 
-                      gap: "12px", 
-                      marginBottom: "20px",
-                      flexWrap: "wrap"
-                    }}>
-                      <button 
-                        onClick={randomizeDraftOrder}
-                        style={{ 
-                          padding: "12px 20px",
-                          backgroundColor: "#6b7280",
-                          color: "white",
-                          border: "none",
-                          borderRadius: "8px",
-                          fontSize: "14px",
-                          fontWeight: "500",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          transition: "all 0.2s ease"
-                        }}
-                        onMouseEnter={(e) => e.target.style.backgroundColor = "#4b5563"}
-                        onMouseLeave={(e) => e.target.style.backgroundColor = "#6b7280"}
-                      >
-                        <Shuffle size={16} />
-                        Randomize Order
-                      </button>
-                      
-                      <button 
-                        onClick={saveDraftOrder}
-                        style={{ 
-                          padding: "12px 20px",
-                          backgroundColor: "#059669",
-                          color: "white",
-                          border: "none",
-                          borderRadius: "8px",
-                          fontSize: "14px",
-                          fontWeight: "500",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          transition: "all 0.2s ease"
-                        }}
-                        onMouseEnter={(e) => e.target.style.backgroundColor = "#047857"}
-                        onMouseLeave={(e) => e.target.style.backgroundColor = "#059669"}
-                      >
-                        <Save size={16} />
-                        Save Draft Order
-                      </button>
-                    </div>
 
-                    <div style={{ maxWidth: "600px" }}>
-                      {draftOrder.map((member, index) => (
-                        <div key={member.uid} style={{
-                          display: "flex",
-                          alignItems: "center",
-                          padding: "12px",
-                          margin: "8px 0",
-                          backgroundColor: "#f8fafc",
-                          border: "2px solid #e2e8f0",
-                          borderRadius: "12px",
-                          transition: "all 0.2s ease"
-                        }}>
-                          <div style={{ 
-                            marginRight: "16px", 
-                            fontWeight: "700", 
-                            minWidth: "40px",
-                            textAlign: "center",
-                            backgroundColor: "#1e40af",
-                            color: "white",
-                            borderRadius: "50%",
-                            width: "40px",
-                            height: "40px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "16px"
-                          }}>
-                            {index + 1}
+                  {/* Draft Type */}
+                  <div className="w-full">
+                    <label className="block text-sm font-medium text-white/80 mb-2">
+                      Draft Type
+                    </label>
+                    <select 
+                      value={formState.draftType || ''} 
+                      onChange={(e) => handleInputChange("draftType", e.target.value)}
+                      disabled={draftStarted}
+                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:border-purple-400 focus:outline-none transition-colors disabled:opacity-50"
+                    >
+                      <option value="manual" className="bg-slate-800">Manual Draft (Commissioner Enters Teams)</option>
+                      <option value="live" className="bg-slate-800">Live Draft</option>
+                    </select>
+                  </div>
+
+                  {/* Draft Order */}
+                  <div className="w-full">
+                    <label className="block text-sm font-medium text-white/80 mb-2">
+                      Draft Order
+                    </label>
+                    <select 
+                      value={formState.draftOrderType || ''} 
+                      onChange={(e) => handleInputChange("draftOrderType", e.target.value)}
+                      disabled={draftStarted}
+                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:border-purple-400 focus:outline-none transition-colors disabled:opacity-50"
+                    >
+                      <option value="random" className="bg-slate-800">Random Order (Determined at Draft Start)</option>
+                      <option value="admin" className="bg-slate-800">Commissioner Sets Order</option>
+                    </select>
+                  </div>
+
+                  {/* Live Draft Settings */}
+                  {formState.draftType === "live" && (
+                    <>
+                      <div className="w-full">
+                        <label className="block text-sm font-medium text-white/80 mb-2">
+                          Draft Date & Time
+                        </label>
+                        <input 
+                          type="datetime-local" 
+                          value={formState.draftDate || ''} 
+                          onChange={(e) => handleInputChange("draftDate", e.target.value)}
+                          min={getMinDateTime()}
+                          max={getMaxDate()}
+                          disabled={draftStarted}
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:border-purple-400 focus:outline-none transition-colors disabled:opacity-50"
+                        />
+                        <p className="text-xs text-white/60 mt-2">
+                          Draft must be scheduled at least 15 minutes from now.
+                        </p>
+                      </div>
+
+                      <div className="w-full">
+                        <label className="block text-sm font-medium text-white/80 mb-2">
+                          Time Per Pick (minutes)
+                        </label>
+                        <select 
+                          value={formState.timePerPick || ''} 
+                          onChange={(e) => handleInputChange("timePerPick", e.target.value)}
+                          disabled={draftStarted}
+                          className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:border-purple-400 focus:outline-none transition-colors disabled:opacity-50"
+                        >
+                          <option value={1} className="bg-slate-800">1 minute</option>
+                          <option value={2} className="bg-slate-800">2 minutes</option>
+                          <option value={5} className="bg-slate-800">5 minutes</option>
+                          <option value={10} className="bg-slate-800">10 minutes</option>
+                        </select>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Max Managers */}
+                  <div className="w-full">
+                    <label className="block text-sm font-medium text-white/80 mb-2">
+                      Max Managers
+                    </label>
+                    <select 
+                      value={formState.maxManagers || ''} 
+                      onChange={(e) => handleInputChange("maxManagers", parseInt(e.target.value))}
+                      disabled={draftStarted}
+                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:border-purple-400 focus:outline-none transition-colors disabled:opacity-50"
+                    >
+                      {[8, 10, 12].map((num) => (
+                        <option key={num} value={num} className="bg-slate-800">{num}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row gap-4 mt-8 w-full">
+                  <button 
+                    onClick={handleConfirmChanges}
+                    disabled={draftStarted}
+                    className="flex items-center justify-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 disabled:from-gray-500 disabled:to-gray-600 text-white font-semibold rounded-xl transition-all duration-300 disabled:cursor-not-allowed"
+                  >
+                    <Save size={16} />
+                    <span>{draftStarted ? "Settings Locked" : "Save Changes"}</span>
+                  </button>
+                  
+                  <button 
+                    onClick={() => setShowDeleteModal(true)}
+                    className="flex items-center justify-center space-x-2 px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold rounded-xl transition-all duration-300"
+                  >
+                    <Trash2 size={16} />
+                    <span>Delete League</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Draft Order Management */}
+              {formState.draftOrderType === "admin" && !draftStarted && (
+                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 w-full">
+                  <div className="flex items-center space-x-4 mb-6">
+                    <Trophy size={32} className="text-yellow-400 flex-shrink-0" />
+                    <h2 className="text-2xl font-bold text-white min-w-0">Draft Order Management</h2>
+                  </div>
+                  
+                  {!isLeagueFull ? (
+                    <div className="p-6 rounded-2xl border bg-yellow-500/20 border-yellow-400/30 backdrop-blur-lg mb-6 w-full">
+                      <div className="flex items-center space-x-4">
+                        <AlertTriangle size={32} className="text-yellow-400 flex-shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xl font-bold text-yellow-300 mb-2">
+                            League must be full before setting draft order
                           </div>
-                          
-                          <div style={{ flex: 1 }}>
-                            <div style={{ 
-                              fontWeight: "600", 
-                              color: "#1e293b",
-                              fontSize: "16px",
-                              marginBottom: "2px"
-                            }}>
-                              {member.name || member.username}
-                            </div>
-                            <div style={{ 
-                              fontSize: "14px", 
-                              color: "#64748b" 
-                            }}>
-                              {member.teamName}
-                            </div>
-                          </div>
-                          
-                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                            <button 
-                              onClick={() => handleDraftOrderChange(index, Math.max(0, index - 1))}
-                              disabled={index === 0}
-                              style={{ 
-                                padding: "6px 12px",
-                                backgroundColor: index === 0 ? "#e5e7eb" : "#1e40af",
-                                color: index === 0 ? "#9ca3af" : "white",
-                                border: "none",
-                                borderRadius: "6px",
-                                fontSize: "12px",
-                                fontWeight: "500",
-                                cursor: index === 0 ? "not-allowed" : "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                transition: "all 0.2s ease"
-                              }}
-                            >
-                              <ChevronUp size={14} />
-                            </button>
-                            <button 
-                              onClick={() => handleDraftOrderChange(index, Math.min(draftOrder.length - 1, index + 1))}
-                              disabled={index === draftOrder.length - 1}
-                              style={{ 
-                                padding: "6px 12px",
-                                backgroundColor: index === draftOrder.length - 1 ? "#e5e7eb" : "#1e40af",
-                                color: index === draftOrder.length - 1 ? "#9ca3af" : "white",
-                                border: "none",
-                                borderRadius: "6px",
-                                fontSize: "12px",
-                                fontWeight: "500",
-                                cursor: index === draftOrder.length - 1 ? "not-allowed" : "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                transition: "all 0.2s ease"
-                              }}
-                            >
-                              <ChevronDown size={14} />
-                            </button>
+                          <div className="text-yellow-200">
+                            Current: {members.length}/{leagueData.maxManagers} managers
                           </div>
                         </div>
-                      ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-white/70 mb-6">
+                        Drag and drop to reorder managers. Position 1 gets the first pick.
+                      </p>
+                      
+                      <div className="flex flex-col sm:flex-row gap-4 mb-6 w-full">
+                        <button 
+                          onClick={randomizeDraftOrder}
+                          className="flex items-center justify-center space-x-2 px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white font-medium hover:bg-white/20 transition-all duration-300"
+                        >
+                          <Shuffle size={16} />
+                          <span>Randomize Order</span>
+                        </button>
+                        
+                        <button 
+                          onClick={saveDraftOrder}
+                          className="flex items-center justify-center space-x-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-medium rounded-xl transition-all duration-300"
+                        >
+                          <Save size={16} />
+                          <span>Save Draft Order</span>
+                        </button>
+                      </div>
+
+                      <div className="space-y-3 w-full">
+                        {draftOrder.map((member, index) => (
+                          <div key={member.uid} className="flex items-center p-4 bg-white/5 border border-white/10 rounded-xl w-full">
+                            <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-lg mr-4 flex-shrink-0">
+                              {index + 1}
+                            </div>
+                            
+                            <div className="flex-1 min-w-0">
+                              <div className="text-white font-semibold text-lg truncate">
+                                {member.name || member.username}
+                              </div>
+                              <div className="text-white/60 text-sm truncate">
+                                {member.teamName}
+                              </div>
+                            </div>
+                            
+                            <div className="flex flex-col space-y-2 flex-shrink-0">
+                              <button 
+                                onClick={() => handleDraftOrderChange(index, Math.max(0, index - 1))}
+                                disabled={index === 0}
+                                className="p-2 bg-white/10 border border-white/20 rounded-lg text-white hover:bg-white/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <ChevronUp size={16} />
+                              </button>
+                              <button 
+                                onClick={() => handleDraftOrderChange(index, Math.min(draftOrder.length - 1, index + 1))}
+                                disabled={index === draftOrder.length - 1}
+                                className="p-2 bg-white/10 border border-white/20 rounded-lg text-white hover:bg-white/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <ChevronDown size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            /* Non-Admin View */
+            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 w-full">
+              <div className="flex items-center space-x-4 mb-6">
+                <Shield size={32} className="text-blue-400 flex-shrink-0" />
+                <h2 className="text-2xl font-bold text-white min-w-0">League Information</h2>
+              </div>
+
+              <div className="space-y-4 w-full">
+                <div className="flex justify-between items-center py-3 border-b border-white/10">
+                  <span className="text-white/70 font-medium">League Name:</span>
+                  <span className="text-white break-words text-right">{leagueData.name}</span>
+                </div>
+                
+                <div className="flex justify-between items-center py-3 border-b border-white/10">
+                  <span className="text-white/70 font-medium">Commissioner:</span>
+                  <span className="text-white break-words text-right">{adminName || "Unknown"}</span>
+                </div>
+                
+                <div className="flex justify-between items-center py-3 border-b border-white/10">
+                  <span className="text-white/70 font-medium">Draft Type:</span>
+                  <span className="text-white break-words text-right">{getDraftDisplayText(leagueData.draftType)}</span>
+                </div>
+                
+                <div className="flex justify-between items-center py-3 border-b border-white/10">
+                  <span className="text-white/70 font-medium">Draft Order:</span>
+                  <span className="text-white break-words text-right">{getDraftOrderTypeDisplay(leagueData.draftOrderType)}</span>
+                </div>
+
+                {leagueData.draftType === "live" && leagueData.draftDate && (
+                  <>
+                    <div className="flex justify-between items-center py-3 border-b border-white/10">
+                      <span className="text-white/70 font-medium">Draft Date:</span>
+                      <span className="text-white text-sm break-words text-right">
+                        {leagueData.draftDate?.toDate().toLocaleString("en-US", {
+                          timeZone: "America/New_York",
+                          weekday: "long",
+                          year: "numeric", 
+                          month: "long", 
+                          day: "numeric",
+                          hour: "numeric", 
+                          minute: "2-digit",
+                          timeZoneName: "short"
+                        })}
+                      </span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center py-3">
+                      <span className="text-white/70 font-medium">Time Per Pick:</span>
+                      <span className="text-white break-words text-right">{leagueData.timePerPick} minutes</span>
                     </div>
                   </>
                 )}
               </div>
-            )}
-          </>
-        ) : (
-          /* Non-Admin View */
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "12px",
-            padding: "20px",
-            marginBottom: "20px",
-            boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-          }}>
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              marginBottom: "20px"
-            }}>
-              <Shield size={24} style={{ color: "#1e40af" }} />
-              <h2 style={{
-                fontSize: "18px",
-                fontWeight: "600",
-                color: "#1e293b",
-                margin: 0
-              }}>
-                League Information
+            </div>
+          )}
+
+          {/* League Members */}
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 w-full">
+            <div className="flex items-center space-x-4 mb-6">
+              <Users size={32} className="text-green-400 flex-shrink-0" />
+              <h2 className="text-2xl font-bold text-white min-w-0">
+                League Members ({members.length}/{leagueData.maxManagers})
               </h2>
             </div>
 
-            <div style={{ display: "grid", gap: "12px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontWeight: "500", color: "#374151" }}>League Name:</span>
-                <span style={{ color: "#1e293b" }}>{leagueData.name}</span>
+            {members.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-white/60 text-lg">No members in this league yet.</p>
               </div>
-              
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontWeight: "500", color: "#374151" }}>Commissioner:</span>
-                <span style={{ color: "#1e293b" }}>{adminName || "Unknown"}</span>
-              </div>
-              
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontWeight: "500", color: "#374151" }}>Draft Type:</span>
-                <span style={{ color: "#1e293b" }}>{getDraftDisplayText(leagueData.draftType)}</span>
-              </div>
-              
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontWeight: "500", color: "#374151" }}>Draft Order:</span>
-                <span style={{ color: "#1e293b" }}>{getDraftOrderTypeDisplay(leagueData.draftOrderType)}</span>
-              </div>
-
-              {leagueData.draftType === "live" && leagueData.draftDate && (
-                <>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontWeight: "500", color: "#374151" }}>Draft Date:</span>
-                    <span style={{ color: "#1e293b" }}>
-                      {leagueData.draftDate?.toDate().toLocaleString("en-US", {
-                        timeZone: "America/New_York",
-                        weekday: "long",
-                        year: "numeric", 
-                        month: "long", 
-                        day: "numeric",
-                        hour: "numeric", 
-                        minute: "2-digit",
-                        timeZoneName: "short"
-                      })}
-                    </span>
-                  </div>
-                  
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontWeight: "500", color: "#374151" }}>Time Per Pick:</span>
-                    <span style={{ color: "#1e293b" }}>{leagueData.timePerPick} minutes</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* League Members */}
-        <div style={{
-          backgroundColor: "white",
-          borderRadius: "12px",
-          padding: "20px",
-          marginBottom: "20px",
-          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-        }}>
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            marginBottom: "20px"
-          }}>
-            <Users size={24} style={{ color: "#1e40af" }} />
-            <h2 style={{
-              fontSize: "18px",
-              fontWeight: "600",
-              color: "#1e293b",
-              margin: 0
-            }}>
-              League Members ({members.length}/{leagueData.maxManagers})
-            </h2>
-          </div>
-
-          {members.length === 0 ? (
-            <div style={{
-              textAlign: "center",
-              color: "#64748b",
-              padding: "40px 20px",
-              fontSize: "16px"
-            }}>
-              No members in this league yet.
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: "8px" }}>
-              {members.map((member, idx) => (
-                <div key={idx} style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "12px",
-                  backgroundColor: "#f8fafc",
-                  borderRadius: "8px",
-                  border: "1px solid #e2e8f0"
-                }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{
-                      fontWeight: "600",
-                      color: "#1e293b",
-                      marginBottom: "2px"
-                    }}>
-                      {member.name || "Unknown"}
+            ) : (
+              <div className="space-y-3 w-full">
+                {members.map((member, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl w-full">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white font-semibold truncate">
+                        {member.name || "Unknown"}
+                      </div>
+                      <div className="text-white/60 text-sm truncate">
+                        {member.teamName} • @{member.username}
+                      </div>
                     </div>
-                    <div style={{
-                      fontSize: "14px",
-                      color: "#64748b"
-                    }}>
-                      {member.teamName} • @{member.username}
-                    </div>
+                    
+                    {isAdmin && (
+                      <button 
+                        onClick={() => handleRemoveManager(member.uid, member.name || member.username)}
+                        disabled={draftStarted}
+                        className="px-4 py-2 bg-red-500/20 border border-red-400/30 text-red-300 font-medium rounded-lg hover:bg-red-500/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                      >
+                        {draftStarted ? "Locked" : "Remove"}
+                      </button>
+                    )}
                   </div>
-                  
-                  {isAdmin && (
-                    <button 
-                      onClick={() => handleRemoveManager(member.uid, member.name || member.username)}
-                      disabled={draftStarted}
-                      style={{ 
-                        padding: "8px 16px",
-                        backgroundColor: draftStarted ? "#e5e7eb" : "#dc2626",
-                        color: draftStarted ? "#9ca3af" : "white",
-                        border: "none",
-                        borderRadius: "6px",
-                        fontSize: "12px",
-                        fontWeight: "500",
-                        cursor: draftStarted ? "not-allowed" : "pointer",
-                        transition: "all 0.2s ease"
-                      }}
-                    >
-                      {draftStarted ? "Locked" : "Remove"}
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Season Timeline */}
-        <div style={{
-          backgroundColor: "white",
-          borderRadius: "12px",
-          padding: "20px",
-          marginBottom: "20px",
-          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-        }}>
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            marginBottom: "20px"
-          }}>
-            <Calendar size={24} style={{ color: "#1e40af" }} />
-            <h2 style={{
-              fontSize: "18px",
-              fontWeight: "600",
-              color: "#1e293b",
-              margin: 0
-            }}>
-              2025 Season Timeline
-            </h2>
+        <div className="mt-8 bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 w-full">
+          <div className="flex items-center space-x-4 mb-6">
+            <Calendar size={32} className="text-purple-400 flex-shrink-0" />
+            <h2 className="text-2xl font-bold text-white min-w-0">2025 Season Timeline</h2>
           </div>
 
-          <div style={{ 
-            display: "grid", 
-            gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", 
-            gap: "8px"
-          }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 w-full">
             {weeks.map((date, i) => (
-              <div key={i} style={{
-                border: "2px solid #e2e8f0",
-                backgroundColor: getWeekColor(i),
-                padding: "12px 8px",
-                fontSize: "12px",
-                borderRadius: "8px",
-                textAlign: "center"
-              }}>
-                <div style={{ fontWeight: "700", marginBottom: "4px" }}>
+              <div key={i} className={`p-4 rounded-xl border bg-gradient-to-br ${getWeekColor(i)} text-center`}>
+                <div className="text-white font-bold text-sm mb-1">
                   Week {i + 1}
                 </div>
-                <div style={{ marginBottom: "4px", fontSize: "11px" }}>
+                <div className="text-white/80 text-xs mb-2">
                   {date}
                 </div>
-                <div style={{ 
-                  fontSize: "10px", 
-                  fontWeight: "600",
-                  color: "#374151",
-                  marginBottom: "4px"
-                }}>
+                <div className="text-white/90 text-xs font-semibold mb-2">
                   {getWeekLabel(i)}
                 </div>
                 {i === 9 && (
-                  <div style={{ 
-                    fontSize: "9px", 
-                    fontStyle: "italic",
-                    color: "#64748b",
-                    marginBottom: "4px"
-                  }}>
+                  <div className="text-white/70 text-xs italic mb-2">
                     Last week of free agency
                   </div>
                 )}
-                <div style={{ fontSize: "10px", color: "#374151" }}>
+                <div className="text-white/80 text-xs">
                   Captain Bonus: {i === 0 ? "No" : "Yes"}
                 </div>
               </div>
             ))}
           </div>
 
-          <div style={{ marginTop: "16px", fontSize: "12px", color: "#64748b" }}>
-            <div style={{ marginBottom: "4px" }}>
-              <span style={{ 
-                display: "inline-block", 
-                width: "12px", 
-                height: "12px", 
-                backgroundColor: "#bbf7d0", 
-                marginRight: "8px",
-                borderRadius: "2px"
-              }}></span>
-              Green = Game bonuses active
+          <div className="mt-6 flex flex-wrap gap-4 text-sm text-white/70">
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-gradient-to-br from-green-400/20 to-green-500/20 border border-green-400/30 rounded"></div>
+              <span>Game bonuses active</span>
             </div>
-            <div style={{ marginBottom: "4px" }}>
-              <span style={{ 
-                display: "inline-block", 
-                width: "12px", 
-                height: "12px", 
-                backgroundColor: "#fecaca", 
-                marginRight: "8px",
-                borderRadius: "2px"
-              }}></span>
-              Red = Game bonuses not active
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-gradient-to-br from-red-400/20 to-red-500/20 border border-red-400/30 rounded"></div>
+              <span>Game bonuses not active</span>
             </div>
-            <div>
-              <span style={{ 
-                display: "inline-block", 
-                width: "12px", 
-                height: "12px", 
-                backgroundColor: "#bfdbfe", 
-                marginRight: "8px",
-                borderRadius: "2px"
-              }}></span>
-              Blue = Playoffs or Championship
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-gradient-to-br from-blue-400/20 to-blue-500/20 border border-blue-400/30 rounded"></div>
+              <span>Playoffs or Championship</span>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Modals */}
       {/* Delete League Modal */}
       {showDeleteModal && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-          padding: "16px"
-        }}>
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "16px",
-            padding: "24px",
-            maxWidth: "500px",
-            width: "100%",
-            textAlign: "center",
-            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
-          }}>
-            <div style={{
-              width: "60px",
-              height: "60px",
-              backgroundColor: "#dc2626",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 16px auto"
-            }}>
-              <AlertTriangle size={32} style={{ color: "white" }} />
-            </div>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 rounded-2xl p-8 max-w-md w-full border border-white/20">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertTriangle size={32} className="text-white" />
+              </div>
 
-            <h3 style={{ 
-              fontSize: "20px", 
-              fontWeight: "700", 
-              marginBottom: "12px",
-              color: "#1e293b"
-            }}>
-              Delete League "{leagueData.name}"?
-            </h3>
-            
-            <div style={{ 
-              marginBottom: "24px",
-              color: "#64748b",
-              fontSize: "14px",
-              textAlign: "left"
-            }}>
-              <p style={{ marginBottom: "12px" }}>This will permanently:</p>
-              <ul style={{ marginLeft: "20px", marginBottom: "16px" }}>
-                <li>Delete the league and all its data</li>
-                <li>Remove it from all members' league lists</li>
-                <li>Delete all draft data and settings</li>
-              </ul>
-              <p style={{ 
-                fontWeight: "600", 
-                color: "#dc2626",
-                textAlign: "center"
-              }}>
-                THIS CANNOT BE UNDONE!
-              </p>
-            </div>
+              <h3 className="text-2xl font-bold text-white mb-4">
+                Delete League "{leagueData.name}"?
+              </h3>
+              
+              <div className="text-white/70 text-left mb-6">
+                <p className="mb-4">This will permanently:</p>
+                <ul className="list-disc list-inside space-y-2 mb-4">
+                  <li>Delete the league and all its data</li>
+                  <li>Remove it from all members' league lists</li>
+                  <li>Delete all draft data and settings</li>
+                </ul>
+                <p className="text-red-400 font-semibold text-center">
+                  THIS CANNOT BE UNDONE!
+                </p>
+              </div>
 
-            <div style={{ display: "flex", gap: "12px" }}>
-              <button
-                onClick={closeModals}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  backgroundColor: "#6b7280",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  cursor: "pointer"
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteLeague}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  backgroundColor: "#dc2626",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  cursor: "pointer"
-                }}
-              >
-                Delete League
-              </button>
+              <div className="flex space-x-4">
+                <button
+                  onClick={closeModals}
+                  className="flex-1 px-6 py-3 bg-white/10 border border-white/20 text-white font-semibold rounded-xl hover:bg-white/20 transition-all duration-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteLeague}
+                  className="flex-1 px-6 py-3 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl transition-all duration-300"
+                >
+                  Delete League
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1397,154 +946,60 @@ function LeagueRules() {
 
       {/* Success Modal */}
       {showSuccessModal && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-          padding: "16px"
-        }}>
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "16px",
-            padding: "24px",
-            maxWidth: "400px",
-            width: "100%",
-            textAlign: "center",
-            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
-          }}>
-            <div style={{
-              width: "60px",
-              height: "60px",
-              backgroundColor: "#10b981",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 16px auto"
-            }}>
-              <CheckCircle size={32} style={{ color: "white" }} />
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 rounded-2xl p-8 max-w-md w-full border border-white/20">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                <CheckCircle size={32} className="text-white" />
+              </div>
+
+              <h3 className="text-xl font-bold text-white mb-3">
+                {modalTitle}
+              </h3>
+              
+              <p className="text-white/70 mb-6">
+                {modalMessage}
+              </p>
+
+              <button
+                onClick={closeModals}
+                className="w-full px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-xl transition-all duration-300"
+              >
+                Great!
+              </button>
             </div>
-
-            <h3 style={{ 
-              fontSize: "18px", 
-              fontWeight: "600", 
-              marginBottom: "8px",
-              color: "#1e293b"
-            }}>
-              {modalTitle}
-            </h3>
-            
-            <p style={{ 
-              marginBottom: "24px",
-              color: "#64748b",
-              fontSize: "14px"
-            }}>
-              {modalMessage}
-            </p>
-
-            <button
-              onClick={closeModals}
-              style={{
-                width: "100%",
-                padding: "12px",
-                backgroundColor: "#10b981",
-                color: "white",
-                border: "none",
-                borderRadius: "8px",
-                fontSize: "14px",
-                fontWeight: "500",
-                cursor: "pointer"
-              }}
-            >
-              Great!
-            </button>
           </div>
         </div>
       )}
 
       {/* Error Modal */}
       {showErrorModal && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-          padding: "16px"
-        }}>
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "16px",
-            padding: "24px",
-            maxWidth: "400px",
-            width: "100%",
-            textAlign: "center",
-            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
-          }}>
-            <div style={{
-              width: "60px",
-              height: "60px",
-              backgroundColor: "#ef4444",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 16px auto"
-            }}>
-              <AlertTriangle size={32} style={{ color: "white" }} />
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 rounded-2xl p-8 max-w-md w-full border border-white/20">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertTriangle size={32} className="text-white" />
+              </div>
+
+              <h3 className="text-xl font-bold text-white mb-3">
+                {modalTitle}
+              </h3>
+              
+              <p className="text-white/70 mb-6">
+                {modalMessage}
+              </p>
+
+              <button
+                onClick={closeModals}
+                className="w-full px-6 py-3 bg-white/10 border border-white/20 text-white font-semibold rounded-xl hover:bg-white/20 transition-all duration-300"
+              >
+                Got it
+              </button>
             </div>
-
-            <h3 style={{ 
-              fontSize: "18px", 
-              fontWeight: "600", 
-              marginBottom: "8px",
-              color: "#1e293b"
-            }}>
-              {modalTitle}
-            </h3>
-            
-            <p style={{ 
-              marginBottom: "24px",
-              color: "#64748b",
-              fontSize: "14px"
-            }}>
-              {modalMessage}
-            </p>
-
-            <button
-              onClick={closeModals}
-              style={{
-                width: "100%",
-                padding: "12px",
-                backgroundColor: "#6b7280",
-                color: "white",
-                border: "none",
-                borderRadius: "8px",
-                fontSize: "14px",
-                fontWeight: "500",
-                cursor: "pointer"
-              }}
-            >
-              Got it
-            </button>
           </div>
         </div>
       )}
-
-      {/* Bottom spacing */}
-      <div style={{ height: "80px" }} />
+      <BottomNavBar leagueId={leagueId} isDraftComplete={leagueData?.draftComplete || false} />
     </div>
   );
 }

@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { auth, db } from "../firebase/firebase";
 import { doc, getDoc } from "firebase/firestore";
-import { useNavigate, useLocation } from "react-router-dom";
-import { Trophy, Users, ArrowRight } from "lucide-react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { Trophy, Users, ArrowRight, Plus } from "lucide-react";
 
 function Home() {
   const [leagueList, setLeagueList] = useState([]);
   const [isAdmin, setIsAdmin] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
   const flashMessage = location.state?.message;
@@ -26,6 +27,13 @@ function Home() {
         const userData = userSnap.data();
         const adminStatus = userData?.isAdmin || false;
         setIsAdmin(adminStatus);
+
+        // Set user name for greeting
+        if (userData?.firstName) {
+          setUserName(userData.firstName);
+        } else {
+          setUserName(currentUser.email?.split('@')[0] || 'there');
+        }
 
         if (adminStatus) {
           navigate("/admin");
@@ -53,19 +61,29 @@ function Home() {
     fetchUserAndLeagues();
   }, [navigate]);
 
+  const handleLogout = async () => {
+    if (window.confirm("Are you sure you want to log out?")) {
+      try {
+        await auth.signOut();
+        navigate("/");
+      } catch (err) {
+        console.error("Logout error:", err);
+      }
+    }
+  };
+
   if (isAdmin) return null;
 
   if (loading) {
     return (
-      <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh", width: "100%", overflowX: "hidden" }}>
-        <div style={{ 
-          padding: "40px 20px", 
-          textAlign: "center",
-          color: "#64748b",
-          fontSize: "16px"
-        }}>
-          <div style={{ marginBottom: "16px", fontSize: "18px", fontWeight: "600" }}>
-            Loading your leagues...
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        </div>
+        <div className="relative z-10 flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="text-4xl mb-4 animate-spin">⚡</div>
+            <p className="text-xl text-white/80">Loading your leagues...</p>
           </div>
         </div>
       </div>
@@ -73,496 +91,235 @@ function Home() {
   }
 
   return (
-    <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-      {/* Header */}
-      <div style={{ 
-        padding: "20px 16px 16px 16px",
-        background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
-        color: "white"
-      }}>
-        <div style={{ maxWidth: "100%", width: "100%" }}>
-          <h1 style={{ 
-            fontSize: "clamp(24px, 5vw, 32px)", 
-            fontWeight: "700", 
-            margin: "0 0 8px 0",
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            flexWrap: "wrap"
-          }}>
-            <Trophy size={32} />
-            My Leagues
-          </h1>
-          
-          <p style={{
-            fontSize: "clamp(14px, 3vw, 18px)",
-            opacity: "0.9",
-            margin: 0
-          }}>
-            Welcome back! Here are your fantasy leagues.
-          </p>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
       </div>
 
-      <div style={{ padding: "20px 16px", width: "100%", boxSizing: "border-box" }}>
+      {/* Navigation */}
+      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
+        <Link to="/home" className="flex items-center space-x-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
+            L
+          </div>
+          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            Lineup
+          </span>
+        </Link>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
+          >
+            Logout
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        {/* Header */}
+        <div className="text-center mb-8 sm:mb-12">
+          <div className="mb-4 sm:mb-6">
+            <span className="inline-block text-4xl sm:text-5xl mb-2 sm:mb-4">🏆</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4 leading-tight">
+            <span className="text-white">Welcome back,</span>
+            <br />
+            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              {userName}!
+            </span>
+          </h1>
+          <p className="text-lg sm:text-xl text-white/80 max-w-2xl mx-auto">
+            Here are your fantasy leagues. Ready to dominate?
+          </p>
+        </div>
+
         {/* Flash Message */}
         {flashMessage && (
-          <div style={{ 
-            padding: "16px", 
-            backgroundColor: "#ecfdf5", 
-            border: "2px solid #10b981", 
-            borderRadius: "12px", 
-            color: "#065f46",
-            marginBottom: "24px",
-            boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-          }}>
-            <div style={{ fontWeight: "600" }}>{flashMessage}</div>
+          <div className="mb-8 p-4 bg-green-500/20 border border-green-400/30 rounded-xl max-w-2xl mx-auto">
+            <p className="text-green-200 text-center font-medium">{flashMessage}</p>
           </div>
         )}
 
-        {/* Leagues List */}
+        {/* Leagues Section */}
         {leagueList.length === 0 ? (
-          <div style={{ 
-            display: "grid", 
-            gap: "16px",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(350px, 100%), 1fr))",
-            width: "100%"
-          }}>
-            {/* Create League Card */}
-            <div style={{
-              backgroundColor: "white",
-              borderRadius: "12px",
-              padding: "32px 24px",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-              border: "2px dashed #e5e7eb",
-              textAlign: "center",
-              transition: "all 0.2s ease",
-              cursor: "pointer"
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.borderColor = "#1e40af";
-              e.target.style.backgroundColor = "#f0f9ff";
-              e.target.style.transform = "translateY(-2px)";
-              e.target.style.boxShadow = "0 8px 25px rgba(0,0,0,0.15)";
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.borderColor = "#e5e7eb";
-              e.target.style.backgroundColor = "white";
-              e.target.style.transform = "translateY(0px)";
-              e.target.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
-            }}
-            onClick={() => navigate("/create-league")}
-            >
-              <div style={{
-                width: "64px",
-                height: "64px",
-                borderRadius: "50%",
-                backgroundColor: "#1e40af",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 16px auto"
-              }}>
-                <Trophy size={32} style={{ color: "white" }} />
-              </div>
-              
-              <h3 style={{ 
-                fontSize: "20px", 
-                fontWeight: "600", 
-                color: "#1e293b",
-                margin: "0 0 8px 0"
-              }}>
-                Create a League
-              </h3>
-              <p style={{ 
-                color: "#64748b", 
-                fontSize: "14px",
-                margin: "0 0 20px 0",
-                lineHeight: "1.5"
-              }}>
-                Start your own fantasy league and invite friends to compete
-              </p>
-              
-              <div style={{
-                padding: "8px 16px",
-                backgroundColor: "#1e40af",
-                color: "white",
-                borderRadius: "6px",
-                fontSize: "14px",
-                fontWeight: "500",
-                display: "inline-block"
-              }}>
+          // No Leagues - Getting Started
+          <div className="space-y-8">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl sm:text-3xl font-bold mb-4 text-white">
                 Get Started
-              </div>
+              </h2>
+              <p className="text-white/70 max-w-md mx-auto">
+                You're not in any leagues yet. Create your own or join an existing one to start playing!
+              </p>
             </div>
 
-            {/* Join League Card */}
-            <div style={{
-              backgroundColor: "white",
-              borderRadius: "12px",
-              padding: "32px 24px",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-              border: "2px dashed #e5e7eb",
-              textAlign: "center",
-              transition: "all 0.2s ease",
-              cursor: "pointer"
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.borderColor = "#059669";
-              e.target.style.backgroundColor = "#f0fdf4";
-              e.target.style.transform = "translateY(-2px)";
-              e.target.style.boxShadow = "0 8px 25px rgba(0,0,0,0.15)";
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.borderColor = "#e5e7eb";
-              e.target.style.backgroundColor = "white";
-              e.target.style.transform = "translateY(0px)";
-              e.target.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
-            }}
-            onClick={() => navigate("/join-league")}
-            >
-              <div style={{
-                width: "64px",
-                height: "64px",
-                borderRadius: "50%",
-                backgroundColor: "#059669",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 16px auto"
-              }}>
-                <Users size={32} style={{ color: "white" }} />
+            <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+              {/* Create League Card */}
+              <div 
+                onClick={() => navigate("/create-league")}
+                className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group"
+              >
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300">
+                    <Trophy size={32} className="text-white" />
+                  </div>
+                  
+                  <h3 className="text-2xl font-bold text-white mb-4">
+                    Create a League
+                  </h3>
+                  <p className="text-white/80 mb-6 leading-relaxed">
+                    Start your own fantasy league and invite friends to compete. You'll be the commissioner!
+                  </p>
+                  
+                  <div className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full text-white font-semibold group-hover:from-purple-600 group-hover:to-blue-600 transition-all duration-300">
+                    Get Started
+                    <ArrowRight size={16} className="ml-2" />
+                  </div>
+                </div>
               </div>
-              
-              <h3 style={{ 
-                fontSize: "20px", 
-                fontWeight: "600", 
-                color: "#1e293b",
-                margin: "0 0 8px 0"
-              }}>
-                Join a League
-              </h3>
-              <p style={{ 
-                color: "#64748b", 
-                fontSize: "14px",
-                margin: "0 0 20px 0",
-                lineHeight: "1.5"
-              }}>
-                Got an invite code? Join an existing fantasy league
-              </p>
-              
-              <div style={{
-                padding: "8px 16px",
-                backgroundColor: "#059669",
-                color: "white",
-                borderRadius: "6px",
-                fontSize: "14px",
-                fontWeight: "500",
-                display: "inline-block"
-              }}>
-                Join Now
+
+              {/* Join League Card */}
+              <div 
+                onClick={() => navigate("/join-league")}
+                className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group"
+              >
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300">
+                    <Users size={32} className="text-white" />
+                  </div>
+                  
+                  <h3 className="text-2xl font-bold text-white mb-4">
+                    Join a League
+                  </h3>
+                  <p className="text-white/80 mb-6 leading-relaxed">
+                    Got an invite code? Join an existing fantasy league and start competing right away!
+                  </p>
+                  
+                  <div className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full text-white font-semibold group-hover:from-green-600 group-hover:to-emerald-600 transition-all duration-300">
+                    Join Now
+                    <ArrowRight size={16} className="ml-2" />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         ) : (
-          <div style={{ 
-            display: "grid", 
-            gap: "16px",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(400px, 100%), 1fr))",
-            width: "100%"
-          }}>
-            {leagueList.map((league) => (
-              <div 
-                key={league.id} 
-                style={{
-                  backgroundColor: "white",
-                  borderRadius: "12px",
-                  padding: "24px",
-                  boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                  border: "1px solid #e5e7eb",
-                  transition: "all 0.2s ease",
-                  cursor: "pointer"
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.transform = "translateY(-2px)";
-                  e.target.style.boxShadow = "0 8px 25px rgba(0,0,0,0.15)";
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.transform = "translateY(0px)";
-                  e.target.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
-                }}
-                onClick={() => navigate(`/${league.id}/my-lineup`)}
-              >
-                <div style={{ 
-                  display: "flex", 
-                  alignItems: "center", 
-                  justifyContent: "space-between",
-                  marginBottom: "16px"
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div style={{
-                      width: "48px",
-                      height: "48px",
-                      borderRadius: "50%",
-                      backgroundColor: "#1e40af",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "white",
-                      fontSize: "18px",
-                      fontWeight: "bold"
-                    }}>
-                      {(league.name || "UL").substring(0, 2).toUpperCase()}
-                    </div>
-                    
-                    <div>
-                      <h3 style={{ 
-                        fontSize: "clamp(18px, 4vw, 20px)", 
-                        fontWeight: "600", 
-                        margin: "0 0 4px 0",
-                        color: "#1e293b",
-                        wordBreak: "break-word"
-                      }}>
-                        {league.name || "Unnamed League"}
-                      </h3>
-                      <p style={{ 
-                        fontSize: "clamp(12px, 2.5vw, 14px)", 
-                        color: "#64748b",
-                        margin: 0,
-                        wordBreak: "break-all"
-                      }}>
-                        League ID: {league.id}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <ArrowRight size={20} style={{ color: "#94a3b8" }} />
-                </div>
-
-                <div style={{ 
-                  display: "grid", 
-                  gridTemplateColumns: "1fr 1fr", 
-                  gap: "16px",
-                  marginTop: "16px"
-                }}>
-                  <div>
-                    <div style={{ 
-                      fontSize: "11px", 
-                      color: "#64748b", 
-                      marginBottom: "4px", 
-                      textTransform: "uppercase", 
-                      letterSpacing: "0.5px" 
-                    }}>
-                      Members
-                    </div>
-                    <div style={{ 
-                      fontSize: "16px", 
-                      fontWeight: "700", 
-                      color: "#1e293b" 
-                    }}>
-                      {league.memberCount || "—"}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <div style={{ 
-                      fontSize: "11px", 
-                      color: "#64748b", 
-                      marginBottom: "4px", 
-                      textTransform: "uppercase", 
-                      letterSpacing: "0.5px" 
-                    }}>
-                      Season
-                    </div>
-                    <div style={{ 
-                      fontSize: "16px", 
-                      fontWeight: "700", 
-                      color: "#1e293b" 
-                    }}>
-                      2025
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action Button */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/${league.id}/my-lineup`);
-                  }}
-                  style={{
-                    width: "100%",
-                    marginTop: "20px",
-                    padding: "12px",
-                    backgroundColor: "#f8fafc",
-                    color: "#1e40af",
-                    border: "2px solid #e0e7ff",
-                    borderRadius: "8px",
-                    fontSize: "14px",
-                    fontWeight: "600",
-                    cursor: "pointer",
-                    transition: "all 0.2s ease",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "8px"
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = "#e0e7ff";
-                    e.target.style.borderColor = "#c7d2fe";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = "#f8fafc";
-                    e.target.style.borderColor = "#e0e7ff";
-                  }}
-                >
-                  View My Lineup
-                  <ArrowRight size={16} />
-                </button>
-              </div>
-            ))}
-            
-            {/* Create League Card */}
-            <div style={{
-              backgroundColor: "white",
-              borderRadius: "12px",
-              padding: "32px 24px",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-              border: "2px dashed #e5e7eb",
-              textAlign: "center",
-              transition: "all 0.2s ease",
-              cursor: "pointer"
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.borderColor = "#1e40af";
-              e.target.style.backgroundColor = "#f0f9ff";
-              e.target.style.transform = "translateY(-2px)";
-              e.target.style.boxShadow = "0 8px 25px rgba(0,0,0,0.15)";
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.borderColor = "#e5e7eb";
-              e.target.style.backgroundColor = "white";
-              e.target.style.transform = "translateY(0px)";
-              e.target.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
-            }}
-            onClick={() => navigate("/create-league")}
-            >
-              <div style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "50%",
-                backgroundColor: "#1e40af",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 16px auto"
-              }}>
-                <Trophy size={24} style={{ color: "white" }} />
-              </div>
-              
-              <h3 style={{ 
-                fontSize: "18px", 
-                fontWeight: "600", 
-                color: "#1e293b",
-                margin: "0 0 8px 0"
-              }}>
-                Create New League
-              </h3>
-              <p style={{ 
-                color: "#64748b", 
-                fontSize: "14px",
-                margin: "0 0 16px 0",
-                lineHeight: "1.4"
-              }}>
-                Start your own fantasy league
-              </p>
-              
-              <div style={{
-                padding: "8px 16px",
-                backgroundColor: "#1e40af",
-                color: "white",
-                borderRadius: "6px",
-                fontSize: "14px",
-                fontWeight: "500",
-                display: "inline-block"
-              }}>
-                Create League
-              </div>
+          // Has Leagues
+          <div className="space-y-8">
+            <div className="text-center">
+              <h2 className="text-2xl sm:text-3xl font-bold mb-4 text-white">
+                Your Leagues
+              </h2>
             </div>
 
-            {/* Join League Card */}
-            <div style={{
-              backgroundColor: "white",
-              borderRadius: "12px",
-              padding: "32px 24px",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-              border: "2px dashed #e5e7eb",
-              textAlign: "center",
-              transition: "all 0.2s ease",
-              cursor: "pointer"
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.borderColor = "#059669";
-              e.target.style.backgroundColor = "#f0fdf4";
-              e.target.style.transform = "translateY(-2px)";
-              e.target.style.boxShadow = "0 8px 25px rgba(0,0,0,0.15)";
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.borderColor = "#e5e7eb";
-              e.target.style.backgroundColor = "white";
-              e.target.style.transform = "translateY(0px)";
-              e.target.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)";
-            }}
-            onClick={() => navigate("/join-league")}
-            >
-              <div style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "50%",
-                backgroundColor: "#059669",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 16px auto"
-              }}>
-                <Users size={24} style={{ color: "white" }} />
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {leagueList.map((league) => (
+                <div 
+                  key={league.id}
+                  onClick={() => navigate(`/${league.id}/my-lineup`)}
+                  className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+                        {(league.name || "UL").substring(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-white truncate max-w-32">
+                          {league.name || "Unnamed League"}
+                        </h3>
+                        <p className="text-xs text-white/60 truncate">
+                          ID: {league.id}
+                        </p>
+                      </div>
+                    </div>
+                    <ArrowRight size={20} className="text-white/60 group-hover:text-white transition-colors duration-300" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <div className="text-xs text-white/60 uppercase tracking-wide mb-1">
+                        Members
+                      </div>
+                      <div className="text-lg font-bold text-white">
+                        {league.memberCount || "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-white/60 uppercase tracking-wide mb-1">
+                        Season
+                      </div>
+                      <div className="text-lg font-bold text-white">
+                        2025
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/${league.id}/my-lineup`);
+                    }}
+                    className="w-full py-3 px-4 bg-white/10 border border-white/20 rounded-xl text-white font-medium hover:bg-white/20 transition-all duration-300 flex items-center justify-center space-x-2"
+                  >
+                    <span>View My Lineup</span>
+                    <ArrowRight size={16} />
+                  </button>
+                </div>
+              ))}
+
+              {/* Add New League Cards */}
+              <div 
+                onClick={() => navigate("/create-league")}
+                className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border-2 border-dashed border-white/30 hover:border-white/60 hover:bg-white/10 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group"
+              >
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
+                    <Plus size={24} className="text-white" />
+                  </div>
+                  
+                  <h3 className="text-lg font-bold text-white mb-2">
+                    Create League
+                  </h3>
+                  <p className="text-white/60 text-sm mb-4">
+                    Start a new fantasy league
+                  </p>
+                  
+                  <div className="text-purple-400 font-medium text-sm">
+                    Get Started
+                  </div>
+                </div>
               </div>
-              
-              <h3 style={{ 
-                fontSize: "18px", 
-                fontWeight: "600", 
-                color: "#1e293b",
-                margin: "0 0 8px 0"
-              }}>
-                Join a League
-              </h3>
-              <p style={{ 
-                color: "#64748b", 
-                fontSize: "14px",
-                margin: "0 0 16px 0",
-                lineHeight: "1.4"
-              }}>
-                Got an invite code? Join now
-              </p>
-              
-              <div style={{
-                padding: "8px 16px",
-                backgroundColor: "#059669",
-                color: "white",
-                borderRadius: "6px",
-                fontSize: "14px",
-                fontWeight: "500",
-                display: "inline-block"
-              }}>
-                Join League
+
+              <div 
+                onClick={() => navigate("/join-league")}
+                className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border-2 border-dashed border-white/30 hover:border-white/60 hover:bg-white/10 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group"
+              >
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
+                    <Users size={24} className="text-white" />
+                  </div>
+                  
+                  <h3 className="text-lg font-bold text-white mb-2">
+                    Join League
+                  </h3>
+                  <p className="text-white/60 text-sm mb-4">
+                    Got an invite code?
+                  </p>
+                  
+                  <div className="text-green-400 font-medium text-sm">
+                    Join Now
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         )}
       </div>
-
-      {/* Bottom spacing */}
-      <div style={{ height: "80px" }} />
     </div>
   );
 }
