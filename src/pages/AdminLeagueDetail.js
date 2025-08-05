@@ -266,117 +266,326 @@ const handleSimulateDraft = async () => {
   }
 };
 
-// REPLACE your handleSimulateAllButFinalPick function with this:
-const handleSimulateAllButFinalPick = async () => {
-  if (!window.confirm("This will simulate the entire draft except for the final pick using exact live draft logic. Continue?")) return;
+  const handleSimulateAllButFinalPick = async () => {
+    if (!window.confirm("This will simulate the entire draft except for the final pick using exact live draft logic. Continue?")) return;
 
-  try {
-    // ✅ MATCH DRAFTROOM: Get teams the exact same way
-    const teamsSnap = await getDocs(collection(db, "teams"));
-    const teamNames = teamsSnap.docs
-      .filter(doc => {
-        const data = doc.data();
-        return data.school && 
-              typeof data.school === "string" && 
-              data.classification?.toLowerCase() === "fbs";
-      })
-      .map(doc => doc.id); // ✅ Use document ID (matches DraftRoom)
+    try {
+      // ✅ MATCH DRAFTROOM: Get teams the exact same way
+      const teamsSnap = await getDocs(collection(db, "teams"));
+      const teamNames = teamsSnap.docs
+        .filter(doc => {
+          const data = doc.data();
+          return data.school && 
+                typeof data.school === "string" && 
+                data.classification?.toLowerCase() === "fbs";
+        })
+        .map(doc => doc.id); // ✅ Use document ID (matches DraftRoom)
 
-    if (teamNames.length === 0) {
-      alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
-      return;
-    }
-
-    // ✅ MATCH DRAFTROOM: Build team data map
-    const allTeamsData = {};
-    teamsSnap.docs.forEach(doc => {
-      allTeamsData[doc.id] = doc.data();
-    });
-
-    const draftOrder = members.map(m => m.id);
-    const totalPicks = draftOrder.length * 7;
-    const finalPickIndex = totalPicks - 1; // Stop before the final pick
-
-    let availableTeams = [...teamNames];
-    const selectedTeams = {};
-    
-    // Initialize empty arrays for each manager
-    draftOrder.forEach(uid => {
-      selectedTeams[uid] = [];
-    });
-
-    // ✅ MATCH DRAFTROOM: Simulate picks using exact same logic
-    for (let pickIndex = 0; pickIndex < finalPickIndex; pickIndex++) {
-      const currentUid = getCurrentPicker(draftOrder, pickIndex);
-      
-      if (!currentUid || availableTeams.length === 0) {
-        console.error(`Simulation failed at pick ${pickIndex}: no current UID or no available teams`);
-        break;
+      if (teamNames.length === 0) {
+        alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
+        return;
       }
 
-      // ✅ MATCH DRAFTROOM: Use exact same team selection logic as handleAutoPick
-      const teamRankings = {};
+      // ✅ MATCH DRAFTROOM: Build team data map
+      const allTeamsData = {};
+      teamsSnap.docs.forEach(doc => {
+        allTeamsData[doc.id] = doc.data();
+      });
+
+      const draftOrder = members.map(m => m.id);
+      const totalPicks = draftOrder.length * 7;
+      const finalPickIndex = totalPicks - 1; // Stop before the final pick
+
+      let availableTeams = [...teamNames];
+      const selectedTeams = {};
       
-      availableTeams.forEach(teamId => {
-        const teamData = allTeamsData[teamId];
-        if (teamData && teamData.philMetricDraftRank !== undefined) {
-          teamRankings[teamId] = teamData.philMetricDraftRank;
+      // Initialize empty arrays for each manager
+      draftOrder.forEach(uid => {
+        selectedTeams[uid] = [];
+      });
+
+      // ✅ MATCH DRAFTROOM: Simulate picks using exact same logic
+      for (let pickIndex = 0; pickIndex < finalPickIndex; pickIndex++) {
+        const currentUid = getCurrentPicker(draftOrder, pickIndex);
+        
+        if (!currentUid || availableTeams.length === 0) {
+          console.error(`Simulation failed at pick ${pickIndex}: no current UID or no available teams`);
+          break;
+        }
+
+        // ✅ MATCH DRAFTROOM: Use exact same team selection logic as handleAutoPick
+        const teamRankings = {};
+        
+        availableTeams.forEach(teamId => {
+          const teamData = allTeamsData[teamId];
+          if (teamData && teamData.philMetricDraftRank !== undefined) {
+            teamRankings[teamId] = teamData.philMetricDraftRank;
+          }
+        });
+
+        const availableTeamsWithRanks = availableTeams
+          .map(teamId => ({
+            id: teamId,
+            rank: teamRankings[teamId] || 999
+          }))
+          .sort((a, b) => a.rank - b.rank);
+
+        const bestTeam = availableTeamsWithRanks[0];
+        const pickedTeam = bestTeam.id; // ✅ Use document ID
+
+        // Add to selected teams
+        selectedTeams[currentUid].push(pickedTeam);
+        
+        // Remove from available teams
+        availableTeams = availableTeams.filter(t => t !== pickedTeam);
+      }
+
+      // ✅ MATCH DRAFTROOM: Create draft metadata in exact same format as live draft
+      await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), {
+        draftOrder,
+        currentPickIndex: finalPickIndex, // One pick before completion
+        availableTeams,
+        selectedTeams,
+        draftComplete: false,
+        currentPickStartTime: serverTimestamp() // ✅ Set timer for final pick
+      });
+
+      // ✅ MATCH DRAFTROOM: Update member lineups with current picks (but don't set starters/bench yet)
+      const memberUpdates = Object.entries(selectedTeams).map(async ([uid, teams]) => {
+        if (teams.length > 0) {
+          const memberRef = doc(db, "leagues", leagueId, "members", uid);
+          await updateDoc(memberRef, {
+            "lineup.drafted": teams,
+            freeAgentMoves: 0,
+            smackTalk: ""
+            // Don't set starters/bench yet since draft isn't complete
+          });
         }
       });
 
-      const availableTeamsWithRanks = availableTeams
-        .map(teamId => ({
-          id: teamId,
-          rank: teamRankings[teamId] || 999
-        }))
-        .sort((a, b) => a.rank - b.rank);
+      await Promise.all(memberUpdates);
 
-      const bestTeam = availableTeamsWithRanks[0];
-      const pickedTeam = bestTeam.id; // ✅ Use document ID
-
-      // Add to selected teams
-      selectedTeams[currentUid].push(pickedTeam);
+      const finalPicker = getCurrentPicker(draftOrder, finalPickIndex);
+      const finalPickerName = members.find(m => m.id === finalPicker)?.displayName || "Unknown";
       
-      // Remove from available teams
-      availableTeams = availableTeams.filter(t => t !== pickedTeam);
+      alert(`✅ Draft simulated up to final pick using live draft logic!\n\nFinal pick belongs to: ${finalPickerName}\nRemaining teams: ${availableTeams.length}`);
+      refresh();
+
+    } catch (err) {
+      console.error("Error simulating draft:", err);
+      alert("Error: " + err.message);
+    }
+  };
+
+  const handleSimulateNext10Picks = async () => {
+    if (!draftMeta || draftMeta.draftComplete) {
+      alert("No active draft found or draft is already complete.");
+      return;
     }
 
-    // ✅ MATCH DRAFTROOM: Create draft metadata in exact same format as live draft
-    await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), {
-      draftOrder,
-      currentPickIndex: finalPickIndex, // One pick before completion
-      availableTeams,
-      selectedTeams,
-      draftComplete: false,
-      currentPickStartTime: serverTimestamp() // ✅ Set timer for final pick
-    });
+    const remainingPicks = (members.length * 7) - draftMeta.currentPickIndex;
+    const picksToSimulate = Math.min(10, remainingPicks);
+    
+    if (picksToSimulate <= 0) {
+      alert("No more picks remaining in the draft.");
+      return;
+    }
 
-    // ✅ MATCH DRAFTROOM: Update member lineups with current picks (but don't set starters/bench yet)
-    const memberUpdates = Object.entries(selectedTeams).map(async ([uid, teams]) => {
-      if (teams.length > 0) {
+    if (!window.confirm(`This will simulate the next ${picksToSimulate} pick${picksToSimulate !== 1 ? 's' : ''} using live draft logic. Continue?`)) {
+      return;
+    }
+
+    try {
+      // 🔧 FIX 1: Get FRESH draft data to avoid stale state
+      const freshDraftDoc = await getDoc(doc(db, "leagues", leagueId, "meta", "draft"));
+      if (!freshDraftDoc.exists()) {
+        alert("Draft data not found.");
+        return;
+      }
+
+      const freshDraftData = freshDraftDoc.data();
+      
+      // Get teams data
+      const teamsSnap = await getDocs(collection(db, "teams"));
+      const allTeamsData = {};
+      teamsSnap.docs.forEach(doc => {
+        allTeamsData[doc.id] = doc.data();
+      });
+
+      // 🔧 FIX 2: Use fresh data, not stale draftMeta
+      let { 
+        draftOrder, 
+        currentPickIndex, 
+        availableTeams, 
+        selectedTeams 
+      } = freshDraftData;
+
+      console.log(`🔍 Starting simulation from pick ${currentPickIndex + 1}`);
+      console.log(`🔍 Available teams at start: ${availableTeams.length}`);
+      console.log(`🔍 Teams to simulate: ${picksToSimulate}`);
+
+      // 🔧 FIX 3: Ensure selectedTeams is properly initialized
+      if (!selectedTeams) selectedTeams = {};
+      draftOrder.forEach(uid => {
+        if (!selectedTeams[uid]) {
+          selectedTeams[uid] = [];
+        }
+      });
+
+      // 🔧 FIX 4: Create a working copy of availableTeams to avoid mutation issues
+      let workingAvailableTeams = [...availableTeams];
+
+      const totalPicks = draftOrder.length * 7;
+      const endPickIndex = Math.min(currentPickIndex + picksToSimulate, totalPicks);
+
+      // 🔧 FIX 5: Track picks made during this simulation for logging
+      const simulatedPicks = [];
+
+      // Simulate picks one by one
+      for (let pickIndex = currentPickIndex; pickIndex < endPickIndex; pickIndex++) {
+        const currentUid = getCurrentPicker(draftOrder, pickIndex);
+        
+        if (!currentUid) {
+          console.error(`❌ No current UID for pick ${pickIndex + 1}`);
+          break;
+        }
+
+        if (workingAvailableTeams.length === 0) {
+          console.error(`❌ No available teams left at pick ${pickIndex + 1}`);
+          break;
+        }
+
+        // Skip if manager already has 7 teams
+        if (selectedTeams[currentUid].length >= 7) {
+          console.warn(`⚠️ Manager ${currentUid} already has 7 teams, skipping pick ${pickIndex + 1}`);
+          continue;
+        }
+
+        // 🔧 FIX 6: Use current workingAvailableTeams, not original availableTeams
+        const teamRankings = {};
+        
+        workingAvailableTeams.forEach(teamId => {
+          const teamData = allTeamsData[teamId];
+          if (teamData && teamData.philMetricDraftRank !== undefined) {
+            teamRankings[teamId] = teamData.philMetricDraftRank;
+          }
+        });
+
+        const availableTeamsWithRanks = workingAvailableTeams
+          .map(teamId => ({
+            id: teamId,
+            rank: teamRankings[teamId] || 999
+          }))
+          .sort((a, b) => a.rank - b.rank);
+
+        if (availableTeamsWithRanks.length === 0) {
+          console.error(`❌ No teams with ranks available at pick ${pickIndex + 1}`);
+          break;
+        }
+
+        const bestTeam = availableTeamsWithRanks[0];
+        const pickedTeam = bestTeam.id;
+
+        // 🔧 FIX 7: Double-check team hasn't been picked already
+        if (!workingAvailableTeams.includes(pickedTeam)) {
+          console.error(`❌ Team ${pickedTeam} not in available teams at pick ${pickIndex + 1}`);
+          break;
+        }
+
+        // Add to selected teams
+        selectedTeams[currentUid].push(pickedTeam);
+        
+        // 🔧 FIX 8: Remove from working available teams immediately
+        workingAvailableTeams = workingAvailableTeams.filter(t => t !== pickedTeam);
+
+        // Track for logging
+        const managerName = members.find(m => m.id === currentUid)?.displayName || currentUid;
+        const teamName = allTeamsData[pickedTeam]?.school || pickedTeam;
+        simulatedPicks.push({
+          pick: pickIndex + 1,
+          manager: managerName,
+          team: teamName,
+          rank: bestTeam.rank
+        });
+
+        console.log(`✅ Pick ${pickIndex + 1}: ${teamName} (rank: ${bestTeam.rank}) → ${managerName}`);
+        console.log(`📊 Teams remaining: ${workingAvailableTeams.length}`);
+      }
+
+      const newPickIndex = endPickIndex;
+      const draftComplete = newPickIndex >= totalPicks;
+
+      // 🔧 FIX 9: Update with working available teams
+      const draftUpdateData = {
+        currentPickIndex: newPickIndex,
+        availableTeams: workingAvailableTeams, // Use the working copy
+        selectedTeams,
+        draftComplete
+      };
+
+      if (!draftComplete) {
+        draftUpdateData.currentPickStartTime = serverTimestamp();
+      }
+
+      // 🔧 FIX 10: Update Firebase with atomic operation
+      await updateDoc(doc(db, "leagues", leagueId, "meta", "draft"), draftUpdateData);
+
+      // Update member lineups
+      const memberUpdates = Object.entries(selectedTeams).map(async ([uid, teams]) => {
         const memberRef = doc(db, "leagues", leagueId, "members", uid);
-        await updateDoc(memberRef, {
-          "lineup.drafted": teams,
-          freeAgentMoves: 0,
-          smackTalk: ""
-          // Don't set starters/bench yet since draft isn't complete
+        
+        if (draftComplete) {
+          const starters = teams.slice(0, 5);
+          const bench = teams.slice(5);
+          
+          await updateDoc(memberRef, {
+            "lineup.drafted": teams,
+            "lineup.starters": starters,
+            "lineup.bench": bench
+          });
+        } else {
+          await updateDoc(memberRef, {
+            "lineup.drafted": teams
+          });
+        }
+      });
+
+      await Promise.all(memberUpdates);
+
+      if (draftComplete) {
+        await updateDoc(doc(db, "leagues", leagueId), {
+          draftComplete: true
         });
       }
-    });
 
-    await Promise.all(memberUpdates);
+      // 🔧 FIX 11: Enhanced success message with pick details
+      const simulatedCount = simulatedPicks.length;
+      let message = `✅ Successfully simulated ${simulatedCount} pick${simulatedCount !== 1 ? 's' : ''}!\n\n`;
+      
+      // Show the picks that were made
+      message += "Picks made:\n";
+      simulatedPicks.forEach(pick => {
+        message += `Pick ${pick.pick}: ${pick.team} → ${pick.manager}\n`;
+      });
+      
+      if (draftComplete) {
+        message += "\n🎉 DRAFT IS NOW COMPLETE!";
+      } else {
+        const nextPicker = getCurrentPicker(draftOrder, newPickIndex);
+        const nextPickerName = nextPicker ? members.find(m => m.id === nextPicker)?.displayName || "Unknown" : null;
+        message += `\nNext pick: ${nextPickerName}`;
+        message += `\nRemaining picks: ${totalPicks - newPickIndex}`;
+        message += `\nTeams left: ${workingAvailableTeams.length}`;
+      }
 
-    const finalPicker = getCurrentPicker(draftOrder, finalPickIndex);
-    const finalPickerName = members.find(m => m.id === finalPicker)?.displayName || "Unknown";
-    
-    alert(`✅ Draft simulated up to final pick using live draft logic!\n\nFinal pick belongs to: ${finalPickerName}\nRemaining teams: ${availableTeams.length}`);
-    refresh();
+      alert(message);
+      refresh();
 
-  } catch (err) {
-    console.error("Error simulating draft:", err);
-    alert("Error: " + err.message);
-  }
-};
+    } catch (err) {
+      console.error("❌ Error simulating next picks:", err);
+      alert("Error: " + err.message);
+    }
+  };
 
   const handleResetDraft = async () => {
     if (!window.confirm("This will delete all draft data and clear every lineup. Continue?")) return;
@@ -615,6 +824,22 @@ const handleSimulateAllButFinalPick = async () => {
           }}
         >
           🎯 Simulate All But Final Pick
+        </button>
+
+        <button 
+          onClick={handleSimulateNext10Picks}
+          disabled={!draftMeta || draftMeta.draftComplete}
+          style={{ 
+            marginLeft: "1rem", 
+            backgroundColor: draftMeta && !draftMeta.draftComplete ? "#9c27b0" : "#ccc", 
+            color: "white", 
+            border: "none", 
+            padding: "8px 12px", 
+            borderRadius: "4px",
+            cursor: draftMeta && !draftMeta.draftComplete ? "pointer" : "not-allowed"
+          }}
+        >
+          ⚡ Simulate Next 10 Picks
         </button>
 
         <button onClick={handleResetDraft} style={{ marginLeft: "1rem", color: "red" }}>
