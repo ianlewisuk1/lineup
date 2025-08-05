@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useRef } from "react";
 import { collection, getDocs } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { useNavigate, useParams } from "react-router-dom";
+import { db, auth } from "../firebase/firebase";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import { Search, Filter, ChevronDown, BarChart3, ChevronUp } from "lucide-react";
-import LeagueNavBar from "../components/LeagueNavBar";
+import BottomNavBar from "../components/BottomNavBar";
 
 // Custom Dropdown Component
+// Updated CustomDropdown Component with proper z-index handling
+
 const CustomDropdown = ({ 
   value, 
   onChange, 
@@ -85,7 +87,7 @@ const CustomDropdown = ({
 
   const selectedOption = options.find(opt => opt.value === value);
 
-  const truncateText = (text, maxLength = 10) => {
+  const truncateText = (text, maxLength = 15) => {
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength - 3) + '...';
   };
@@ -93,116 +95,59 @@ const CustomDropdown = ({
   return (
     <div 
       ref={dropdownRef}
-      style={{ 
-        position: 'relative', 
-        width: '100%',
-        userSelect: 'none'
-      }}
+      className={`relative w-full ${isOpen ? 'z-[9999]' : 'z-50'}`}
     >
       <button
         type="button"
         onClick={toggleDropdown}
-        style={{
-          width: '100%',
-          height: '44px',
-          padding: '12px 48px 12px 48px',
-          backgroundColor: 'white',
-          border: `2px solid ${isOpen ? '#1e40af' : '#e5e7eb'}`,
-          borderRadius: '8px',
-          fontSize: '14px',
-          fontFamily: 'inherit',
-          color: selectedOption ? '#1e293b' : '#64748b',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          textAlign: 'left',
-          transition: 'all 0.2s ease',
-          outline: 'none',
-          boxSizing: 'border-box',
-          WebkitAppearance: 'none',
-          MozAppearance: 'none',
-          appearance: 'none'
-        }}
-        onFocus={(e) => e.target.style.borderColor = '#1e40af'}
-        onBlur={(e) => {
-          if (!isOpen) e.target.style.borderColor = '#e5e7eb';
-        }}
+        className={`
+          w-full h-12 px-12 bg-white/10 backdrop-blur-sm border-2 rounded-xl 
+          text-sm text-white placeholder-white/60 transition-all duration-300
+          flex items-center justify-between text-left relative
+          ${isOpen ? 'border-blue-400 ring-2 ring-blue-400/20' : 'border-white/30'}
+          hover:border-blue-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 focus:outline-none
+        `}
       >
         <Icon 
           size={16} 
-          style={{
-            position: 'absolute',
-            left: '12px',
-            color: '#64748b',
-            pointerEvents: 'none'
-          }}
+          className="absolute left-4 text-white/60 pointer-events-none"
         />
         
-        <span style={{
-          flex: 1,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          paddingRight: '8px'
-        }} title={selectedOption ? selectedOption.label : placeholder}>
+        <span 
+          className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap pr-2"
+          title={selectedOption ? selectedOption.label : placeholder}
+        >
           {selectedOption ? truncateText(selectedOption.label) : placeholder}
         </span>
         
         <ChevronDown 
           size={16} 
-          style={{
-            color: '#64748b',
-            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 0.2s ease',
-            flexShrink: 0
-          }}
+          className={`
+            text-white/60 flex-shrink-0 transition-transform duration-200
+            ${isOpen ? 'rotate-180' : 'rotate-0'}
+          `}
         />
       </button>
 
       {isOpen && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            marginTop: '4px',
-            backgroundColor: 'white',
-            border: '2px solid #e5e7eb',
-            borderRadius: '8px',
-            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.15)',
-            zIndex: 1000,
-            maxHeight: '300px',
-            overflowY: 'auto',
-            overflowX: 'hidden'
-          }}
+        <div 
+          className="absolute top-full left-0 right-0 mt-2 bg-white/10 backdrop-blur-lg border-2 border-white/20 rounded-xl shadow-2xl max-h-80 overflow-y-auto z-[9999]"
         >
-          <ul
-            ref={listRef}
-            style={{
-              margin: 0,
-              padding: '4px 0',
-              listStyle: 'none'
-            }}
-          >
+          <ul className="py-2">
             {options.map((option, index) => (
               <li
                 key={option.value}
-                onClick={() => handleSelect(option)}
-                onMouseEnter={() => setHighlightedIndex(index)}
-                style={{
-                  padding: '12px 16px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  color: '#1e293b',
-                  backgroundColor: 
-                    highlightedIndex === index ? '#f1f5f9' :
-                    value === option.value ? '#eff6ff' : 'transparent',
-                  borderLeft: value === option.value ? '3px solid #1e40af' : '3px solid transparent',
-                  transition: 'all 0.15s ease',
-                  fontWeight: value === option.value ? '600' : '400'
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSelect(option);
                 }}
+                onMouseEnter={() => setHighlightedIndex(index)}
+                className={`
+                  px-4 py-3 cursor-pointer text-sm text-white transition-all duration-150
+                  ${highlightedIndex === index ? 'bg-white/20' : ''}
+                  ${value === option.value ? 'bg-blue-500/30 border-l-4 border-blue-400 font-semibold' : 'border-l-4 border-transparent'}
+                  hover:bg-white/20
+                `}
                 onMouseDown={(e) => e.preventDefault()}
                 title={option.label}
               >
@@ -388,14 +333,25 @@ function Stats() {
       case "gamePoints":
       case "prevYearPoints":
       case "avgPointsFor":
-        return "#059669"; // Green for positive stats
+        return "text-green-400"; // Green for positive stats
       case "avgPointsAgainst":
-        return "#dc2626"; // Red for points against
+        return "text-red-400"; // Red for points against
       case "sosRank":
       case "philMetrics":
-        return "#7c3aed"; // Purple for rankings
+        return "text-purple-400"; // Purple for rankings
       default:
-        return "#1e293b"; // Default dark
+        return "text-white"; // Default white
+    }
+  };
+
+  const handleLogout = async () => {
+    if (window.confirm("Are you sure you want to log out?")) {
+      try {
+        await auth.signOut();
+        navigate("/");
+      } catch (err) {
+        console.error("Logout error:", err);
+      }
     }
   };
 
@@ -409,153 +365,120 @@ function Stats() {
 
   if (loading) {
     return (
-      <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-        <LeagueNavBar />
-        <div style={{ 
-          padding: "20px", 
-          textAlign: "center",
-          color: "#64748b",
-          fontSize: "16px"
-        }}>
-          Loading FBS stats...
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        </div>
+        <div className="relative z-10 flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="text-4xl mb-4 animate-spin">📊</div>
+            <p className="text-xl text-white/80">Loading FBS stats...</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ 
-      backgroundColor: "#f8fafc", 
-      minHeight: "100vh"
-    }}>
-      <LeagueNavBar />
-
-      {/* Header */}
-      <div style={{ 
-        padding: "20px 16px 16px 16px",
-        background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
-        color: "white"
-      }}>
-        <h1 style={{ 
-          fontSize: "24px", 
-          fontWeight: "700", 
-          margin: "0 0 8px 0",
-          textAlign: "center"
-        }}>
-          FBS Team Stats
-        </h1>
-        <p style={{
-          fontSize: "14px",
-          opacity: "0.9",
-          textAlign: "center",
-          margin: 0
-        }}>
-          {sortedTeams.length} teams • Sorted by {sortColumn === "school" ? "Team Name" : currentStatLabel}
-        </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
       </div>
 
-      {/* Controls */}
-      <div style={{
-        padding: "12px 16px",
-        backgroundColor: "white",
-        borderBottom: "1px solid #e5e7eb"
-      }}>
-        {/* First Row: Search and Conference */}
-        <div style={{
-          display: "flex",
-          gap: "8px",
-          marginBottom: "12px"
-        }}>
-          <div style={{ position: "relative", flex: "1 1 0", minWidth: "130px" }}>
-            <Search size={16} style={{
-              position: "absolute",
-              left: "12px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "#64748b"
-            }} />
-            <input
-              type="text"
-              placeholder="Search teams..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                width: "100%",
-                height: "44px",
-                padding: "12px 12px 12px 40px",
-                border: "2px solid #e5e7eb",
-                borderRadius: "8px",
-                fontSize: "14px",
-                boxSizing: "border-box"
-              }}
-              onFocus={(e) => e.target.style.borderColor = "#1e40af"}
-              onBlur={(e) => e.target.style.borderColor = "#e5e7eb"}
-            />
-          </div>
+      <BottomNavBar leagueId={leagueId} isDraftComplete={true} />
 
-          <div style={{ flex: "1 1 0", minWidth: "130px" }}>
-            <CustomDropdown
-              value={activeConference}
-              onChange={setActiveConference}
-              options={conferenceOptions}
-              icon={Filter}
-            />
+      {/* Navigation */}
+      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
+        <Link to="/home" className="flex items-center space-x-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
+            L
           </div>
-        </div>
-
-        {/* Second Row: Stat Selector and Sort */}
-        <div style={{
-          display: "flex",
-          gap: "8px",
-          alignItems: "center"
-        }}>
-          <div style={{ flex: "1 1 0", minWidth: "200px" }}>
-            <CustomDropdown
-              value={selectedStat}
-              onChange={setSelectedStat}
-              options={statOptions}
-              icon={BarChart3}
-              placeholder="Select stat to display..."
-            />
-          </div>
-
-          <button
-            onClick={toggleSort}
-            style={{
-              padding: "12px 16px",
-              backgroundColor: "#1e40af",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              fontSize: "14px",
-              fontWeight: "500",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              transition: "all 0.2s ease",
-              minWidth: "100px",
-              justifyContent: "center"
-            }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = "#1d4ed8"}
-            onMouseLeave={(e) => e.target.style.backgroundColor = "#1e40af"}
+          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            Lineup
+          </span>
+        </Link>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
           >
-            Sort {sortDirection === "ascending" ? "▲" : "▼"}
+            Logout
           </button>
         </div>
-      </div>
+      </nav>
 
-      <div style={{ padding: "16px" }}>
+      {/* Main Content */}
+      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-24">
+        
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="mb-4">
+            <span className="inline-block text-4xl sm:text-5xl mb-2">📊</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-2 leading-tight">
+            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              FBS Team Stats
+            </span>
+          </h1>
+          <p className="text-lg sm:text-xl text-white/80">
+            {sortedTeams.length} teams • Sorted by {sortColumn === "school" ? "Team Name" : currentStatLabel}
+          </p>
+        </div>
+
+        {/* Controls */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
+          {/* First Row: Search and Conference */}
+          <div className="flex flex-col sm:flex-row gap-4 mb-6">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-white/60 pointer-events-none z-10" />
+              <input
+                type="text"
+                placeholder="Search teams..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-12 pl-12 pr-4 bg-white/10 backdrop-blur-sm border-2 border-white/30 rounded-xl text-white placeholder-white/60 transition-all duration-300 hover:border-blue-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex-1">
+              <CustomDropdown
+                value={activeConference}
+                onChange={setActiveConference}
+                options={conferenceOptions}
+                icon={Filter}
+                placeholder="Filter by conference..."
+              />
+            </div>
+          </div>
+
+          {/* Second Row: Stat Selector and Sort */}
+          <div className="flex flex-col sm:flex-row gap-4 items-center">
+            <div className="flex-1 w-full">
+              <CustomDropdown
+                value={selectedStat}
+                onChange={setSelectedStat}
+                options={statOptions}
+                icon={BarChart3}
+                placeholder="Select stat to display..."
+              />
+            </div>
+
+            <button
+              onClick={toggleSort}
+              className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 rounded-xl text-white font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-blue-500/40 flex items-center justify-center gap-2"
+            >
+              Sort {sortDirection === "ascending" ? "▲" : "▼"}
+            </button>
+          </div>
+        </div>
+
         {/* Stats List */}
         {sortedTeams.length === 0 ? (
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "12px",
-            padding: "40px 20px",
-            textAlign: "center",
-            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)"
-          }}>
-            <p style={{ color: "#64748b", fontSize: "16px", margin: 0 }}>
+          <div className="relative z-50 bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
+            <div className="text-4xl mb-4">🔍</div>
+            <p className="text-white/80 text-lg">
               {searchQuery ? 
                 `No teams found matching "${searchQuery}"` : 
                 "No teams available"
@@ -563,130 +486,62 @@ function Stats() {
             </p>
           </div>
         ) : (
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "8px",
-            overflow: "hidden",
-            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)"
-          }}>
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 overflow-hidden">
             {/* Clickable Header */}
-            <div style={{
-              padding: "16px",
-              backgroundColor: "#f8fafc",
-              borderBottom: "2px solid #e2e8f0",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              fontWeight: "600",
-              color: "#374151"
-            }}>
+            <div className="p-4 bg-white/10 border-b-2 border-white/20 flex justify-between items-center">
               <button
                 onClick={() => handleColumnSort("school")}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#374151",
-                  fontWeight: "600",
-                  fontSize: "14px",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  padding: "4px 0",
-                  transition: "color 0.2s ease"
-                }}
-                onMouseEnter={(e) => e.target.style.color = "#1e40af"}
-                onMouseLeave={(e) => e.target.style.color = "#374151"}
+                className="flex items-center gap-2 text-white font-semibold hover:text-blue-400 transition-colors duration-200"
               >
                 Team (Conference)
                 {sortColumn === "school" && (
                   sortDirection === "ascending" ? 
-                    <ChevronUp size={14} /> : 
-                    <ChevronDown size={14} />
+                    <ChevronUp size={16} /> : 
+                    <ChevronDown size={16} />
                 )}
               </button>
               
               <button
                 onClick={() => handleColumnSort(selectedStat)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "#374151",
-                  fontWeight: "600",
-                  fontSize: "14px",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  padding: "4px 0",
-                  transition: "color 0.2s ease"
-                }}
-                onMouseEnter={(e) => e.target.style.color = "#1e40af"}
-                onMouseLeave={(e) => e.target.style.color = "#374151"}
+                className="flex items-center gap-2 text-white font-semibold hover:text-blue-400 transition-colors duration-200"
               >
                 {currentStatLabel}
                 {sortColumn === selectedStat && (
                   sortDirection === "ascending" ? 
-                    <ChevronUp size={14} /> : 
-                    <ChevronDown size={14} />
+                    <ChevronUp size={16} /> : 
+                    <ChevronDown size={16} />
                 )}
               </button>
             </div>
 
             {/* Team Rows */}
-            {sortedTeams.map((team, index) => (
-              <div
-                key={team.school}
-                style={{
-                  padding: "12px 16px",
-                  borderBottom: index < sortedTeams.length - 1 ? "1px solid #f1f5f9" : "none",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  transition: "background-color 0.2s ease"
-                }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = "#f8fafc"}
-                onMouseLeave={(e) => e.target.style.backgroundColor = "white"}
-              >
-                <div style={{ flex: 1 }}>
-                  <div
-                    onClick={() => handleTeamClick(team.school)}
-                    style={{
-                      color: "#1e40af",
-                      textDecoration: "underline",
-                      cursor: "pointer",
-                      fontWeight: "600",
-                      fontSize: "15px",
-                      marginBottom: "2px"
-                    }}
-                  >
-                    {team.school}
+            <div className="divide-y divide-white/10">
+              {sortedTeams.map((team, index) => (
+                <div
+                  key={team.school}
+                  className="p-4 flex justify-between items-center hover:bg-white/10 transition-colors duration-200"
+                >
+                  <div className="flex-1">
+                    <div
+                      onClick={() => handleTeamClick(team.school)}
+                      className="text-blue-400 hover:text-blue-300 cursor-pointer font-semibold text-base mb-1 transition-colors duration-200"
+                    >
+                      {team.school}
+                    </div>
+                    <div className="text-white/60 text-sm">
+                      {team.conference || "—"}
+                    </div>
                   </div>
-                  <div style={{
-                    color: "#64748b",
-                    fontSize: "13px"
-                  }}>
-                    {team.conference || "—"}
-                  </div>
-                </div>
 
-                <div style={{
-                  color: getStatColor(selectedStat, getStatValue(team, selectedStat)),
-                  fontWeight: "700",
-                  fontSize: "16px",
-                  textAlign: "right",
-                  minWidth: "80px"
-                }}>
-                  {getStatValue(team, selectedStat)}
+                  <div className={`font-bold text-lg text-right min-w-20 ${getStatColor(selectedStat, getStatValue(team, selectedStat))}`}>
+                    {getStatValue(team, selectedStat)}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </div>
-
-      {/* Bottom spacing */}
-      <div style={{ height: "80px" }} />
     </div>
   );
 }

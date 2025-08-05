@@ -4,8 +4,6 @@ import {
   BrowserRouter as Router,
   Routes,
   Route,
-  Link,
-  useLocation,
   useNavigate
 } from "react-router-dom";
 import { auth, db } from "./firebase/firebase";
@@ -49,18 +47,8 @@ function AppWrapper() {
 function App() {
   const [user, setUser] = useState(null);
   const [displayName, setDisplayName] = useState("");
-  const location = useLocation();
   const navigate = useNavigate();
 
-  const hideTopNav = [
-    "/", "/login", "/signup", "/forgot-password", "/how-to-play", 
-    "/create-league", "/join-league", "/home"
-  ].includes(location.pathname) || location.pathname.endsWith('/draft-room') || location.pathname.endsWith('/scouting') || location.pathname.endsWith('/league-rules') ;
-  const hideLoggedInBar = [
-    "/", "/login", "/signup", "/forgot-password", "/how-to-play", 
-    "/create-league", "/join-league", "/home"
-  ].includes(location.pathname) || location.pathname.endsWith('/draft-room') || location.pathname.endsWith('/scouting') || location.pathname.endsWith('/league-rules') ;
-  
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
       setUser(currentUser);
@@ -93,101 +81,74 @@ function App() {
   };
 
   return (
-    <>
-      {!hideTopNav && (
-        <nav style={{ marginBottom: "10px" }}>
-          {user ? <Link to="/home">Home</Link> : <Link to="/">Home</Link>}{" "}
-          {user ? (
-            <>
-              | <Link to="/create-league">Create League</Link>{" "}
-              | <Link to="/join-league">Join League</Link>{" "}
-              | <button onClick={handleLogout}>Logout</button>
-            </>
-          ) : (
-            <>
-              | <Link to="/signup">Sign Up</Link>{" "}
-              | <Link to="/login">Login</Link>{" "}
-              | <Link to="/how-to-play">How to Play</Link>
-            </>
-          )}
-        </nav>
-      )}
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route path="/signup" element={<SignUp />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/home" element={<Home />} />
+      <Route path="/create-league" element={<CreateLeague />} />
+      <Route path="/join-league" element={<JoinLeague />} />
+      <Route path="/how-to-play" element={<HowToPlay />} />
+      <Route path="/admin" element={<AdminPanel />} />
+      <Route path="/admin/league/:leagueId" element={<AdminLeagueDetail />} />
+      <Route path="/admin/teams" element={<AdminTeamsPanel />} />
+      <Route path="/admin/schedule" element={<AdminSchedulePanel />} />
 
-      {!hideLoggedInBar && user && (
-        <div style={{ marginBottom: "10px" }}>
-          Logged in as: <strong>{displayName}</strong>
-        </div>
-      )}
+      {/* Public League Pages */}
+      <Route path=":leagueId/draft-room" element={<DraftRoom />} />
+      <Route path=":leagueId/league-rules" element={<LeagueRules />} />
+      <Route
+        path=":leagueId/scouting"
+        element={
+          <PreDraftOnly>
+            <Scouting />
+          </PreDraftOnly>
+        }
+      />
 
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/signup" element={<SignUp />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/home" element={<Home />} />
-        <Route path="/create-league" element={<CreateLeague />} />
-        <Route path="/join-league" element={<JoinLeague />} />
-        <Route path="/how-to-play" element={<HowToPlay />} />
-        <Route path="/admin" element={<AdminPanel />} />
-        <Route path="/admin/league/:leagueId" element={<AdminLeagueDetail />} />
-        <Route path="/admin/teams" element={<AdminTeamsPanel />} />
-        <Route path="/admin/schedule" element={<AdminSchedulePanel />} />
+      {/* TeamPage - Available both pre and post draft */}
+      <Route path=":leagueId/team/:teamName" element={<TeamPage />} />
 
-        {/* Public League Pages */}
-        <Route path=":leagueId/draft-room" element={<DraftRoom />} />
-        <Route path=":leagueId/league-rules" element={<LeagueRules />} />
-        <Route
-          path=":leagueId/scouting"
-          element={
-            <PreDraftOnly>
-              <Scouting />
-            </PreDraftOnly>
-          }
-        />
+      {/* Draft-Dependent League Pages */}
+      <Route
+        path=":leagueId/my-lineup"
+        element={
+          <DraftGuard>
+            <MyLineup />
+          </DraftGuard>
+        }
+      />
+      <Route
+        path=":leagueId/free-agents"
+        element={
+          <DraftGuard>
+            <FreeAgents />
+          </DraftGuard>
+        }
+      />
+      <Route
+        path=":leagueId/my-league"
+        element={
+          <DraftGuard>
+            <MyLeague />
+          </DraftGuard>
+        }
+      />
+      <Route
+        path=":leagueId/stats"
+        element={
+          <DraftGuard>
+            <Stats />
+          </DraftGuard>
+        }
+      />
 
-        {/* TeamPage - Available both pre and post draft */}
-        <Route path=":leagueId/team/:teamName" element={<TeamPage />} />
-
-        {/* Draft-Dependent League Pages */}
-        <Route
-          path=":leagueId/my-lineup"
-          element={
-            <DraftGuard>
-              <MyLineup />
-            </DraftGuard>
-          }
-        />
-        <Route
-          path=":leagueId/free-agents"
-          element={
-            <DraftGuard>
-              <FreeAgents />
-            </DraftGuard>
-          }
-        />
-        <Route
-          path=":leagueId/my-league"
-          element={
-            <DraftGuard>
-              <MyLeague />
-            </DraftGuard>
-          }
-        />
-        <Route
-          path=":leagueId/stats"
-          element={
-            <DraftGuard>
-              <Stats />
-            </DraftGuard>
-          }
-        />
-
-        {/* Confirmation Pages */}
-        <Route path="/cut/:leagueId/:teamName" element={<ConfirmCut />} />
-        <Route path="/confirm-add/:leagueId/:teamName" element={<ConfirmAddTeam />} />
-        <Route path="/confirm-swap/:leagueId/:addTeam/:dropTeam" element={<ConfirmSwapTeam />} />
-      </Routes>
-    </>
+      {/* Confirmation Pages */}
+      <Route path="/cut/:leagueId/:teamName" element={<ConfirmCut />} />
+      <Route path="/confirm-add/:leagueId/:teamName" element={<ConfirmAddTeam />} />
+      <Route path="/confirm-swap/:leagueId/:addTeam/:dropTeam" element={<ConfirmSwapTeam />} />
+    </Routes>
   );
 }
 

@@ -7,9 +7,9 @@ import {
   doc,
   updateDoc,
 } from "firebase/firestore";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { Plus, Search, Filter, ChevronDown } from "lucide-react";
-import LeagueNavBar from "../components/LeagueNavBar";
+import BottomNavBar from "../components/BottomNavBar";
 
 // Custom Dropdown Component with matching height and truncation
 const CustomDropdown = ({ 
@@ -115,11 +115,7 @@ const CustomDropdown = ({
   return (
     <div 
       ref={dropdownRef}
-      style={{ 
-        position: 'relative', 
-        width: '100%',
-        userSelect: 'none'
-      }}
+      className="relative w-full select-none"
     >
       {/* Dropdown Trigger - matching search input height exactly */}
       <button
@@ -131,111 +127,54 @@ const CustomDropdown = ({
             toggleDropdown();
           }
         }}
-        style={{
-          width: '100%',
-          height: '44px', // Exact match with search input
-          padding: '12px 48px 12px 48px',
-          backgroundColor: 'white',
-          border: `2px solid ${isOpen ? '#1e40af' : '#e5e7eb'}`,
-          borderRadius: '8px',
-          fontSize: '14px',
-          fontFamily: 'inherit',
-          color: selectedOption ? '#1e293b' : '#64748b',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          textAlign: 'left',
-          transition: 'all 0.2s ease',
-          outline: 'none',
-          boxSizing: 'border-box',
-          WebkitAppearance: 'none',
-          MozAppearance: 'none',
-          appearance: 'none'
-        }}
-        onFocus={(e) => e.target.style.borderColor = '#1e40af'}
-        onBlur={(e) => {
-          if (!isOpen) e.target.style.borderColor = '#e5e7eb';
-        }}
+        className={`
+          w-full h-11 px-12 bg-white/10 backdrop-blur-sm border-2 rounded-xl text-sm text-white cursor-pointer
+          flex items-center justify-between text-left transition-all duration-300 outline-none appearance-none
+          ${isOpen ? 'border-blue-400' : 'border-white/30'}
+          hover:border-blue-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20
+        `}
       >
         {/* Left Icon */}
         <Icon 
           size={16} 
-          style={{
-            position: 'absolute',
-            left: '12px',
-            color: '#64748b',
-            pointerEvents: 'none'
-          }}
+          className="absolute left-3 text-white/60 pointer-events-none"
         />
         
         {/* Selected Text with truncation */}
-        <span style={{
-          flex: 1,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          paddingRight: '8px'
-        }} title={selectedOption ? selectedOption.label : placeholder}>
+        <span 
+          className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap pr-2"
+          title={selectedOption ? selectedOption.label : placeholder}
+        >
           {selectedOption ? truncateText(selectedOption.label) : placeholder}
         </span>
         
         {/* Chevron Icon */}
         <ChevronDown 
           size={16} 
-          style={{
-            color: '#64748b',
-            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 0.2s ease',
-            flexShrink: 0
-          }}
+          className={`text-white/60 transition-transform duration-200 flex-shrink-0 ${
+            isOpen ? 'rotate-180' : 'rotate-0'
+          }`}
         />
       </button>
 
       {/* Dropdown List */}
       {isOpen && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            marginTop: '4px',
-            backgroundColor: 'white',
-            border: '2px solid #e5e7eb',
-            borderRadius: '8px',
-            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.15)',
-            zIndex: 1000,
-            maxHeight: '240px',
-            overflowY: 'auto',
-            overflowX: 'hidden'
-          }}
-        >
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white/10 backdrop-blur-lg border-2 border-white/20 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto overflow-x-hidden">
           <ul
             ref={listRef}
-            style={{
-              margin: 0,
-              padding: '4px 0',
-              listStyle: 'none'
-            }}
+            className="m-0 p-1 list-none"
           >
             {options.map((option, index) => (
               <li
                 key={option.value}
                 onClick={() => handleSelect(option)}
                 onMouseEnter={() => setHighlightedIndex(index)}
-                style={{
-                  padding: '12px 16px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  color: '#1e293b',
-                  backgroundColor: 
-                    highlightedIndex === index ? '#f1f5f9' :
-                    value === option.value ? '#eff6ff' : 'transparent',
-                  borderLeft: value === option.value ? '3px solid #1e40af' : '3px solid transparent',
-                  transition: 'all 0.15s ease',
-                  fontWeight: value === option.value ? '600' : '400'
-                }}
+                className={`
+                  p-3 cursor-pointer text-sm text-white transition-all duration-150 rounded-lg mx-1
+                  ${highlightedIndex === index ? 'bg-white/20' : ''}
+                  ${value === option.value ? 'bg-blue-500/20 border-l-2 border-blue-400 font-semibold' : ''}
+                  hover:bg-white/20
+                `}
                 onMouseDown={(e) => e.preventDefault()}
                 title={option.label} // Show full text on hover
               >
@@ -253,33 +192,16 @@ const CustomDropdown = ({
 const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
   <button
     onClick={() => onSort(sortKey)}
-    style={{
-      padding: '6px 10px',
-      backgroundColor: sortConfig.key === sortKey ? '#eff6ff' : 'transparent',
-      border: sortConfig.key === sortKey ? '1px solid #1e40af' : '1px solid #e5e7eb',
-      borderRadius: '4px',
-      fontSize: '12px',
-      fontWeight: '500',
-      color: sortConfig.key === sortKey ? '#1e40af' : '#64748b',
-      cursor: 'pointer',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '4px',
-      transition: 'all 0.2s ease'
-    }}
-    onMouseEnter={(e) => {
-      if (sortConfig.key !== sortKey) {
-        e.target.style.backgroundColor = '#f8fafc';
+    className={`
+      px-3 py-2 border rounded-lg text-xs font-medium cursor-pointer flex items-center gap-1 transition-all duration-200
+      ${sortConfig.key === sortKey 
+        ? 'bg-blue-500/20 border-blue-400/50 text-blue-200' 
+        : 'bg-white/10 border-white/20 text-white/70 hover:bg-white/20'
       }
-    }}
-    onMouseLeave={(e) => {
-      if (sortConfig.key !== sortKey) {
-        e.target.style.backgroundColor = 'transparent';
-      }
-    }}
+    `}
   >
     {label}
-    <span style={{ fontSize: '10px' }}>
+    <span className="text-xs">
       {sortConfig.key === sortKey ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
     </span>
   </button>
@@ -328,88 +250,82 @@ function FreeAgents() {
     setModalMessage("");
   };
 
-  useEffect(() => {
-  const fetchData = async () => {
-  const teamsSnap = await getDocs(collection(db, "teams"));
-  const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
-
-  const teamsMap = {};
-  const drafted = {};
-  
-  // Build drafted teams object
-  membersSnap.forEach(doc => {
-    const { displayName, teamName, lineup } = doc.data();
-    const starters = lineup?.starters || [];
-    const bench = lineup?.bench || [];
-    const current = [...starters, ...bench];
-
-    current.forEach(teamId => {
-      // Teams are stored as document IDs, so use them directly
-      if (teamId && teamId.trim()) {
-        drafted[teamId] = {
-          ownerName: displayName,
-          teamName: teamName || "Unnamed Squad"
-        };
+  const handleLogout = async () => {
+    if (window.confirm("Are you sure you want to log out?")) {
+      try {
+        await auth.signOut();
+        navigate("/");
+      } catch (err) {
+        console.error("Logout error:", err);
       }
-    });
-  });
-
-  // DEBUG CODE - ADD THIS:
-  console.log("=== DETAILED MEMBER DEBUG ===");
-  membersSnap.forEach((doc, index) => {
-    const data = doc.data();
-    console.log(`Member ${index + 1}:`, {
-      displayName: data.displayName,
-      teamName: data.teamName,
-      lineup: data.lineup
-    });
-    
-    if (data.lineup) {
-      console.log(`  - Starters:`, data.lineup.starters);
-      console.log(`  - Bench:`, data.lineup.bench);
-      console.log(`  - Drafted:`, data.lineup.drafted);
     }
-  });
-
-  // Build teams map
-  teamsSnap.forEach(doc => {
-    const data = doc.data();
-    if ((data.classification || "").toUpperCase() !== "FBS") return;
-
-    const conf = data.conference || "Unknown";
-    if (!teamsMap[conf]) teamsMap[conf] = [];
-
-    teamsMap[conf].push({
-      id: doc.id,
-      ...data,
-      logo: data.logos1 || data.logos2 || null,
-      currentWeekPoints: data.currentSeason?.currentWeekPoints || null,
-      gameComplete: data.currentSeason?.gameComplete || false,
-      color: data.color || null
-    });
-  });
-
-  // Set state
-  const sortedConf = Object.keys(teamsMap).sort();
-  setConferenceList(["National", ...sortedConf]);
-  setTeamsByConference(teamsMap);
-  setActiveConference("National");
-  setDraftedTeams(drafted);
-
-  // Get current user's teams
-  const user = auth.currentUser;
-  if (!user) return;
-
-  const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
-  const memberSnap = await getDoc(memberRef);
-  const lineup = memberSnap.data()?.lineup || {};
-
-  const starters = lineup.starters || [];
-  const bench = lineup.bench || [];
-  setUserTeams([...starters, ...bench].filter(Boolean));
-
-  setLoading(false);
   };
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const teamsSnap = await getDocs(collection(db, "teams"));
+      const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
+
+      const teamsMap = {};
+      const drafted = {};
+      
+      // Build drafted teams object
+      membersSnap.forEach(doc => {
+        const { displayName, teamName, lineup } = doc.data();
+        const starters = lineup?.starters || [];
+        const bench = lineup?.bench || [];
+        const current = [...starters, ...bench];
+
+        current.forEach(teamId => {
+          // Teams are stored as document IDs, so use them directly
+          if (teamId && teamId.trim()) {
+            drafted[teamId] = {
+              ownerName: displayName,
+              teamName: teamName || "Unnamed Squad"
+            };
+          }
+        });
+      });
+
+      // Build teams map
+      teamsSnap.forEach(doc => {
+        const data = doc.data();
+        if ((data.classification || "").toUpperCase() !== "FBS") return;
+
+        const conf = data.conference || "Unknown";
+        if (!teamsMap[conf]) teamsMap[conf] = [];
+
+        teamsMap[conf].push({
+          id: doc.id,
+          ...data,
+          logo: data.logos1 || data.logos2 || null,
+          currentWeekPoints: data.currentSeason?.currentWeekPoints || null,
+          gameComplete: data.currentSeason?.gameComplete || false,
+          color: data.color || null
+        });
+      });
+
+      // Set state
+      const sortedConf = Object.keys(teamsMap).sort();
+      setConferenceList(["National", ...sortedConf]);
+      setTeamsByConference(teamsMap);
+      setActiveConference("National");
+      setDraftedTeams(drafted);
+
+      // Get current user's teams
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
+      const memberSnap = await getDoc(memberRef);
+      const lineup = memberSnap.data()?.lineup || {};
+
+      const starters = lineup.starters || [];
+      const bench = lineup.bench || [];
+      setUserTeams([...starters, ...bench].filter(Boolean));
+
+      setLoading(false);
+    };
 
     fetchData();
   }, [leagueId]);
@@ -458,9 +374,9 @@ function FreeAgents() {
       const emptyBenchIndex = bench.findIndex(t => !t);
       
       if (emptyStarterIndex !== -1) {
-        starters[emptyStarterIndex] = normalizedTeamName; // Use normalized name
+        starters[emptyStarterIndex] = normalizedTeamName;
       } else if (emptyBenchIndex !== -1) {
-        bench[emptyBenchIndex] = normalizedTeamName; // Use normalized name
+        bench[emptyBenchIndex] = normalizedTeamName;
       } else {
         showError("Roster Full", "Your roster is full! Please drop a team first.");
         return;
@@ -472,6 +388,16 @@ function FreeAgents() {
       });
 
       setUserTeams([...starters, ...bench].filter(Boolean));
+      
+      // Update draftedTeams to reflect the new team ownership
+      setDraftedTeams(prev => ({
+        ...prev,
+        [normalizedTeamName]: {
+          ownerName: memberData.displayName || "You",
+          teamName: memberData.teamName || "Your Team"
+        }
+      }));
+      
       setShowAddModal(false);
       setTeamToAdd(null);
       
@@ -509,9 +435,9 @@ function FreeAgents() {
       const benchIndex = bench.findIndex(t => t === selectedDropTeam);
       
       if (starterIndex !== -1) {
-        starters[starterIndex] = normalizedNewTeam; // Use normalized name
+        starters[starterIndex] = normalizedNewTeam;
       } else if (benchIndex !== -1) {
-        bench[benchIndex] = normalizedNewTeam; // Use normalized name
+        bench[benchIndex] = normalizedNewTeam;
       }
 
       await updateDoc(memberRef, {
@@ -520,11 +446,34 @@ function FreeAgents() {
       });
 
       setUserTeams([...starters, ...bench].filter(Boolean));
+      
+      // Update draftedTeams to reflect the swap
+      setDraftedTeams(prev => {
+        const updated = { ...prev };
+        // Remove the dropped team from drafted teams (make it available again)
+        delete updated[selectedDropTeam];
+        // Add the new team as drafted by this user
+        updated[normalizedNewTeam] = {
+          ownerName: memberData.displayName || "You",
+          teamName: memberData.teamName || "Your Team"
+        };
+        return updated;
+      });
+      
       setShowSwapUI(false);
       setPendingAddTeam("");
       setSelectedDropTeam("");
       
-      showSuccess("Team Swapped!", `Successfully swapped ${selectedDropTeam} for ${pendingAddTeam}!`);
+      // Get display names for the success message
+      const droppedTeamData = Object.values(teamsByConference).flat().find(team => 
+        team.school?.toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/&/g, "-")
+          .replace(/[^a-z0-9\-]/g, "") === selectedDropTeam
+      );
+      const droppedTeamName = droppedTeamData?.school || selectedDropTeam;
+      
+      showSuccess("Team Swapped!", `Successfully swapped ${droppedTeamName} for ${pendingAddTeam}!`);
       
     } catch (error) {
       console.error("Error swapping teams:", error);
@@ -562,7 +511,6 @@ function FreeAgents() {
 
     return teams;
   };
-
 
   const sortedTeams = [...getVisibleFreeAgents()].sort((a, b) => {
     const key = sortConfig.key;
@@ -629,129 +577,59 @@ function FreeAgents() {
     label: conf === "National" ? "All Conferences" : conf
   }));
 
-  // REDESIGNED COMPACT TEAM CARD with new layout
+  // Team Card Component with DraftRoom styling
   const TeamCard = ({ team }) => {
     if (!team) return null;
 
-    // Get current week from global season config (you'll need to pass this down or fetch it)
-    const currentWeek = "Preseason"; // This should come from your season config
+    const currentWeek = "Preseason";
     const previousWeek = currentWeek === "Preseason" ? null : `Week ${parseInt(currentWeek.replace("Week ", "")) - 1}`;
-    
-    // Get previous week points
     const previousWeekPoints = previousWeek && team.weeklyPoints?.[previousWeek] 
       ? team.weeklyPoints[previousWeek] 
       : null;
 
     return (
-      <div style={{
-        backgroundColor: "white",
-        borderRadius: "8px",
-        padding: "12px",
-        marginBottom: "8px",
-        boxShadow: "0 1px 2px rgba(0, 0, 0, 0.1)",
-        border: "1px solid #e2e8f0",
-        transition: "all 0.2s ease"
-      }}>
+      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20 transition-all duration-300 hover:bg-white/15">
         {/* Header with team info, sort data, and add button */}
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "12px",
-          marginBottom: "10px"
-        }}>
+        <div className="flex items-center gap-3 mb-3">
           {/* Team Logo */}
-          <div style={{
-            width: "32px",
-            height: "32px",
-            borderRadius: "50%",
-            overflow: "hidden",
-            border: "1px solid #e2e8f0",
-            backgroundColor: "#f8fafc",
-            flexShrink: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center"
-          }}>
+          <div className="w-8 h-8 rounded-full overflow-hidden border border-white/20 bg-white/5 flex-shrink-0 flex items-center justify-center">
             {team.logo ? (
               <img 
                 src={team.logo}
                 alt={team.school}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover"
-                }}
+                className="w-full h-full object-cover"
               />
             ) : (
-              <div style={{
-                fontSize: "10px",
-                fontWeight: "700",
-                color: "#64748b"
-              }}>
+              <div className="text-xs font-bold text-white/60">
                 {team.school ? team.school.split(' ').map(word => word[0]).join('').slice(0, 2) : '?'}
               </div>
             )}
           </div>
 
           {/* Team Name */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="flex-1 min-w-0">
             <h3 
               onClick={() => handleTeamClick(team.school)}
-              style={{
-                fontSize: "14px",
-                fontWeight: "600",
-                color: "#1e293b",
-                margin: "0 0 2px 0",
-                cursor: "pointer",
-                textDecoration: "underline",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap"
-              }}
+              className="text-sm font-semibold text-white mb-1 cursor-pointer hover:text-blue-300 transition-colors overflow-hidden text-ellipsis whitespace-nowrap"
             >
               {team.school}
             </h3>
-            <p style={{
-              fontSize: "11px",
-              color: "#64748b",
-              margin: "0"
-            }}>
+            <p className="text-xs text-white/60 m-0">
               {team.conference || "N/A"}
             </p>
           </div>
 
-          {/* Sort Data: Name, Overall Points, Record */}
-          <div style={{
-            display: "flex",
-            gap: "8px",
-            fontSize: "10px",
-            alignItems: "center"
-          }}>
-            <div style={{
-              padding: "3px 6px",
-              backgroundColor: "#f8fafc",
-              borderRadius: "4px",
-              textAlign: "center",
-              minWidth: "35px"
-            }}>
-              <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "1px" }}>
-                Fantasy Points
-              </div>
-              <div style={{ color: "#059669", fontWeight: "700", fontSize: "9px" }}>
+          {/* Sort Data: Fantasy Points, Record */}
+          <div className="flex gap-2 text-xs">
+            <div className="px-2 py-1 bg-white/10 rounded-lg text-center min-w-9">
+              <div className="text-white/60 font-medium mb-0.5 text-xs">Points</div>
+              <div className="text-green-300 font-bold text-xs">
                 {team.currentSeason?.gamePoints || 0}
               </div>
             </div>
-            <div style={{
-              padding: "3px 6px",
-              backgroundColor: "#f8fafc",
-              borderRadius: "4px",
-              textAlign: "center",
-              minWidth: "30px"
-            }}>
-              <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "1px" }}>
-                Record
-              </div>
-              <div style={{ color: "#1e293b", fontWeight: "600", fontSize: "9px" }}>
+            <div className="px-2 py-1 bg-white/10 rounded-lg text-center min-w-8">
+              <div className="text-white/60 font-medium mb-0.5 text-xs">Record</div>
+              <div className="text-white font-semibold text-xs">
                 {team.currentSeason?.record || "0-0"}
               </div>
             </div>
@@ -760,94 +638,40 @@ function FreeAgents() {
           {/* Add Button */}
           <button 
             onClick={() => handleAddTeam(team)}
-            style={{
-              width: "28px",
-              height: "28px",
-              borderRadius: "50%",
-              backgroundColor: "#059669",
-              border: "none",
-              color: "white",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 1px 4px rgba(5, 150, 105, 0.3)",
-              transition: "all 0.2s ease",
-              flexShrink: 0
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.backgroundColor = "#047857";
-              e.target.style.transform = "scale(1.05)";
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.backgroundColor = "#059669";
-              e.target.style.transform = "scale(1)";
-            }}
+            className="w-7 h-7 rounded-full bg-green-500 hover:bg-green-600 border-none text-white cursor-pointer flex items-center justify-center shadow-lg transition-all duration-200 hover:scale-105 flex-shrink-0"
           >
-            <Plus size={14} />
+            <Plus size={12} />
           </button>
         </div>
 
-        {/* Second Row: Conf, ATS, Prev */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr",
-          gap: "6px",
-          fontSize: "10px",
-          marginBottom: "6px"
-        }}>
-          <div style={{
-            padding: "4px 6px",
-            backgroundColor: "#f8fafc",
-            borderRadius: "4px"
-          }}>
-            <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "1px" }}>
-              Conf. Record
-            </div>
-            <div style={{ color: "#1e293b", fontWeight: "600", fontSize: "9px" }}>
+        {/* Second Row: Conf Record, ATS, Prev Week Points */}
+        <div className="grid grid-cols-3 gap-2 text-xs mb-2">
+          <div className="px-2 py-1 bg-white/5 rounded-lg text-center">
+            <div className="text-white/60 font-medium mb-0.5 text-xs">Conf. Record</div>
+            <div className="text-white font-semibold text-xs">
               {team.currentSeason?.confRecord || "0-0"}
             </div>
           </div>
 
-          <div style={{
-            padding: "4px 6px",
-            backgroundColor: "#f8fafc",
-            borderRadius: "4px"
-          }}>
-            <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "1px" }}>
-              ATS Record
-            </div>
-            <div style={{ color: "#1e293b", fontWeight: "600", fontSize: "9px" }}>
-              {team.currentSeason?.ATS || "0-0"}
+          <div className="px-2 py-1 bg-white/5 rounded-lg text-center">
+            <div className="text-white/60 font-medium mb-0.5 text-xs">ATS Record</div>
+            <div className="text-white font-semibold text-xs">
+              {team.currentSeason?.ats || "0-0"}
             </div>
           </div>
 
-          <div style={{
-            padding: "4px 6px",
-            backgroundColor: "#f8fafc",
-            borderRadius: "4px"
-          }}>
-            <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "1px" }}>
-              Prev Week Pts
-            </div>
-            <div style={{ color: "#1e293b", fontWeight: "600", fontSize: "9px" }}>
+          <div className="px-2 py-1 bg-white/5 rounded-lg text-center">
+            <div className="text-white/60 font-medium mb-0.5 text-xs">Prev Week Pts</div>
+            <div className="text-white font-semibold text-xs">
               {previousWeekPoints !== null ? previousWeekPoints : "N/A"}
             </div>
           </div>
         </div>
 
-        {/* Third Row: Next Game (full width, centered) */}
-        <div style={{
-          padding: "6px 8px",
-          backgroundColor: "#f8fafc",
-          borderRadius: "4px",
-          fontSize: "10px",
-          textAlign: "center"
-        }}>
-          <div style={{ color: "#64748b", fontWeight: "500", marginBottom: "2px" }}>
-            Next Game
-          </div>
-          <div style={{ color: "#1e293b", fontWeight: "600", fontSize: "9px" }}>
+        {/* Third Row: Next Game */}
+        <div className="px-2 py-2 bg-white/5 rounded-lg text-xs text-center">
+          <div className="text-white/60 font-medium mb-1 text-xs">Next Game</div>
+          <div className="text-white font-semibold text-xs">
             {formatNextGame(team.currentSeason)}
           </div>
         </div>
@@ -857,157 +681,128 @@ function FreeAgents() {
 
   if (loading) {
     return (
-      <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-        <LeagueNavBar />
-        <div style={{ 
-          padding: "20px", 
-          textAlign: "center",
-          color: "#64748b",
-          fontSize: "16px"
-        }}>
-          Loading free agents...
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+        {/* Animated Background Elements */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        </div>
+        <div className="relative z-10 flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="text-4xl mb-4 animate-spin">⚡</div>
+            <p className="text-xl text-white/80">Loading free agents...</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ 
-      backgroundColor: "#f8fafc", 
-      minHeight: "100vh",
-      position: "relative",
-      overflow: "hidden"
-    }}>
-      <style>{`
-        [style*="pts"], 
-        div:contains("pts"),
-        .points-badge,
-        [class*="points"],
-        [class*="badge"] {
-          display: none !important;
-        }
-      `}</style>
-      
-      <LeagueNavBar />
-
-      {/* Standard Header - matching MyLineup */}
-      <div style={{ 
-        padding: "20px 16px 16px 16px",
-        background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
-        color: "white"
-      }}>
-        <h1 style={{ 
-          fontSize: "24px", 
-          fontWeight: "700", 
-          margin: "0 0 8px 0",
-          textAlign: "center"
-        }}>
-          Free Agents
-        </h1>
-        <p style={{
-          fontSize: "14px",
-          opacity: "0.9",
-          textAlign: "center",
-          margin: 0
-        }}>
-          {sortedTeams.length} teams available
-        </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
       </div>
 
-      {/* Compact Controls - Search, Filter, and Sort */}
-      <div style={{
-        padding: "12px 16px",
-        backgroundColor: "white",
-        borderBottom: "1px solid #e5e7eb",
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        flexWrap: "wrap"
-      }}>
-        {/* Search and Conference Filter Row */}
-        <div style={{
-          display: "flex",
-          gap: "8px",
-          flex: "1 1 auto",
-          minWidth: "280px"
-        }}>
-          {/* Search */}
-          <div style={{ position: "relative", flex: "1 1 0", minWidth: "130px" }}>
-            <Search size={16} style={{
-              position: "absolute",
-              left: "12px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "#64748b"
-            }} />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                width: "100%",
-                height: "44px",
-                padding: "12px 12px 12px 40px",
-                border: "2px solid #e5e7eb",
-                borderRadius: "8px",
-                fontSize: "14px",
-                boxSizing: "border-box"
-              }}
-              onFocus={(e) => e.target.style.borderColor = "#1e40af"}
-              onBlur={(e) => e.target.style.borderColor = "#e5e7eb"}
-            />
+      <BottomNavBar leagueId={leagueId} isDraftComplete={true} />
+
+      {/* Navigation - matching DraftRoom exactly */}
+      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
+        <Link to="/home" className="flex items-center space-x-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
+            L
+          </div>
+          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            Lineup
+          </span>
+        </Link>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
+          >
+            Logout
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-24">
+        
+        {/* Header - matching DraftRoom style */}
+        <div className="text-center mb-8">
+          <div className="mb-4">
+            <span className="inline-block text-4xl sm:text-5xl mb-2">🔍</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-2 leading-tight">
+            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              Free Agents
+            </span>
+          </h1>
+          <p className="text-xl sm:text-2xl font-semibold text-white mb-4">
+            Available Teams
+          </p>
+          <p className="text-lg sm:text-xl text-white/80">
+            {sortedTeams.length} teams available
+          </p>
+        </div>
+
+        {/* Controls Section */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
+          {/* Search and Conference Filter Row */}
+          <div className="flex flex-col sm:flex-row gap-4 mb-6">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60" />
+              <input
+                type="text"
+                placeholder="Search teams..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-11 pl-10 pr-4 bg-white/10 backdrop-blur-sm border-2 border-white/30 rounded-xl text-sm text-white placeholder-white/50 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 focus:outline-none transition-all duration-300"
+              />
+            </div>
+
+            {/* Conference Filter */}
+            <div className="flex-1 sm:max-w-48">
+              <CustomDropdown
+                value={activeConference}
+                onChange={setActiveConference}
+                options={conferenceOptions}
+                placeholder="All Conferences"
+                icon={Filter}
+              />
+            </div>
           </div>
 
-          {/* Conference Filter */}
-          <div style={{ flex: "1 1 0", minWidth: "130px" }}>
-            <CustomDropdown
-              value={activeConference}
-              onChange={setActiveConference}
-              options={conferenceOptions}
-              icon={Filter}
+          {/* Sort Options */}
+          <div className="flex flex-wrap gap-2 justify-center">
+            <SortButton 
+              label="Name" 
+              sortKey="school" 
+              sortConfig={sortConfig}
+              onSort={toggleSort}
+            />
+            <SortButton 
+              label="Points" 
+              sortKey="points" 
+              sortConfig={sortConfig}
+              onSort={toggleSort}
+            />
+            <SortButton 
+              label="Record" 
+              sortKey="currentSeason.record" 
+              sortConfig={sortConfig}
+              onSort={toggleSort}
             />
           </div>
         </div>
 
-        {/* Sort Options - Only 3 buttons */}
-        <div style={{ display: "flex", gap: "6px", flex: "0 0 auto" }}>
-          <SortButton 
-            label="Name" 
-            sortKey="school" 
-            sortConfig={sortConfig}
-            onSort={toggleSort}
-          />
-          <SortButton 
-            label="Points" 
-            sortKey="points" 
-            sortConfig={sortConfig}
-            onSort={toggleSort}
-          />
-          <SortButton 
-            label="Record" 
-            sortKey="currentSeason.record" 
-            sortConfig={sortConfig}
-            onSort={toggleSort}
-          />
-        </div>
-      </div>
-
-      <div style={{ 
-        padding: "16px",
-        position: "relative",
-        zIndex: 1
-      }}>
         {/* Teams List */}
         {sortedTeams.length === 0 ? (
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "12px",
-            padding: "40px 20px",
-            textAlign: "center",
-            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)"
-          }}>
-            <p style={{ color: "#64748b", fontSize: "16px", margin: 0 }}>
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 text-center">
+            <div className="text-4xl mb-4">🏈</div>
+            <p className="text-white/80 text-lg">
               {searchQuery ? 
                 `No teams found matching "${searchQuery}"` : 
                 "No free agents available"
@@ -1015,10 +810,7 @@ function FreeAgents() {
             </p>
           </div>
         ) : (
-          <div style={{
-            position: "relative",
-            overflow: "hidden"
-          }}>
+          <div>
             {sortedTeams.map((team) => (
               <TeamCard key={team.id} team={team} />
             ))}
@@ -1027,75 +819,33 @@ function FreeAgents() {
 
         {/* Add Team Modal */}
         {showAddModal && teamToAdd && (
-          <div style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "16px"
-          }}>
-            <div style={{
-              backgroundColor: "white",
-              borderRadius: "16px",
-              padding: "24px",
-              maxWidth: "400px",
-              width: "100%"
-            }}>
-              <h3 style={{ 
-                fontSize: "18px", 
-                fontWeight: "600", 
-                marginBottom: "16px",
-                textAlign: "center"
-              }}>
-                Add {teamToAdd.school}?
-              </h3>
-              
-              <p style={{ 
-                textAlign: "center", 
-                marginBottom: "24px",
-                color: "#64748b" 
-              }}>
-                This will add them to your lineup.
-              </p>
-
-              <div style={{ display: "flex", gap: "12px" }}>
-                <button
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setTeamToAdd(null);
-                  }}
-                  style={{
-                    flex: 1,
-                    padding: "12px",
-                    backgroundColor: "#6b7280",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "8px",
-                    cursor: "pointer"
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmAddTeam}
-                  style={{
-                    flex: 1,
-                    padding: "12px",
-                    backgroundColor: "#059669",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "8px",
-                    cursor: "pointer"
-                  }}
-                >
-                  Add Team
-                </button>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+              <div className="text-center">
+                <div className="text-4xl mb-4">🏈</div>
+                <h3 className="text-xl font-bold text-white mb-4">
+                  Add {teamToAdd.school}?
+                </h3>
+                <p className="text-white/80 mb-6">
+                  This will add them to your lineup.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowAddModal(false);
+                      setTeamToAdd(null);
+                    }}
+                    className="flex-1 px-4 py-3 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all duration-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmAddTeam}
+                    className="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-white font-bold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-green-500/40"
+                  >
+                    Add Team
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1103,102 +853,62 @@ function FreeAgents() {
 
         {/* Swap UI Modal */}
         {showSwapUI && (
-          <div style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "16px"
-          }}>
-            <div style={{
-              backgroundColor: "white",
-              borderRadius: "16px",
-              padding: "24px",
-              maxWidth: "400px",
-              width: "100%",
-              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
-            }}>
-              <h3 style={{ 
-                fontSize: "18px", 
-                fontWeight: "600", 
-                marginBottom: "16px",
-                textAlign: "center",
-                color: "#1e293b"
-              }}>
-                Add {pendingAddTeam}
-              </h3>
-              
-              <p style={{ 
-                textAlign: "center", 
-                marginBottom: "20px",
-                color: "#64748b",
-                fontSize: "14px"
-              }}>
-                Your roster is full. Select a team to drop:
-              </p>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+              <div className="text-center">
+                <div className="text-4xl mb-4">🔄</div>
+                <h3 className="text-xl font-bold text-white mb-4">
+                  Add {pendingAddTeam}
+                </h3>
+                <p className="text-white/80 mb-6">
+                  Your roster is full. Select a team to drop:
+                </p>
 
-              <select
-                value={selectedDropTeam}
-                onChange={(e) => setSelectedDropTeam(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  border: "2px solid #e5e7eb",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  fontFamily: "inherit",
-                  marginBottom: "20px",
-                  backgroundColor: "white"
-                }}
-              >
-                <option value="">Select a team to drop</option>
-                {userTeams.filter(Boolean).map((team) => (
-                  <option key={team} value={team}>
-                    {team}
-                  </option>
-                ))}
-              </select>
+                <select
+                  value={selectedDropTeam}
+                  onChange={(e) => setSelectedDropTeam(e.target.value)}
+                  className="w-full p-3 mb-6 bg-white/10 backdrop-blur-sm border-2 border-white/30 rounded-xl text-white focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 focus:outline-none"
+                >
+                  <option value="" className="bg-slate-800 text-white">Select a team to drop</option>
+                  {userTeams.filter(Boolean).map((teamId) => {
+                    // Get the actual school name from allTeams using the teamId
+                    const teamData = Object.values(teamsByConference).flat().find(team => 
+                      team.school?.toLowerCase()
+                        .replace(/\s+/g, "-")
+                        .replace(/&/g, "-")
+                        .replace(/[^a-z0-9\-]/g, "") === teamId
+                    );
+                    const displayName = teamData?.school || teamId;
+                    
+                    return (
+                      <option key={teamId} value={teamId} className="bg-slate-800 text-white">
+                        {displayName}
+                      </option>
+                    );
+                  })}
+                </select>
 
-              <div style={{ display: "flex", gap: "12px" }}>
-                <button
-                  onClick={() => setShowSwapUI(false)}
-                  style={{
-                    flex: 1,
-                    padding: "12px",
-                    backgroundColor: "#6b7280",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "8px",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    cursor: "pointer"
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmSwap}
-                  disabled={!selectedDropTeam}
-                  style={{
-                    flex: 1,
-                    padding: "12px",
-                    backgroundColor: selectedDropTeam ? "#059669" : "#94a3b8",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "8px",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    cursor: selectedDropTeam ? "pointer" : "not-allowed"
-                  }}
-                >
-                  Confirm Swap
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowSwapUI(false)}
+                    className="flex-1 px-4 py-3 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all duration-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmSwap}
+                    disabled={!selectedDropTeam}
+                    className={`
+                      flex-1 px-4 py-3 rounded-xl font-bold transition-all duration-300 transform
+                      ${selectedDropTeam 
+                        ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white hover:scale-105 shadow-lg hover:shadow-green-500/40' 
+                        : 'bg-white/20 text-white/40 cursor-not-allowed'
+                      }
+                    `}
+                  >
+                    Confirm Swap
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1206,78 +916,24 @@ function FreeAgents() {
 
         {/* Custom Success Modal */}
         {showSuccessModal && (
-          <div style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "16px"
-          }}>
-            <div style={{
-              backgroundColor: "white",
-              borderRadius: "16px",
-              padding: "24px",
-              maxWidth: "400px",
-              width: "100%",
-              textAlign: "center",
-              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
-            }}>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full text-center shadow-2xl">
               {/* Success Icon */}
-              <div style={{
-                width: "60px",
-                height: "60px",
-                backgroundColor: "#10b981",
-                borderRadius: "50%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 16px auto"
-              }}>
-                <div style={{
-                  color: "white",
-                  fontSize: "24px",
-                  fontWeight: "bold"
-                }}>
-                  ✓
-                </div>
+              <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="text-white text-2xl font-bold">✓</div>
               </div>
 
-              <h3 style={{ 
-                fontSize: "18px", 
-                fontWeight: "600", 
-                marginBottom: "8px",
-                color: "#1e293b"
-              }}>
+              <h3 className="text-xl font-bold text-white mb-2">
                 {modalTitle}
               </h3>
               
-              <p style={{ 
-                marginBottom: "24px",
-                color: "#64748b",
-                fontSize: "14px"
-              }}>
+              <p className="text-white/80 mb-6">
                 {modalMessage}
               </p>
 
               <button
                 onClick={closeModals}
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  backgroundColor: "#10b981",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  cursor: "pointer"
-                }}
+                className="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-white font-bold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-green-500/40"
               >
                 Awesome!
               </button>
@@ -1287,78 +943,24 @@ function FreeAgents() {
 
         {/* Custom Error Modal */}
         {showErrorModal && (
-          <div style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "16px"
-          }}>
-            <div style={{
-              backgroundColor: "white",
-              borderRadius: "16px",
-              padding: "24px",
-              maxWidth: "400px",
-              width: "100%",
-              textAlign: "center",
-              boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)"
-            }}>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full text-center shadow-2xl">
               {/* Error Icon */}
-              <div style={{
-                width: "60px",
-                height: "60px",
-                backgroundColor: "#ef4444",
-                borderRadius: "50%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 16px auto"
-              }}>
-                <div style={{
-                  color: "white",
-                  fontSize: "24px",
-                  fontWeight: "bold"
-                }}>
-                  !
-                </div>
+              <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="text-white text-2xl font-bold">!</div>
               </div>
 
-              <h3 style={{ 
-                fontSize: "18px", 
-                fontWeight: "600", 
-                marginBottom: "8px",
-                color: "#1e293b"
-              }}>
+              <h3 className="text-xl font-bold text-white mb-2">
                 {modalTitle}
               </h3>
               
-              <p style={{ 
-                marginBottom: "24px",
-                color: "#64748b",
-                fontSize: "14px"
-              }}>
+              <p className="text-white/80 mb-6">
                 {modalMessage}
               </p>
 
               <button
                 onClick={closeModals}
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  backgroundColor: "#6b7280",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  cursor: "pointer"
-                }}
+                className="w-full px-4 py-3 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all duration-300"
               >
                 Got it
               </button>
@@ -1366,9 +968,6 @@ function FreeAgents() {
           </div>
         )}
       </div>
-
-      {/* Bottom spacing for navigation */}
-      <div style={{ height: "80px" }} />
     </div>
   );
 }
