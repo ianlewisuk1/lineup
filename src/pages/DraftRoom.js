@@ -447,103 +447,96 @@ function DraftRoom() {
     }
   };
 
-  const handleStartDraftEarly = async () => {
-    const timeLeft = formatCountdown(draftCountdown);
-    const confirmEarly = window.confirm(
-      `Are you sure you want to start the draft early?\n\n` +
-      `Scheduled time: ${leagueData?.draftDate?.toDate().toLocaleString("en-US", {
-        timeZone: "America/New_York",
-        weekday: "long",
-        month: "long", 
-        day: "numeric",
-        hour: "numeric", 
-        minute: "2-digit",
-        timeZoneName: "short"
-      })}\n\n` +
-      `Time remaining: ${timeLeft}\n\n` +
-      `This will start the draft immediately for all managers.`
-    );
+  const [showEarlyDraftModal, setShowEarlyDraftModal] = useState(false);
 
-    if (confirmEarly) {
-      await handleStartDraft();
-    }
+  const handleStartDraftEarly = () => {
+    setShowEarlyDraftModal(true);
   };
 
-const handleStartDraft = async () => {
-  if (!leagueId || Object.keys(userMap).length === 0) return;
+  const confirmEarlyDraft = async () => {
+    setShowEarlyDraftModal(false);
+    await handleStartDraft();
+  };
 
-  try {
-    const leagueRef = doc(db, "leagues", leagueId);
-    const leagueSnap = await getDoc(leagueRef);
-    if (!leagueSnap.exists()) {
-      alert("League not found.");
-      return;
+  const cancelEarlyDraft = () => {
+    setShowEarlyDraftModal(false);
+  };
+
+  const handleStartDraft = async () => {
+    if (!leagueId || Object.keys(userMap).length === 0) return;
+
+    try {
+      const leagueRef = doc(db, "leagues", leagueId);
+      const leagueSnap = await getDoc(leagueRef);
+      if (!leagueSnap.exists()) {
+        alert("League not found.");
+        return;
+      }
+
+      const leagueData = leagueSnap.data();
+      const expectedManagers = leagueData.maxManagers;
+      const currentManagers = Object.keys(userMap).length;
+
+      if (currentManagers < expectedManagers) {
+        alert(`You need ${expectedManagers} managers to start the draft. Currently: ${currentManagers}`);
+        return;
+      }
+
+      const allTeamsSnap = await getDocs(collection(db, "teams"));
+
+      // ✅ FIXED: Properly filter for FBS teams and use their document IDs
+      const teamNames = allTeamsSnap.docs
+        .filter(doc => {
+          const data = doc.data();
+          return data.school && 
+                typeof data.school === "string" && 
+                data.classification?.toLowerCase() === "fbs";
+        })
+        .map(doc => doc.id); // Use the document ID (which should match school name)
+
+      if (teamNames.length === 0) {
+        alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
+        return;
+      }
+      
+      // ✅ Use custom draft order if admin set it, otherwise use random order
+      let managerOrder;
+      
+      if (leagueData.draftOrderType === "admin" && leagueData.customDraftOrder && leagueData.customDraftOrder.length > 0) {
+        // Use the custom order set by admin
+        managerOrder = leagueData.customDraftOrder;
+        console.log("✅ Using admin-set draft order:", managerOrder);
+      } else if (leagueData.draftOrderType === "random") {
+        // Randomize the order
+        managerOrder = Object.keys(userMap).filter(Boolean).sort(() => Math.random() - 0.5);
+        console.log("✅ Using randomized draft order:", managerOrder);
+      } else {
+        // Fallback to current userMap order
+        managerOrder = Object.keys(userMap).filter(Boolean);
+        console.log("✅ Using fallback draft order:", managerOrder);
+      }
+      
+      console.log("✅ Manager order:", managerOrder);
+      console.log("✅ Available FBS teams:", teamNames);
+
+      const draftPayload = {
+        draftOrder: managerOrder,
+        currentPickIndex: 0,
+        availableTeams: teamNames,
+        selectedTeams: {},
+        draftComplete: false,
+        currentPickStartTime: serverTimestamp()
+      };
+
+      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
+      await setDoc(draftRef, draftPayload);
+      alert("Live draft started!");
+
+    } catch (err) {
+      console.error("❌ Failed to start draft:", err);
+      alert("Error starting draft: " + err.message);
     }
-
-    const leagueData = leagueSnap.data();
-    const expectedManagers = leagueData.maxManagers;
-    const currentManagers = Object.keys(userMap).length;
-
-    if (currentManagers < expectedManagers) {
-      alert(`You need ${expectedManagers} managers to start the draft. Currently: ${currentManagers}`);
-      return;
-    }
-
-    const allTeamsSnap = await getDocs(collection(db, "teams"));
-
-    // ✅ FIXED: Properly filter for FBS teams and use their document IDs
-    const teamNames = allTeamsSnap.docs
-      .filter(doc => {
-        const data = doc.data();
-        return data.school && 
-              typeof data.school === "string" && 
-              data.classification?.toLowerCase() === "fbs";
-      })
-      .map(doc => doc.id); // Use the document ID (which should match school name)
-
-    if (teamNames.length === 0) {
-      alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
-      return;
-    }
-    
-    // ✅ Use custom draft order if admin set it, otherwise use random order
-    let managerOrder;
-    
-    if (leagueData.draftOrderType === "admin" && leagueData.customDraftOrder && leagueData.customDraftOrder.length > 0) {
-      // Use the custom order set by admin
-      managerOrder = leagueData.customDraftOrder;
-      console.log("✅ Using admin-set draft order:", managerOrder);
-    } else if (leagueData.draftOrderType === "random") {
-      // Randomize the order
-      managerOrder = Object.keys(userMap).filter(Boolean).sort(() => Math.random() - 0.5);
-      console.log("✅ Using randomized draft order:", managerOrder);
-    } else {
-      // Fallback to current userMap order
-      managerOrder = Object.keys(userMap).filter(Boolean);
-      console.log("✅ Using fallback draft order:", managerOrder);
-    }
-    
-    console.log("✅ Manager order:", managerOrder);
-    console.log("✅ Available FBS teams:", teamNames);
-
-    const draftPayload = {
-      draftOrder: managerOrder,
-      currentPickIndex: 0,
-      availableTeams: teamNames,
-      selectedTeams: {},
-      draftComplete: false,
-      currentPickStartTime: serverTimestamp()
-    };
-
-    const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-    await setDoc(draftRef, draftPayload);
-    alert("Live draft started!");
-
-  } catch (err) {
-    console.error("❌ Failed to start draft:", err);
-    alert("Error starting draft: " + err.message);
-  }
-};
+  };
 
   const handleStartManualDraft = async () => {
     if (!leagueId || Object.keys(userMap).length === 0) return;
@@ -830,256 +823,162 @@ if (isManualDraft) {
     );
   }
 
-  // Manual draft in progress or complete
-  if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftData.teams !== undefined)) {
-    return (
-      <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-        <BottomNavBar leagueId={leagueId} isDraftComplete={draftData?.draftComplete || false} />
+{/* Manual draft in progress or complete */}
+if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftData.teams !== undefined)) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      </div>
 
-        {/* Header - Same as Live Draft */}
-        <div style={{ 
-          padding: "20px 16px 16px 16px",
-          background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
-          color: "white"
-        }}>
-          <h1 style={{ 
-            fontSize: "24px", 
-            fontWeight: "700", 
-            margin: "0 0 8px 0",
-            textAlign: "center"
-          }}>
-            Manual Draft Entry
+      <BottomNavBar leagueId={leagueId} isDraftComplete={draftData?.draftComplete || false} />
+
+      {/* Navigation */}
+      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
+        <Link to="/home" className="flex items-center space-x-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
+            L
+          </div>
+          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            Lineup
+          </span>
+        </Link>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
+          >
+            Logout
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-24">
+        
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="mb-4">
+            <span className="inline-block text-4xl sm:text-5xl mb-2">
+              {draftData.draftComplete ? "🎉" : "📝"}
+            </span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-2 leading-tight">
+            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              {draftData.draftComplete ? "Draft Complete!" : "Manual Draft Entry"}
+            </span>
           </h1>
-          <p style={{
-            fontSize: "14px",
-            opacity: "0.9",
-            textAlign: "center",
-            margin: 0
-          }}>
-            {draftData.draftComplete ? "Draft Complete" : "Commissioner entering results"}
+          <p className="text-xl sm:text-2xl font-semibold text-white mb-4">
+            {leagueData?.name || "Unnamed League"}
+          </p>
+          <p className="text-lg sm:text-xl text-white/80">
+            {draftData.draftComplete 
+              ? "All teams have been entered" 
+              : `Progress: ${(draftData.managersCompleted || []).length} of ${Object.keys(userMap).length} managers completed`
+            }
           </p>
         </div>
 
-        {/* Admin Controls Bar - Same as Live Draft */}
+        {/* Admin Controls */}
         {isLeagueAdmin && (
-          <div style={{
-            backgroundColor: "white",
-            borderBottom: "1px solid #e2e8f0",
-            padding: "12px 16px",
-            display: "flex",
-            justifyContent: "center"
-          }}>
-            <button 
-              onClick={handleRestartDraft}
-              style={{
-                backgroundColor: "#dc2626",
-                color: "white",
-                border: "none",
-                borderRadius: "8px",
-                padding: "8px 16px",
-                fontSize: "14px",
-                fontWeight: "600",
-                cursor: "pointer",
-                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-                transition: "all 0.2s ease"
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.backgroundColor = "#b91c1c";
-                e.target.style.transform = "translateY(-1px)";
-                e.target.style.boxShadow = "0 4px 12px rgba(220, 38, 38, 0.3)";
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.backgroundColor = "#dc2626";
-                e.target.style.transform = "translateY(0)";
-                e.target.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.1)";
-              }}
-            >
-              🔄 Restart Draft
-            </button>
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
+            <div className="text-center">
+              <button 
+                onClick={handleRestartDraft}
+                className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 rounded-xl text-white font-bold transition-all duration-300 transform hover:scale-105 shadow-xl hover:shadow-red-500/40"
+              >
+                🔄 Restart Draft
+              </button>
+            </div>
           </div>
         )}
-
-        {/* Content Area */}
-        <div style={{ padding: "16px" }}>
-          
+          {/* Draft Complete State */}
           {draftData.draftComplete ? (
             <>
-              <div style={{
-                backgroundColor: "#d1fae5",
-                border: "1px solid #10b981",
-                borderRadius: "8px",
-                padding: "12px 16px",
-                marginBottom: "16px",
-                textAlign: "center"
-              }}>
-                <p style={{ 
-                  color: "#065f46", 
-                  fontWeight: "bold", 
-                  margin: 0,
-                  fontSize: "16px"
-                }}>
-                  ✅ Manual Draft Complete!
-                </p>
+              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-6">
+                <div className="text-center">
+                  <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-4">
+                    <p className="text-green-200 font-bold text-lg">
+                      ✅ Manual Draft Complete!
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Full Width DraftBoard */}
+
+              <div className="w-screen -mx-4 sm:-mx-6">
+                <DraftBoard draftData={draftData} userMap={userMap} allTeams={allTeams} />
               </div>
 
-              {/* Use DraftBoard for completed manual draft display */}
-              <DraftBoard draftData={draftData} userMap={userMap} allTeams={allTeams} />
             </>
-          ) : (
-            <div style={{
-              backgroundColor: "white",
-              borderRadius: "12px",
-              padding: "20px",
-              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-              border: "1px solid #e2e8f0"
-            }}>
-              {isLeagueAdmin ? (
-                <>
-                  <h3 style={{
-                    fontSize: "18px",
-                    fontWeight: "700",
-                    color: "#1e293b",
-                    margin: "0 0 16px 0"
-                  }}>
-                    Enter Draft Results
-                  </h3>
-                  <ManualDraftEntry 
-                    leagueId={leagueId}
-                    userMap={userMap}
-                    draftData={draftData}
-                  />
-                </>
-              ) : (
-                <div style={{ textAlign: "center", padding: "40px 20px" }}>
-                  <div style={{
-                    fontSize: "48px",
-                    marginBottom: "16px"
-                  }}>
-                    ⏳
-                  </div>
-                  <h3 style={{
-                    fontSize: "18px",
-                    fontWeight: "700",
-                    color: "#1e293b",
-                    margin: "0 0 8px 0"
-                  }}>
-                    Commissioner is entering draft results...
-                  </h3>
-                  <p style={{
-                    fontSize: "14px",
-                    color: "#64748b",
-                    margin: 0
-                  }}>
+        ) : (
+          /* Draft Entry Interface */
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20">
+            {isLeagueAdmin ? (
+              <>
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-6">
+                  Enter Draft Results
+                </h3>
+                <div className="bg-blue-500/20 border border-blue-400/30 rounded-xl p-4 mb-6">
+                  <p className="text-blue-200 text-sm sm:text-base">
+                    💡 <strong>Instructions:</strong> Select each manager below and enter their 7 drafted teams in order. 
+                    The first 5 will be starters, the last 2 will be bench players.
+                  </p>
+                </div>
+                
+                <ManualDraftEntry 
+                  leagueId={leagueId}
+                  userMap={userMap}
+                  draftData={draftData}
+                />
+              </>
+            ) : (
+              /* Non-Admin Waiting View */
+              <div className="text-center py-8">
+                <div className="text-6xl sm:text-7xl mb-6 animate-pulse">⏳</div>
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4">
+                  Commissioner is entering draft results...
+                </h3>
+                <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4 mb-6">
+                  <p className="text-amber-200 font-semibold">
                     Progress: {(draftData.managersCompleted || []).length} of {Object.keys(userMap).length} managers completed
                   </p>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-  
-  // If we have draft data but it's not manual format, treat as error
-  return (
-    <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-      <BottomNavBar leagueId={leagueId} isDraftComplete={false} />
-
-      {/* Header - Error State */}
-      <div style={{ 
-        padding: "20px 16px 16px 16px",
-        background: "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)",
-        color: "white"
-      }}>
-        <h1 style={{ 
-          fontSize: "24px", 
-          fontWeight: "700", 
-          margin: "0 0 8px 0",
-          textAlign: "center"
-        }}>
-          Draft Data Error
-        </h1>
-        <p style={{
-          fontSize: "14px",
-          opacity: "0.9",
-          textAlign: "center",
-          margin: 0
-        }}>
-          Incompatible draft data found
-        </p>
-      </div>
-
-      {/* Content Area */}
-      <div style={{ padding: "16px" }}>
-        <div style={{
-          backgroundColor: "white",
-          borderRadius: "12px",
-          padding: "20px",
-          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-          border: "1px solid #e2e8f0",
-          textAlign: "center"
-        }}>
-          <div style={{
-            backgroundColor: "#fef2f2",
-            border: "1px solid #ef4444",
-            borderRadius: "8px",
-            padding: "16px",
-            marginBottom: "16px"
-          }}>
-            <p style={{
-              color: "#dc2626",
-              fontWeight: "600",
-              margin: "0 0 8px 0"
-            }}>
-              ⚠️ Found incompatible draft data
-            </p>
-            <p style={{
-              color: "#991b1b",
-              fontSize: "14px",
-              margin: 0
-            }}>
-              Please restart the draft to continue.
-            </p>
+                <p className="text-white/70 text-lg">
+                  Please wait while your commissioner enters everyone's teams from the offline draft.
+                </p>
+                
+                {/* Progress Indicator */}
+                <div className="mt-6">
+                  <div className="bg-white/20 rounded-full h-3 w-full max-w-md mx-auto">
+                    <div 
+                      className="bg-gradient-to-r from-purple-500 to-blue-500 h-3 rounded-full transition-all duration-500 ease-out"
+                      style={{ 
+                        width: `${((draftData.managersCompleted || []).length / Object.keys(userMap).length) * 100}%` 
+                      }}
+                    ></div>
+                  </div>
+                  <p className="text-white/60 text-sm mt-2">
+                    {Math.round(((draftData.managersCompleted || []).length / Object.keys(userMap).length) * 100)}% Complete
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
-          
-          {isLeagueAdmin && (
-            <button 
-              onClick={handleRestartDraft}
-              style={{
-                backgroundColor: "#dc2626",
-                color: "white",
-                border: "none",
-                borderRadius: "8px",
-                padding: "12px 24px",
-                fontSize: "16px",
-                fontWeight: "600",
-                cursor: "pointer",
-                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-                transition: "all 0.2s ease"
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.backgroundColor = "#b91c1c";
-                e.target.style.transform = "translateY(-1px)";
-                e.target.style.boxShadow = "0 4px 12px rgba(220, 38, 38, 0.3)";
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.backgroundColor = "#dc2626";
-                e.target.style.transform = "translateY(0)";
-                e.target.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.1)";
-              }}
-            >
-              🗑️ Clear Draft Data
-            </button>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
 }
+  
+  // If we have draft data but it's not manual format, treat as error
+// Replace the error state section (around lines 565-650)
+// This is the section that starts with "// If we have draft data but it's not manual format, treat as error"
 
-// Live Draft Flow (existing logic)
-if (!draftData) {
+// If we have draft data but it's not manual format, treat as error
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
       {/* Animated Background Elements */}
@@ -1111,7 +1010,209 @@ if (!draftData) {
       </nav>
 
       {/* Main Content */}
-        <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-8 pb-24">          {/* Header */}
+      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-24">
+        
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="mb-4">
+            <span className="inline-block text-4xl sm:text-5xl mb-2">⚠️</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-2 leading-tight">
+            <span className="bg-gradient-to-r from-red-400 to-orange-400 bg-clip-text text-transparent">
+              Draft Data Error
+            </span>
+          </h1>
+          <p className="text-xl sm:text-2xl font-semibold text-white mb-4">
+            {leagueData?.name || "Unnamed League"}
+          </p>
+          <p className="text-lg sm:text-xl text-white/80">
+            Incompatible draft data found
+          </p>
+        </div>
+
+        {/* Error Card */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
+          <div className="text-center">
+            
+            {/* Error Alert */}
+            <div className="bg-red-500/20 border border-red-400/30 rounded-xl p-6 mb-6">
+              <div className="text-4xl mb-4">🚫</div>
+              <h3 className="text-xl font-bold text-red-200 mb-3">
+                Incompatible Draft Data Found
+              </h3>
+              <p className="text-red-200/80 text-sm sm:text-base leading-relaxed">
+                The current draft data format is not compatible with this version of the draft system. 
+                This usually happens when switching between different draft types or after system updates.
+              </p>
+            </div>
+            
+            {/* Solution */}
+            <div className="bg-blue-500/20 border border-blue-400/30 rounded-xl p-4 mb-6">
+              <p className="text-blue-200 text-sm sm:text-base">
+                💡 <strong>Solution:</strong> Clear the existing draft data to start fresh. 
+                This will reset all draft progress and allow you to start a new draft.
+              </p>
+            </div>
+
+            {/* Admin Action */}
+            {isLeagueAdmin ? (
+              <div className="space-y-4">
+                <p className="text-white/80 text-lg">
+                  As the league admin, you can clear the draft data to resolve this issue.
+                </p>
+                <button 
+                  onClick={handleRestartDraft}
+                  className="px-8 py-4 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 rounded-xl text-white font-bold transition-all duration-300 transform hover:scale-105 shadow-xl hover:shadow-red-500/40"
+                >
+                  🗑️ Clear Draft Data & Restart
+                </button>
+                <p className="text-white/60 text-sm">
+                  This will permanently delete the current draft data
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-white/80 text-lg">
+                  Please contact your league commissioner to resolve this issue.
+                </p>
+                <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4">
+                  <p className="text-amber-200 text-sm">
+                    ⏳ Only the league admin can clear draft data
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Help Card */}
+        <div className="bg-purple-500/20 border border-purple-400/30 rounded-2xl p-6">
+          <div className="text-center">
+            <h4 className="text-lg font-semibold text-purple-200 mb-3">
+              Need Help?
+            </h4>
+            <div className="text-purple-200 text-sm space-y-2 leading-relaxed">
+              <p>• This error typically occurs when switching draft formats</p>
+              <p>• All member data and league settings remain safe</p>
+              <p>• Only the draft progress needs to be reset</p>
+              <p>• You can start a new draft immediately after clearing</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+// Live Draft Flow (existing logic)
+// Replace the existing pre-draft waiting screen section (around line 680-880)
+// This is the section that starts with "if (!draftData) {" in the Live Draft Flow
+
+if (!draftData) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+
+    {/* Early Draft Start Confirmation Modal */}
+    {showEarlyDraftModal && (
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 sm:p-8 max-w-lg w-full text-center shadow-2xl">
+          <div className="text-5xl mb-6">🚀</div>
+          
+          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">
+            Start Draft Early?
+          </h2>
+          
+          <p className="text-lg text-white/80 mb-6 leading-relaxed">
+            Are you sure you want to start the draft before the scheduled time?
+          </p>
+          
+          {/* Scheduled Time Info */}
+          <div className="bg-blue-500/20 border border-blue-400/30 rounded-xl p-4 mb-4">
+            <p className="text-blue-200 text-sm font-medium mb-2">
+              📅 <strong>Scheduled for:</strong>
+            </p>
+            <p className="text-blue-100 text-base font-semibold">
+              {leagueData?.draftDate?.toDate().toLocaleString("en-US", {
+                timeZone: "America/New_York",
+                weekday: "long",
+                month: "long", 
+                day: "numeric",
+                hour: "numeric", 
+                minute: "2-digit",
+                timeZoneName: "short"
+              })}
+            </p>
+          </div>
+          
+          {/* Time Remaining */}
+          <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4 mb-6">
+            <p className="text-amber-200 text-sm font-medium mb-1">
+              ⏰ <strong>Time remaining:</strong>
+            </p>
+            <p className="text-amber-100 text-lg font-bold">
+              {formatCountdown(draftCountdown)}
+            </p>
+          </div>
+          
+          {/* Warning */}
+          <div className="bg-orange-500/20 border border-orange-400/30 rounded-xl p-4 mb-8">
+            <p className="text-orange-200 text-sm">
+              ⚠️ This will start the draft <strong>immediately</strong> for all managers
+            </p>
+          </div>
+          
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button
+              onClick={confirmEarlyDraft}
+              className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-white font-bold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-green-500/40"
+            >
+              🚀 Yes, Start Now
+            </button>
+            <button
+              onClick={cancelEarlyDraft}
+              className="px-6 py-3 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all duration-300"
+            >
+              ❌ Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      </div>
+
+      <BottomNavBar leagueId={leagueId} isDraftComplete={false} />
+
+      {/* Navigation */}
+      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
+        <Link to="/home" className="flex items-center space-x-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
+            L
+          </div>
+          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            Lineup
+          </span>
+        </Link>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
+          >
+            Logout
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-24">
+        {/* Header */}
         <div className="text-center mb-8">
           <div className="mb-4">
             <span className="inline-block text-4xl sm:text-5xl mb-2">🚀</span>
@@ -1134,9 +1235,9 @@ if (!draftData) {
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
             <div className="text-center">
               <div className="text-4xl sm:text-5xl mb-4">⏰</div>
-                <h2 className="text-xl sm:text-2xl font-bold mb-4 text-white">
-                  Draft starts in: {formatCountdown(draftCountdown)}
-                </h2>
+              <h2 className="text-xl sm:text-2xl font-bold mb-4 text-white">
+                Draft starts in: {formatCountdown(draftCountdown)}
+              </h2>
               <div className="bg-blue-500/20 border border-blue-400/30 rounded-xl p-4 mb-4">
                 <p className="text-blue-200 text-sm sm:text-base">
                   <strong>Scheduled for:</strong><br />
@@ -1180,11 +1281,11 @@ if (!draftData) {
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
             <div className="text-center mb-6">
               <div className="text-3xl mb-4">👥</div>
-              <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">
+              <h3 className="text-xl sm:text-2xl font-bold text-white mb-4">
                 Waiting for Players
               </h3>
-              <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4">
-                <p className="text-amber-200 font-semibold">
+              <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4 mb-6">
+                <p className="text-amber-200 font-semibold text-lg">
                   🟡 Waiting for {missing} more manager{missing !== 1 ? 's' : ''} to join
                 </p>
               </div>
@@ -1222,16 +1323,17 @@ if (!draftData) {
                 All Managers Ready!
               </h3>
               <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-4 mb-6">
-                <p className="text-green-200 font-semibold">
+                <p className="text-green-200 font-semibold text-lg">
                   League is full with {Object.keys(userMap).length} managers
                 </p>
               </div>
 
               {isLeagueAdmin && (
                 <div className="space-y-4">
-                  <p className="text-white/80">
+                  <p className="text-white/80 text-lg">
                     Ready to start the draft?
                   </p>
+
                   <button 
                     onClick={draftCountdown > 0 ? handleStartDraftEarly : handleStartDraft}
                     className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-lg font-bold transition-all duration-300 transform hover:scale-105 shadow-2xl hover:shadow-green-500/40"
@@ -1247,7 +1349,7 @@ if (!draftData) {
               )}
 
               {!isLeagueAdmin && isFull && draftCountdown === 0 && (
-                <p className="text-white/80">
+                <p className="text-white/80 text-lg">
                   All managers have joined. Waiting for commissioner to start the draft.
                 </p>
               )}
@@ -1274,359 +1376,269 @@ if (!draftData) {
   );
 }
 
-  const isMyTurn = draftData && draftData.draftOrder 
-    ? getCurrentPicker(draftData.draftOrder, draftData.currentPickIndex) === userId 
-    : false;
-  
-  const disableDrafting = draftData?.draftComplete || !isMyTurn;
-  
-  const currentUid = draftData && draftData.draftOrder
-    ? getCurrentPicker(draftData.draftOrder, draftData.currentPickIndex)
-    : null;
-    
-  const currentManager = currentUid ? {
-    displayName: userMap[currentUid]?.displayName,
-    firstName: userFirstNames[currentUid] // Only use firstName from user doc
-  } : null;
+// Replace the existing active draft interface (around line 880-1100)
+// This replaces everything from the final return statement with the old CSS-in-JS styling
 
-  return (
-  <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-      <BottomNavBar leagueId={leagueId} isDraftComplete={draftData?.draftComplete || false} />
+const isMyTurn = draftData && draftData.draftOrder 
+  ? getCurrentPicker(draftData.draftOrder, draftData.currentPickIndex) === userId 
+  : false;
 
-      {/* Header */}
-      <div style={{ 
-        padding: "20px 16px 16px 16px",
-        background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
-        color: "white"
-      }}>
-        <h1 style={{ 
-          fontSize: "24px", 
-          fontWeight: "700", 
-          margin: "0 0 8px 0",
-          textAlign: "center"
-        }}>
-          Draft Room - Live Draft
-        </h1>
-        <p style={{
-          fontSize: "14px",
-          opacity: "0.9",
-          textAlign: "center",
-          margin: "0 0 4px 0"
-        }}>
-          {Object.keys(userMap).length} managers joined
-        </p>
-        {leagueId && (
-          <p style={{
-            fontSize: "12px",
-            opacity: "0.8",
-            textAlign: "center",
-            margin: 0,
-            fontFamily: "monospace"
-          }}>
-            League: {leagueId}
+const disableDrafting = draftData?.draftComplete || !isMyTurn;
+
+const currentUid = draftData && draftData.draftOrder
+  ? getCurrentPicker(draftData.draftOrder, draftData.currentPickIndex)
+  : null;
+  
+const currentManager = currentUid ? {
+  displayName: userMap[currentUid]?.displayName,
+  firstName: userFirstNames[currentUid] // Only use firstName from user doc
+} : null;
+
+return (
+  <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+    {/* Animated Background Elements */}
+    <div className="absolute inset-0 opacity-10">
+      <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+      <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
+    </div>
+
+    <BottomNavBar leagueId={leagueId} isDraftComplete={draftData?.draftComplete || false} />
+
+    {/* Navigation */}
+    <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
+      <Link to="/home" className="flex items-center space-x-3">
+        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
+          L
+        </div>
+        <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+          Lineup
+        </span>
+      </Link>
+      <div className="flex items-center space-x-4">
+        <button 
+          onClick={handleLogout}
+          className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
+        >
+          Logout
+        </button>
+      </div>
+    </nav>
+
+    {/* Draft Completion Modal */}
+    {showCompletionModal && (
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+          <div className="text-6xl mb-6">🎉</div>
+          <h2 className="text-3xl font-bold text-white mb-4">
+            Draft Complete!
+          </h2>
+          <p className="text-lg text-white/80 mb-8 leading-relaxed">
+            Congratulations! All teams have been drafted and your lineup has been automatically set.
           </p>
-        )}
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button
+              onClick={handleGoToLineup}
+              className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-white font-bold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-green-500/40"
+            >
+              🏈 View My Lineup
+            </button>
+            <button
+              onClick={handleCloseModal}
+              className="px-6 py-3 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all duration-300"
+            >
+              Stay Here
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Main Content */}
+    <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-24">
+      
+      {/* Header */}
+      <div className="text-center mb-8">
+        <div className="mb-4">
+          <span className="inline-block text-4xl sm:text-5xl mb-2">
+            {draftData?.draftComplete ? "🎉" : "⚡"}
+          </span>
+        </div>
+        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-2 leading-tight">
+          <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            {draftData?.draftComplete ? "Draft Complete!" : "Live Draft"}
+          </span>
+        </h1>
+        <p className="text-xl sm:text-2xl font-semibold text-white mb-4">
+          {leagueData?.name || "Unnamed League"}
+        </p>
+        <p className="text-lg sm:text-xl text-white/80">
+          {Object.keys(userMap).length} managers • Pick {(draftData?.currentPickIndex || 0) + 1}
+        </p>
       </div>
 
-      {/* Draft Completion Modal */}
-      {showCompletionModal && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.7)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000
-        }}>
-          <div style={{
-            backgroundColor: "white",
-            padding: "2rem",
-            borderRadius: "12px",
-            textAlign: "center",
-            maxWidth: "500px",
-            width: "90%",
-            boxShadow: "0 10px 30px rgba(0, 0, 0, 0.3)"
-          }}>
-            <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>🎉</div>
-            <h2 style={{ 
-              color: "#2e7d32", 
-              marginBottom: "1rem",
-              fontSize: "2rem"
-            }}>
-              Draft Complete!
-            </h2>
-            <p style={{ 
-              fontSize: "1.2rem", 
-              marginBottom: "2rem", 
-              color: "#424242" 
-            }}>
-              Congratulations! All teams have been drafted and your lineup has been automatically set.
-            </p>
-            <div style={{ display: "flex", gap: "1rem", justifyContent: "center" }}>
-              <button
-                onClick={handleGoToLineup}
-                style={{
-                  backgroundColor: "#2e7d32",
-                  color: "white",
-                  border: "none",
-                  padding: "12px 24px",
-                  borderRadius: "6px",
-                  fontSize: "1.1rem",
-                  cursor: "pointer",
-                  fontWeight: "bold"
-                }}
-                onMouseOver={(e) => e.target.style.backgroundColor = "#1b5e20"}
-                onMouseOut={(e) => e.target.style.backgroundColor = "#2e7d32"}
-              >
-                Take Me to My Lineup
-              </button>
-              <button
-                onClick={handleCloseModal}
-                style={{
-                  backgroundColor: "#757575",
-                  color: "white",
-                  border: "none",
-                  padding: "12px 24px",
-                  borderRadius: "6px",
-                  fontSize: "1.1rem",
-                  cursor: "pointer"
-                }}
-                onMouseOver={(e) => e.target.style.backgroundColor = "#424242"}
-                onMouseOut={(e) => e.target.style.backgroundColor = "#757575"}
-              >
-                Stay Here
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Admin Controls Bar */}
+      {/* Admin Controls */}
       {isLeagueAdmin && draftData && (
-        <div style={{
-          backgroundColor: "white",
-          borderBottom: "1px solid #e2e8f0",
-          padding: "12px 16px",
-          display: "flex",
-          justifyContent: "center"
-        }}>
-          <button 
-            onClick={handleRestartDraft}
-            style={{
-              backgroundColor: "#dc2626",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              padding: "8px 16px",
-              fontSize: "14px",
-              fontWeight: "600",
-              cursor: "pointer",
-              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-              transition: "all 0.2s ease"
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.backgroundColor = "#b91c1c";
-              e.target.style.transform = "translateY(-1px)";
-              e.target.style.boxShadow = "0 4px 12px rgba(220, 38, 38, 0.3)";
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.backgroundColor = "#dc2626";
-              e.target.style.transform = "translateY(0)";
-              e.target.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.1)";
-            }}
-          >
-            🔄 Restart Draft
-          </button>
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
+          <div className="text-center">
+            <button 
+              onClick={handleRestartDraft}
+              className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 rounded-xl text-white font-bold transition-all duration-300 transform hover:scale-105 shadow-xl hover:shadow-red-500/40"
+            >
+              🔄 Restart Draft
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Content Area */}
-      <div style={{ padding: "16px" }}>
-        
-        {draftData.draftComplete && (
-          <div style={{
-            backgroundColor: "#d1fae5",
-            border: "1px solid #10b981",
-            borderRadius: "8px",
-            padding: "12px 16px",
-            marginBottom: "16px",
-            textAlign: "center"
-          }}>
-            <p style={{ 
-              color: "#065f46", 
-              fontWeight: "bold", 
-              margin: 0,
-              fontSize: "16px"
-            }}>
-              ✅ Draft Complete!
+      {/* Draft Complete Banner */}
+      {draftData?.draftComplete && (
+        <div className="bg-green-500/20 border border-green-400/30 rounded-2xl p-6 mb-8">
+          <div className="text-center">
+            <div className="text-4xl mb-4">✅</div>
+            <h3 className="text-2xl font-bold text-green-200 mb-2">
+              Draft Complete!
+            </h3>
+            <p className="text-green-200/80">
+              All teams have been drafted. Check out the results below!
             </p>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Timer Display */}
-        {!draftData.draftComplete && timeRemaining > 0 && (
-          <div style={{ 
-            padding: "16px", 
-            backgroundColor: timeRemaining <= 30 ? "#fef2f2" : "#fff7ed", 
-            border: `2px solid ${timeRemaining <= 30 ? "#ef4444" : "#f97316"}`, 
-            borderRadius: "12px", 
-            marginBottom: "16px",
-            textAlign: "center",
-            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)"
-          }}>
-            <h3 style={{ 
-              margin: "0 0 8px 0", 
-              color: timeRemaining <= 30 ? "#dc2626" : "#ea580c",
-              fontSize: "20px",
-              fontWeight: "700"
-            }}>
-              ⏰ Time Remaining: {formatTime(timeRemaining)}
+      {/* Timer Display - Only show when draft is active */}
+      {!draftData?.draftComplete && timeRemaining > 0 && (
+        <div className={`
+          bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8
+          ${timeRemaining <= 30 ? 'animate-pulse' : ''}
+        `}>
+          <div className="text-center">
+            <div className="text-4xl mb-4">
+              {timeRemaining <= 30 ? "🚨" : "⏰"}
+            </div>
+            <h3 className={`
+              text-2xl sm:text-3xl font-bold mb-2
+              ${timeRemaining <= 30 ? 'text-red-300' : 'text-white'}
+            `}>
+              Time Remaining: {formatTime(timeRemaining)}
             </h3>
             {timeRemaining <= 30 && (
-              <p style={{ 
-                margin: 0, 
-                color: "#dc2626", 
-                fontWeight: "bold",
-                fontSize: "14px"
-              }}>
-                ⚠️ Auto-pick in {timeRemaining} seconds!
-              </p>
+              <div className="bg-red-500/20 border border-red-400/30 rounded-xl p-4 mt-4">
+                <p className="text-red-200 font-bold">
+                  ⚠️ Auto-pick in {timeRemaining} seconds!
+                </p>
+              </div>
             )}
           </div>
-        )}
+        </div>
+      )}
 
-{/* Current Turn Display - Only show when draft is NOT complete */}
-        {!draftData.draftComplete && (
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "12px",
-            padding: "16px",
-            marginBottom: "16px",
-            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-            border: "1px solid #e2e8f0",
-            textAlign: "center"
-          }}>
+      {/* Current Turn Display - Only show when draft is NOT complete */}
+      {!draftData?.draftComplete && (
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
+          <div className="text-center">
             {isMyTurn ? (
-              <p style={{
-                fontSize: "18px",
-                fontWeight: "700",
-                color: "#059669",
-                margin: 0
-              }}>
-                🎯 It's <strong>your</strong> turn to pick!
-              </p>
+              <>
+                <div className="text-4xl mb-4">🎯</div>
+                <h3 className="text-xl sm:text-2xl font-bold text-green-300 mb-2">
+                  It's Your Turn!
+                </h3>
+                <p className="text-white/80">
+                  Make your pick below
+                </p>
+              </>
             ) : currentManager ? (
-              <p style={{
-                fontSize: "16px",
-                fontWeight: "600",
-                color: "#1e293b",
-                margin: 0
-              }}>
-                Waiting for <strong>{currentManager.firstName}</strong> to pick...
-              </p>
+              <>
+                <div className="text-4xl mb-4">⏳</div>
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">
+                  Waiting for Pick
+                </h3>
+                <p className="text-white/80">
+                  <strong>{currentManager.firstName}</strong> is currently picking...
+                </p>
+              </>
             ) : (
-              <p style={{
-                fontSize: "16px",
-                color: "#64748b",
-                margin: 0
-              }}>
-                Determining next pick...
-              </p>
+              <>
+                <div className="text-4xl mb-4">🔄</div>
+                <h3 className="text-xl font-bold text-white mb-2">
+                  Determining Next Pick...
+                </h3>
+              </>
             )}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Draft Controls - Only show when draft is NOT complete */}
-        {!draftData.draftComplete && (
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "12px",
-            padding: "20px",
-            marginBottom: "16px",
-            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-            border: "1px solid #e2e8f0"
-          }}>
-            <h3 style={{
-              fontSize: "18px",
-              fontWeight: "700",
-              color: "#1e293b",
-              margin: "0 0 16px 0"
-            }}>
-              Available Teams
-            </h3>
+      {/* Draft Controls - Only show when draft is NOT complete */}
+      {!draftData?.draftComplete && (
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
+          <h3 className="text-xl sm:text-2xl font-bold text-white mb-6">
+            Available Teams
+          </h3>
+          
+          <div className="space-y-4">
+            <select 
+              value={teamPick} 
+              onChange={(e) => setTeamPick(e.target.value)} 
+              disabled={disableDrafting}
+              className={`
+                w-full p-4 rounded-xl border-2 text-lg font-medium transition-all duration-300
+                ${disableDrafting 
+                  ? 'bg-white/5 border-white/20 text-white/40 cursor-not-allowed' 
+                  : 'bg-white/10 border-white/30 text-white hover:border-blue-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 focus:outline-none'
+                }
+              `}
+            >
+              <option value="" className="bg-slate-800 text-white">
+                -- Select a Team --
+              </option>
+              {draftData?.availableTeams?.map((teamId) => {
+                const teamData = allTeams[teamId];
+                const label = teamData?.school || teamId;
+                return (
+                  <option key={teamId} value={teamId} className="bg-slate-800 text-white">
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
             
-            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-              <select 
-                value={teamPick} 
-                onChange={(e) => setTeamPick(e.target.value)} 
-                disabled={disableDrafting}
-                style={{
-                  flex: 1,
-                  padding: "12px 16px",
-                  border: "2px solid #e2e8f0",
-                  borderRadius: "8px",
-                  fontSize: "16px",
-                  backgroundColor: disableDrafting ? "#f8fafc" : "white",
-                  color: disableDrafting ? "#94a3b8" : "#1e293b",
-                  cursor: disableDrafting ? "not-allowed" : "pointer"
-                }}
-              >
-                <option value="">-- Select a Team --</option>
-                {draftData.availableTeams.map((teamId) => {
-                  const teamData = allTeams[teamId];
-                  const label = teamData?.school || teamId;
-                  return (
-                    <option key={teamId} value={teamId}>{label}</option>
-                  );
-                })}
-              </select>
-              
-              <button 
-                onClick={handlePick} 
-                disabled={disableDrafting || !teamPick}
-                style={{
-                  backgroundColor: (disableDrafting || !teamPick) ? "#94a3b8" : "#059669",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "12px 24px",
-                  fontSize: "16px",
-                  fontWeight: "600",
-                  cursor: (disableDrafting || !teamPick) ? "not-allowed" : "pointer",
-                  boxShadow: (disableDrafting || !teamPick) ? "none" : "0 1px 3px rgba(0, 0, 0, 0.1)",
-                  transition: "all 0.2s ease"
-                }}
-                onMouseEnter={(e) => {
-                  if (!disableDrafting && teamPick) {
-                    e.target.style.backgroundColor = "#047857";
-                    e.target.style.transform = "translateY(-1px)";
-                    e.target.style.boxShadow = "0 4px 12px rgba(5, 150, 105, 0.3)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!disableDrafting && teamPick) {
-                    e.target.style.backgroundColor = "#059669";
-                    e.target.style.transform = "translateY(0)";
-                    e.target.style.boxShadow = "0 1px 3px rgba(0, 0, 0, 0.1)";
-                  }
-                }}
-              >
-                🏈 Draft Team
-              </button>
-            </div>
+            <button 
+              onClick={handlePick} 
+              disabled={disableDrafting || !teamPick}
+              className={`
+                w-full p-4 rounded-xl text-lg font-bold transition-all duration-300 transform
+                ${(disableDrafting || !teamPick)
+                  ? 'bg-white/20 text-white/40 cursor-not-allowed' 
+                  : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white hover:scale-105 shadow-lg hover:shadow-green-500/40'
+                }
+              `}
+            >
+              {!isMyTurn 
+                ? "⏳ Not Your Turn" 
+                : !teamPick 
+                ? "🏈 Select a Team First" 
+                : "🏈 Draft This Team"
+              }
+            </button>
           </div>
-        )}
 
-        {/* Draft Board */}
+          {/* Available Teams Count */}
+          <div className="mt-6 text-center">
+            <p className="text-white/60 text-sm">
+              {draftData?.availableTeams?.length || 0} teams remaining
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Draft Board - Full Width */}
+      <div className="w-screen -mx-4 sm:-mx-6">
         <DraftBoard draftData={draftData} userMap={userMap} allTeams={allTeams} />
-                
       </div>
+
     </div>
-  );
+  </div>
+);
 }
 
 export default DraftRoom;
