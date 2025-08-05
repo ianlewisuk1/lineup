@@ -463,79 +463,88 @@ function DraftRoom() {
   };
 
   const handleStartDraft = async () => {
-    if (!leagueId || Object.keys(userMap).length === 0) return;
+  if (!leagueId || Object.keys(userMap).length === 0) return;
 
+  try {
+    // Clear any existing draft data first to prevent conflicts
+    const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
     try {
-      const leagueRef = doc(db, "leagues", leagueId);
-      const leagueSnap = await getDoc(leagueRef);
-      if (!leagueSnap.exists()) {
-        alert("League not found.");
-        return;
-      }
-
-      const leagueData = leagueSnap.data();
-      const expectedManagers = leagueData.maxManagers;
-      const currentManagers = Object.keys(userMap).length;
-
-      if (currentManagers < expectedManagers) {
-        alert(`You need ${expectedManagers} managers to start the draft. Currently: ${currentManagers}`);
-        return;
-      }
-
-      const allTeamsSnap = await getDocs(collection(db, "teams"));
-
-      // ✅ FIXED: Properly filter for FBS teams and use their document IDs
-      const teamNames = allTeamsSnap.docs
-        .filter(doc => {
-          const data = doc.data();
-          return data.school && 
-                typeof data.school === "string" && 
-                data.classification?.toLowerCase() === "fbs";
-        })
-        .map(doc => doc.id); // Use the document ID (which should match school name)
-
-      if (teamNames.length === 0) {
-        alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
-        return;
-      }
-      
-      // ✅ Use custom draft order if admin set it, otherwise use random order
-      let managerOrder;
-      
-      if (leagueData.draftOrderType === "admin" && leagueData.customDraftOrder && leagueData.customDraftOrder.length > 0) {
-        // Use the custom order set by admin
-        managerOrder = leagueData.customDraftOrder;
-        console.log("✅ Using admin-set draft order:", managerOrder);
-      } else if (leagueData.draftOrderType === "random") {
-        // Randomize the order
-        managerOrder = Object.keys(userMap).filter(Boolean).sort(() => Math.random() - 0.5);
-        console.log("✅ Using randomized draft order:", managerOrder);
-      } else {
-        // Fallback to current userMap order
-        managerOrder = Object.keys(userMap).filter(Boolean);
-        console.log("✅ Using fallback draft order:", managerOrder);
-      }
-      
-      console.log("✅ Manager order:", managerOrder);
-      console.log("✅ Available FBS teams:", teamNames);
-
-      const draftPayload = {
-        draftOrder: managerOrder,
-        currentPickIndex: 0,
-        availableTeams: teamNames,
-        selectedTeams: {},
-        draftComplete: false,
-        currentPickStartTime: serverTimestamp()
-      };
-
-      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-      await setDoc(draftRef, draftPayload);
-      alert("Live draft started!");
-
-    } catch (err) {
-      console.error("❌ Failed to start draft:", err);
-      alert("Error starting draft: " + err.message);
+      await deleteDoc(draftRef);
+      console.log("✅ Cleared existing draft data");
+    } catch (deleteError) {
+      // It's okay if the document doesn't exist
+      console.log("No existing draft data to clear");
     }
+
+    const leagueRef = doc(db, "leagues", leagueId);
+    const leagueSnap = await getDoc(leagueRef);
+    if (!leagueSnap.exists()) {
+      alert("League not found.");
+      return;
+    }
+
+    const leagueData = leagueSnap.data();
+    const expectedManagers = leagueData.maxManagers;
+    const currentManagers = Object.keys(userMap).length;
+
+    if (currentManagers < expectedManagers) {
+      alert(`You need ${expectedManagers} managers to start the draft. Currently: ${currentManagers}`);
+      return;
+    }
+
+    const allTeamsSnap = await getDocs(collection(db, "teams"));
+
+    // ✅ FIXED: Properly filter for FBS teams and use their document IDs
+    const teamNames = allTeamsSnap.docs
+      .filter(doc => {
+        const data = doc.data();
+        return data.school && 
+              typeof data.school === "string" && 
+              data.classification?.toLowerCase() === "fbs";
+      })
+      .map(doc => doc.id); // Use the document ID (which should match school name)
+
+    if (teamNames.length === 0) {
+      alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
+      return;
+    }
+    
+    // ✅ Use custom draft order if admin set it, otherwise use random order
+    let managerOrder;
+    
+    if (leagueData.draftOrderType === "admin" && leagueData.customDraftOrder && leagueData.customDraftOrder.length > 0) {
+      // Use the custom order set by admin
+      managerOrder = leagueData.customDraftOrder;
+      console.log("✅ Using admin-set draft order:", managerOrder);
+    } else if (leagueData.draftOrderType === "random") {
+      // Randomize the order
+      managerOrder = Object.keys(userMap).filter(Boolean).sort(() => Math.random() - 0.5);
+      console.log("✅ Using randomized draft order:", managerOrder);
+    } else {
+      // Fallback to current userMap order
+      managerOrder = Object.keys(userMap).filter(Boolean);
+      console.log("✅ Using fallback draft order:", managerOrder);
+    }
+    
+    console.log("✅ Manager order:", managerOrder);
+    console.log("✅ Available FBS teams:", teamNames);
+
+    const draftPayload = {
+      draftOrder: managerOrder,
+      currentPickIndex: 0,
+      availableTeams: teamNames,
+      selectedTeams: {},
+      draftComplete: false,
+      currentPickStartTime: serverTimestamp()
+    };
+
+    await setDoc(draftRef, draftPayload);
+    alert("Live draft started!");
+
+  } catch (err) {
+    console.error("❌ Failed to start draft:", err);
+    alert("Error starting draft: " + err.message);
+  }
   };
 
   const handleStartManualDraft = async () => {

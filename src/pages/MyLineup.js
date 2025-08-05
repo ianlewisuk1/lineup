@@ -174,7 +174,7 @@
           const normalizedSchool = team.school
             .toLowerCase()
             .replace(/\s+/g, "-")
-            .replace(/&/g, "")
+            .replace(/&/g, "-")
             .replace(/[^a-z0-9\-]/g, "");
           schoolToTeamMap[normalizedSchool] = team;
         }

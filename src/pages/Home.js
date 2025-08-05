@@ -1,20 +1,52 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { auth, db } from "../firebase/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { Trophy, Users, ArrowRight, Plus } from "lucide-react";
+import { Trophy, Users, ArrowRight, Plus, Wifi, WifiOff } from "lucide-react";
 
 function Home() {
   const [leagueList, setLeagueList] = useState([]);
   const [isAdmin, setIsAdmin] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("");
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [refreshing, setRefreshing] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const flashMessage = location.state?.message;
+  
+  // Refs to store unsubscribe functions
+  const userListener = useRef(null);
+  const leagueListeners = useRef([]);
+
+  // Connection status tracking
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Cleanup listeners on unmount
+  useEffect(() => {
+    return () => {
+      if (userListener.current) {
+        userListener.current();
+      }
+      if (leagueListeners.current) {
+        leagueListeners.current.forEach(unsubscribe => unsubscribe());
+      }
+    };
+  }, []);
 
   useEffect(() => {
-    const fetchUserAndLeagues = async () => {
+    const setupUserListener = () => {
       const currentUser = auth.currentUser;
       if (!currentUser) {
         setLoading(false);
@@ -23,53 +55,118 @@ function Home() {
 
       try {
         const userRef = doc(db, "users", currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        const userData = userSnap.data();
-        const adminStatus = userData?.isAdmin || false;
-        setIsAdmin(adminStatus);
-
-        // Set user name for greeting
-        if (userData?.firstName) {
-          setUserName(userData.firstName);
-        } else {
-          setUserName(currentUser.email?.split('@')[0] || 'there');
-        }
-
-        if (adminStatus) {
-          navigate("/admin");
-          return;
-        }
-
-        const leagueIds = userData?.leagueIds || [];
-        const leaguesData = [];
-        for (let leagueId of leagueIds) {
-          const leagueRef = doc(db, "leagues", leagueId);
-          const leagueSnap = await getDoc(leagueRef);
-          if (leagueSnap.exists()) {
-            leaguesData.push({ id: leagueId, ...leagueSnap.data() });
+        
+        // Set up real-time listener for user data
+        userListener.current = onSnapshot(userRef, (userSnap) => {
+          if (!userSnap.exists()) {
+            setLoading(false);
+            return;
           }
-        }
+          
+          const userData = userSnap.data();
+          const adminStatus = userData?.isAdmin || false;
+          setIsAdmin(adminStatus);
 
-        setLeagueList(leaguesData);
+          // Set user name for greeting
+          if (userData?.firstName) {
+            setUserName(userData.firstName);
+          } else {
+            setUserName(currentUser.email?.split('@')[0] || 'there');
+          }
+
+          if (adminStatus) {
+            navigate("/admin");
+            return;
+          }
+
+          // Set up listeners for each league
+          const leagueIds = userData?.leagueIds || [];
+          setupLeagueListeners(leagueIds);
+          setLoading(false);
+        }, (error) => {
+          console.error("Error with user listener:", error);
+          setLoading(false);
+        });
+
       } catch (error) {
-        console.error("Error fetching user data:", error);
-      } finally {
+        console.error("Error setting up user listener:", error);
         setLoading(false);
       }
     };
 
-    fetchUserAndLeagues();
+    const setupLeagueListeners = (leagueIds) => {
+      // Clean up existing league listeners
+      if (leagueListeners.current) {
+        leagueListeners.current.forEach(unsubscribe => unsubscribe());
+        leagueListeners.current = [];
+      }
+
+      // Clear league list if no leagues
+      if (leagueIds.length === 0) {
+        setLeagueList([]);
+        return;
+      }
+
+      // Set up listener for each league
+      leagueIds.forEach(leagueId => {
+        const leagueRef = doc(db, "leagues", leagueId);
+        
+        const unsubscribe = onSnapshot(leagueRef, (leagueSnap) => {
+          if (leagueSnap.exists()) {
+            const leagueData = leagueSnap.data();
+            const memberCount = leagueData.members ? leagueData.members.length : 0;
+            
+            const updatedLeague = { 
+              id: leagueId, 
+              ...leagueData, 
+              memberCount: memberCount 
+            };
+
+            // Update the specific league in the list
+            setLeagueList(prev => {
+              const filtered = prev.filter(league => league.id !== leagueId);
+              const newList = [...filtered, updatedLeague];
+              // Sort by name for consistent ordering
+              return newList.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            });
+          } else {
+            // Remove league if it no longer exists
+            setLeagueList(prev => prev.filter(league => league.id !== leagueId));
+          }
+        }, (error) => {
+          console.error(`Error with league listener for ${leagueId}:`, error);
+        });
+
+        leagueListeners.current.push(unsubscribe);
+      });
+    };
+
+    setupUserListener();
   }, [navigate]);
 
   const handleLogout = async () => {
     if (window.confirm("Are you sure you want to log out?")) {
       try {
+        // Clean up listeners before logout
+        if (userListener.current) {
+          userListener.current();
+        }
+        if (leagueListeners.current) {
+          leagueListeners.current.forEach(unsubscribe => unsubscribe());
+        }
+        
         await auth.signOut();
         navigate("/");
       } catch (err) {
         console.error("Logout error:", err);
       }
     }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    // Listeners will automatically update, just show feedback
+    setTimeout(() => setRefreshing(false), 1000);
   };
 
   if (isAdmin) return null;
@@ -98,6 +195,14 @@ function Home() {
         <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
       </div>
 
+      {/* Connection Status Indicator */}
+      {!isOnline && (
+        <div className="relative z-20 bg-red-500/90 text-white text-center py-2 px-4 text-sm font-medium">
+          <WifiOff size={16} className="inline mr-2" />
+          You're offline. Updates will sync when reconnected.
+        </div>
+      )}
+
       {/* Navigation */}
       <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
         <Link to="/home" className="flex items-center space-x-3">
@@ -109,6 +214,27 @@ function Home() {
           </span>
         </Link>
         <div className="flex items-center space-x-4">
+          {/* Refresh Button for Mobile */}
+          <button 
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="p-2 text-white/60 hover:text-white transition-colors duration-300 md:hidden"
+            aria-label="Refresh"
+          >
+            <div className={refreshing ? "animate-spin" : ""}>
+              ⟳
+            </div>
+          </button>
+          
+          {/* Connection Status */}
+          <div className="hidden sm:flex items-center space-x-2 text-white/60">
+            {isOnline ? (
+              <Wifi size={16} className="text-green-400" />
+            ) : (
+              <WifiOff size={16} className="text-red-400" />
+            )}
+          </div>
+          
           <button 
             onClick={handleLogout}
             className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
@@ -144,6 +270,16 @@ function Home() {
           </div>
         )}
 
+        {/* Pull to Refresh Indicator */}
+        {refreshing && (
+          <div className="mb-4 text-center">
+            <div className="inline-flex items-center px-4 py-2 bg-white/10 rounded-full text-white/80 text-sm">
+              <div className="animate-spin mr-2">⟳</div>
+              Refreshing...
+            </div>
+          </div>
+        )}
+
         {/* Leagues Section */}
         {leagueList.length === 0 ? (
           // No Leagues - Getting Started
@@ -161,7 +297,7 @@ function Home() {
               {/* Create League Card */}
               <div 
                 onClick={() => navigate("/create-league")}
-                className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group"
+                className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group active:scale-95"
               >
                 <div className="text-center">
                   <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300">
@@ -185,7 +321,7 @@ function Home() {
               {/* Join League Card */}
               <div 
                 onClick={() => navigate("/join-league")}
-                className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group"
+                className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group active:scale-95"
               >
                 <div className="text-center">
                   <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300">
@@ -213,6 +349,9 @@ function Home() {
             <div className="text-center">
               <h2 className="text-2xl sm:text-3xl font-bold mb-4 text-white">
                 Your Leagues
+                {isOnline && (
+                  <span className="ml-2 inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse" title="Live updates enabled"></span>
+                )}
               </h2>
             </div>
 
@@ -221,7 +360,7 @@ function Home() {
                 <div 
                   key={league.id}
                   onClick={() => navigate(`/${league.id}/my-lineup`)}
-                  className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group"
+                  className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group active:scale-95"
                 >
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center space-x-3">
@@ -229,7 +368,7 @@ function Home() {
                         {(league.name || "UL").substring(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <h3 className="text-lg font-bold text-white truncate max-w-32">
+                        <h3 className="text-lg font-bold text-white">
                           {league.name || "Unnamed League"}
                         </h3>
                         <p className="text-xs text-white/60 truncate">
@@ -264,7 +403,7 @@ function Home() {
                       e.stopPropagation();
                       navigate(`/${league.id}/my-lineup`);
                     }}
-                    className="w-full py-3 px-4 bg-white/10 border border-white/20 rounded-xl text-white font-medium hover:bg-white/20 transition-all duration-300 flex items-center justify-center space-x-2"
+                    className="w-full py-3 px-4 bg-white/10 border border-white/20 rounded-xl text-white font-medium hover:bg-white/20 transition-all duration-300 flex items-center justify-center space-x-2 active:scale-95"
                   >
                     <span>View My Lineup</span>
                     <ArrowRight size={16} />
@@ -275,7 +414,7 @@ function Home() {
               {/* Add New League Cards */}
               <div 
                 onClick={() => navigate("/create-league")}
-                className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border-2 border-dashed border-white/30 hover:border-white/60 hover:bg-white/10 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group"
+                className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border-2 border-dashed border-white/30 hover:border-white/60 hover:bg-white/10 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group active:scale-95"
               >
                 <div className="text-center">
                   <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
@@ -297,7 +436,7 @@ function Home() {
 
               <div 
                 onClick={() => navigate("/join-league")}
-                className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border-2 border-dashed border-white/30 hover:border-white/60 hover:bg-white/10 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group"
+                className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border-2 border-dashed border-white/30 hover:border-white/60 hover:bg-white/10 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group active:scale-95"
               >
                 <div className="text-center">
                   <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">

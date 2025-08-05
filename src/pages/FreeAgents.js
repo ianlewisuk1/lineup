@@ -451,7 +451,7 @@ function FreeAgents() {
       const normalizedTeamName = teamToAdd.school
         .toLowerCase()
         .replace(/\s+/g, "-")
-        .replace(/&/g, "")
+        .replace(/&/g, "-")
         .replace(/[^a-z0-9\-]/g, "");
       
       const emptyStarterIndex = starters.findIndex(t => !t);
@@ -544,7 +544,7 @@ function FreeAgents() {
       const normalizedSchoolName = team.school
         ?.toLowerCase()
         .replace(/\s+/g, "-")
-        .replace(/&/g, "")
+        .replace(/&/g, "-")
         .replace(/[^a-z0-9\-]/g, "");
       
       // Check if this normalized school name is in the drafted teams

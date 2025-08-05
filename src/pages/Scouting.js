@@ -77,6 +77,12 @@ function Scouting() {
   });
 
   const sortedTeams = [...filteredTeams].sort((a, b) => {
+    const parseRecord = (record) => {
+      if (!record || !record.includes("-")) return [0, 0];
+      const [wins, losses] = record.split("-").map(Number);
+      return [wins, losses];
+    };
+
     const aValue = a[sortConfig.key];
     const bValue = b[sortConfig.key];
 
@@ -84,10 +90,23 @@ function Scouting() {
     if (aValue == null) return 1;
     if (bValue == null) return -1;
 
+    // Custom logic for record and ATS fields
+    if (sortConfig.key === "prevYearRecord" || sortConfig.key === "prevYearAts") {
+      const [aWins, aLosses] = parseRecord(aValue);
+      const [bWins, bLosses] = parseRecord(bValue);
+
+      const aPct = aWins + aLosses > 0 ? aWins / (aWins + aLosses) : 0;
+      const bPct = bWins + bLosses > 0 ? bWins / (bWins + bLosses) : 0;
+
+      return sortConfig.direction === "asc" ? aPct - bPct : bPct - aPct;
+    }
+
+    // Standard numeric comparison
     if (typeof aValue === "number" && typeof bValue === "number") {
       return sortConfig.direction === "asc" ? aValue - bValue : bValue - aValue;
     }
 
+    // Fallback string comparison
     return sortConfig.direction === "asc"
       ? aValue.toString().localeCompare(bValue.toString())
       : bValue.toString().localeCompare(aValue.toString());
