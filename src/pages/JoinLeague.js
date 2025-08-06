@@ -37,7 +37,7 @@ function JoinLeague() {
       }
 
       if (displayName.length > 15 || teamName.length > 15) {
-        setError("Username and team name must be 15 characters or fewer.");
+        setError("Username must be 15 characters or fewer. Team name must be 20 characters or fewer.");
         setLoading(false);
         return;
       }
@@ -222,13 +222,13 @@ function JoinLeague() {
                 type="text"
                 placeholder="Name your fantasy team"
                 value={teamName}
-                maxLength={15}
+                maxLength={20}
                 onChange={(e) => setTeamName(e.target.value)}
                 required
                 className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
               />
               <p className="mt-1 text-xs text-white/60">
-                {teamName.length}/15 characters
+                {teamName.length}/20 characters
               </p>
             </div>
 
@@ -267,7 +267,7 @@ function JoinLeague() {
             <li>• Ask your league commissioner for the League ID</li>
             <li>• Choose a unique username that others will recognize</li>
             <li>• Pick a creative team name - you can change it later</li>
-            <li>• Both username and team name are limited to 15 characters</li>
+            <li>• Team name is limited to 15 characters</li>
           </ul>
         </div>
       </div>

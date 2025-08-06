@@ -86,15 +86,16 @@ function DraftBoard({ draftData, userMap, allTeams }) {
                     fontWeight: "700"
                   }}>{index + 1}</div>
                   <div style={{
-                    fontSize: "14px",
+                    fontSize: "12px",
                     fontWeight: "700",
                     marginBottom: "4px",
+                    marginTop: "8px",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap"
                   }}>{teamName}</div>
                   <div style={{
-                    fontSize: "11px",
+                    fontSize: "10px",
                     opacity: "0.9",
                     overflow: "hidden",
                     textOverflow: "ellipsis",

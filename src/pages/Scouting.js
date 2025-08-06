@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../firebase/firebase";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import BottomNavBar from "../components/BottomNavBar";
 
@@ -9,40 +9,75 @@ function Scouting() {
   const navigate = useNavigate();
   const [teams, setTeams] = useState([]);
   const [allTeams, setAllTeams] = useState({});
+  const [draftedTeams, setDraftedTeams] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState({ key: "philMetricDraftRank", direction: "asc" });
   const [conferenceFilter, setConferenceFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Helper function to normalize team names for comparison
+  const normalizeTeamName = (teamName) => {
+    return teamName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  };
+
   useEffect(() => {
-    const fetchTeams = async () => {
-      const querySnapshot = await getDocs(collection(db, "teams"));
-      
-      // Create teams map for logos/colors (like MyLeague)
-      const teamsMap = {};
-      querySnapshot.docs.forEach(doc => {
-        const teamData = doc.data();
-        if (teamData.school) {
-          teamsMap[teamData.school] = {
-            logo: teamData.logos1 || teamData.logos2 || null,
-            color: teamData.color || null,
-            ...teamData
-          };
+    const fetchData = async () => {
+      try {
+        // Fetch teams data
+        const querySnapshot = await getDocs(collection(db, "teams"));
+        
+        // Create teams map for logos/colors
+        const teamsMap = {};
+        querySnapshot.docs.forEach(doc => {
+          const teamData = doc.data();
+          if (teamData.school) {
+            teamsMap[teamData.school] = {
+              logo: teamData.logos1 || teamData.logos2 || null,
+              color: teamData.color || null,
+              ...teamData
+            };
+          }
+        });
+        setAllTeams(teamsMap);
+
+        // Fetch draft data for this league
+        const draftedTeamsSet = new Set();
+        if (leagueId) {
+          const draftDoc = await getDoc(doc(db, `leagues/${leagueId}/draft/selectedTeams`));
+          if (draftDoc.exists()) {
+            const draftData = draftDoc.data();
+            
+            // Collect all drafted teams from all users
+            Object.values(draftData).forEach(userTeams => {
+              if (Array.isArray(userTeams)) {
+                userTeams.forEach(teamName => {
+                  draftedTeamsSet.add(teamName);
+                });
+              }
+            });
+          }
         }
-      });
-      setAllTeams(teamsMap);
+        setDraftedTeams(draftedTeamsSet);
 
-      // Filter for FBS teams
-      const fbsTeams = querySnapshot.docs
-        .map((doc) => doc.data())
-        .filter((team) => (team.classification || "").toLowerCase() === "fbs");
-      setTeams(fbsTeams);
-
-      setLoading(false);
+        // Filter for FBS teams and mark as drafted
+        const fbsTeams = querySnapshot.docs
+          .map((doc) => doc.data())
+          .filter((team) => (team.classification || "").toLowerCase() === "fbs")
+          .map(team => ({
+            ...team,
+            isDrafted: draftedTeamsSet.has(normalizeTeamName(team.school))
+          }));
+        
+        setTeams(fbsTeams);
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+        setLoading(false);
+      }
     };
 
-    fetchTeams();
-  }, []);
+    fetchData();
+  }, [leagueId]);
 
   const handleTeamClick = (teamName) => {
     navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
@@ -73,6 +108,8 @@ function Scouting() {
     const p4 = ["SEC", "ACC", "Big Ten", "Big 12"];
     if (conferenceFilter === "All") return matchesSearch;
     if (conferenceFilter === "P4") return matchesSearch && p4.includes(team.conference);
+    if (conferenceFilter === "Available") return matchesSearch && !team.isDrafted;
+    if (conferenceFilter === "Drafted") return matchesSearch && team.isDrafted;
     return matchesSearch && team.conference === conferenceFilter;
   });
 
@@ -114,8 +151,8 @@ function Scouting() {
 
   const uniqueConferences = [...new Set(teams.map((team) => team.conference))].sort();
 
-  // Team Logo Component (from MyLeague)
-  const TeamLogo = ({ teamName, size = 24 }) => {
+  // Team Logo Component
+  const TeamLogo = ({ teamName, size = 24, isDrafted = false }) => {
     const team = allTeams[teamName];
     const logoUrl = team?.logo;
 
@@ -130,7 +167,9 @@ function Scouting() {
       justifyContent: "center",
       backgroundColor: "#f1f5f9",
       flexShrink: 0,
-      marginRight: "8px"
+      marginRight: "8px",
+      opacity: isDrafted ? 0.4 : 1,
+      filter: isDrafted ? "grayscale(100%)" : "none"
     };
 
     if (logoUrl) {
@@ -202,6 +241,9 @@ function Scouting() {
     );
   }
 
+  const availableCount = teams.filter(team => !team.isDrafted).length;
+  const draftedCount = teams.filter(team => team.isDrafted).length;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
       {/* Animated Background Elements */}
@@ -245,7 +287,7 @@ function Scouting() {
             </span>
           </h1>
           <p className="text-lg sm:text-xl text-white/80">
-            {filteredTeams.length} teams • Analyze stats and find your next pick
+            {filteredTeams.length} teams • {availableCount} available, {draftedCount} drafted
           </p>
         </div>
 
@@ -276,6 +318,8 @@ function Scouting() {
               >
                 <option value="All">All Conferences</option>
                 <option value="P4">Power 4 Only</option>
+                <option value="Available">Available Only</option>
+                <option value="Drafted">Drafted Only</option>
                 {uniqueConferences.map((conf) => (
                   <option key={conf} value={conf}>
                     {conf}
@@ -294,7 +338,7 @@ function Scouting() {
             FBS Team Database
           </h3>
           <p className="text-sm text-white/70">
-            Click any column header to sort • Click team name to view details
+            Click any column header to sort • Click team name to view details • Greyed out teams are drafted
           </p>
         </div>
 
@@ -320,32 +364,56 @@ function Scouting() {
                   <tr 
                     key={i}
                     className={`transition-colors duration-200 hover:bg-white/10 ${i % 2 === 0 ? "bg-white/5" : "bg-transparent"}`}
+                    style={{
+                      opacity: team.isDrafted ? 0.4 : 1,
+                      backgroundColor: team.isDrafted ? 'rgba(239, 68, 68, 0.05)' : undefined
+                    }}
                   >
                     <td style={{...tdStyle, textAlign: "left"}}>
                       <div style={{ display: "flex", alignItems: "center" }}>
-                        <TeamLogo teamName={team.school} size={24} />
+                        <TeamLogo teamName={team.school} size={24} isDrafted={team.isDrafted} />
                         <div>
-                          <div
-                            onClick={() => handleTeamClick(team.school)}
-                            style={{ 
-                              cursor: "pointer", 
-                              color: "#60a5fa", 
-                              fontWeight: "600",
-                              textDecoration: "none",
-                              fontSize: "14px"
-                            }}
-                            onMouseEnter={(e) => e.target.style.textDecoration = "underline"}
-                            onMouseLeave={(e) => e.target.style.textDecoration = "none"}
-                          >
-                            {team.school}
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <div
+                              onClick={() => handleTeamClick(team.school)}
+                              style={{ 
+                                cursor: "pointer", 
+                                color: team.isDrafted ? "#9ca3af" : "#60a5fa", 
+                                fontWeight: "600",
+                                textDecoration: "none",
+                                fontSize: "14px"
+                              }}
+                              onMouseEnter={(e) => e.target.style.textDecoration = "underline"}
+                              onMouseLeave={(e) => e.target.style.textDecoration = "none"}
+                            >
+                              {team.school}
+                            </div>
+                            {team.isDrafted && (
+                              <span style={{
+                                backgroundColor: "#ef4444",
+                                color: "white",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                fontSize: "10px",
+                                fontWeight: "600",
+                                textTransform: "uppercase",
+                                opacity: 0.8
+                              }}>
+                                DRAFTED
+                              </span>
+                            )}
                           </div>
-                          <div style={{ fontSize: "11px", color: "#64748b", fontWeight: "500" }}>
+                          <div style={{ 
+                            fontSize: "11px", 
+                            color: team.isDrafted ? "#6b7280" : "#64748b", 
+                            fontWeight: "500" 
+                          }}>
                             {team.conference}
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td style={tdStyle}>
+                    <td style={{...tdStyle, color: team.isDrafted ? "#9ca3af" : "white"}}>
                       {team.confOdds != null ? (
                         <span style={{
                           backgroundColor: team.confOdds >= 20 ? "#dcfce7" : team.confOdds >= 10 ? "#fef3c7" : "#fef2f2",
@@ -353,13 +421,14 @@ function Scouting() {
                           padding: "2px 6px",
                           borderRadius: "4px",
                           fontSize: "12px",
-                          fontWeight: "600"
+                          fontWeight: "600",
+                          opacity: team.isDrafted ? 0.5 : 1
                         }}>
                           {team.confOdds}%
                         </span>
                       ) : "-"}
                     </td>
-                    <td style={tdStyle}>
+                    <td style={{...tdStyle, color: team.isDrafted ? "#9ca3af" : "white"}}>
                       {team.philMetricDraftRank ? (
                         <span style={{
                           backgroundColor: team.philMetricDraftRank <= 25 ? "#dcfce7" : 
@@ -369,34 +438,43 @@ function Scouting() {
                           padding: "2px 6px",
                           borderRadius: "4px",
                           fontSize: "12px",
-                          fontWeight: "600"
+                          fontWeight: "600",
+                          opacity: team.isDrafted ? 0.5 : 1
                         }}>
                           #{team.philMetricDraftRank}
                         </span>
                       ) : "-"}
                     </td>
-                    <td style={tdStyle}>{team.powerRank ?? "-"}</td>
-                    <td style={tdStyle}>
+                    <td style={{...tdStyle, color: team.isDrafted ? "#9ca3af" : "white"}}>
+                      {team.powerRank ?? "-"}
+                    </td>
+                    <td style={{...tdStyle, color: team.isDrafted ? "#9ca3af" : "white"}}>
                       {team.retStarters ? `${team.retStarters}%` : "-"}
                     </td>
-                    <td style={tdStyle}>{team.sosRank ?? "-"}</td>
-                    <td style={tdStyle}>
+                    <td style={{...tdStyle, color: team.isDrafted ? "#9ca3af" : "white"}}>
+                      {team.sosRank ?? "-"}
+                    </td>
+                    <td style={{...tdStyle, color: team.isDrafted ? "#9ca3af" : "white"}}>
                       {team.prevYearPoints ? (
                         <span style={{
                           fontWeight: "600",
-                          color: "white"
+                          color: team.isDrafted ? "#9ca3af" : "white"
                         }}>
                           {team.prevYearPoints}
                         </span>
                       ) : "-"}
                     </td>
-                    <td style={tdStyle}>{team.prevYearRecord || "-"}</td>
-                    <td style={tdStyle}>{team.prevYearAts || "-"}</td>
-                    <td style={tdStyle}>
+                    <td style={{...tdStyle, color: team.isDrafted ? "#9ca3af" : "white"}}>
+                      {team.prevYearRecord || "-"}
+                    </td>
+                    <td style={{...tdStyle, color: team.isDrafted ? "#9ca3af" : "white"}}>
+                      {team.prevYearAts || "-"}
+                    </td>
+                    <td style={{...tdStyle, color: team.isDrafted ? "#9ca3af" : "white"}}>
                       {team.predictedWins ? (
                         <span style={{
                           fontWeight: "600",
-                          color: "white"
+                          color: team.isDrafted ? "#9ca3af" : "white"
                         }}>
                           {team.predictedWins}
                         </span>

@@ -39,88 +39,58 @@ function DraftRoom() {
   const [userFirstNames, setUserFirstNames] = useState({});
 
   useEffect(() => {
+    if (!leagueId) return;
+
     const fetchDraft = async () => {
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
+      try {
+        const leagueDoc = await getDoc(doc(db, "leagues", leagueId));
+        const leagueData = leagueDoc.exists() ? leagueDoc.data() : null;
+        setLeagueData(leagueData);
+        const user = auth.currentUser;
+        if (!user) return;
 
-      setUserId(currentUser.uid);
+        setUserId(user.uid);
 
-      // Sync server time first
-      await syncServerTime();
+        const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
+        const userMapData = {};
+        membersSnap.forEach((doc) => {
+          userMapData[doc.id] = doc.data();
+        });
+        setUserMap(userMapData);
 
-      // Fetch league data to check draft type
-      const leagueRef = doc(db, "leagues", leagueId);
-      const leagueSnap = await getDoc(leagueRef);
-      if (leagueSnap.exists()) {
-        const leagueInfo = leagueSnap.data();
-        setLeagueData(leagueInfo);
-        setIsLeagueAdmin(leagueInfo.admin === currentUser.uid);
-        setMaxManagers(leagueInfo.maxManagers);
-      }
+        setIsLeagueAdmin(user.uid === leagueData?.admin);
+        setMaxManagers(leagueData?.maxManagers || 8);
 
-      const membersRef = collection(db, "leagues", leagueId, "members");
-      const membersSnap = await getDocs(membersRef);
-
-      const nameMap = {};
-      const firstNameMap = {};
-
-      // Fetch both member data and user first names
-      await Promise.all(
-        membersSnap.docs.map(async (memberDoc) => {
-          const data = memberDoc.data();
-          
-          // Fetch first name from user document
-          let firstName = data.displayName || "Unknown"; // fallback
-          try {
-            const userDoc = await getDoc(doc(db, "users", memberDoc.id));
-            
-            if (userDoc.exists()) {
-              const userData = userDoc.data();
-              firstName = userData.firstName || userData.displayName || "Unknown";
-            }
-          } catch (error) {
-            console.warn(`Error fetching user data for ${memberDoc.id}:`, error);
-          }
-          
-          // Build the combined nameMap with firstName included
-          nameMap[memberDoc.id] = {
-            displayName: data.displayName || data.email || "Unknown",
-            teamName: data.teamName || "Unnamed Team",
-            firstName: firstName // Add firstName to the userMap
-          };
-
-          firstNameMap[memberDoc.id] = firstName;
-        })
-      );
-
-      setUserMap(nameMap);
-      setUserFirstNames(firstNameMap);
-      
-      const teamsSnap = await getDocs(collection(db, "teams"));
+        const teamsSnap = await getDocs(collection(db, "teams"));
         const teamDataMap = {};
-
-        teamsSnap.forEach(doc => {
+        teamsSnap.forEach((doc) => {
           teamDataMap[doc.id] = doc.data();
         });
-
         setAllTeams(teamDataMap);
 
-      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-      onSnapshot(draftRef, (snap) => {
-        const data = snap.data();
-        const newDraftData = data || null;
-        
-        // Check if draft just completed
-        if (newDraftData?.draftComplete && (!draftData || !draftData.draftComplete)) {
-          setShowCompletionModal(true);
-        }
-        
-        setDraftData(newDraftData);
-        setLoading(false);
-      });
+      } catch (error) {
+        console.error("Error loading draft data:", error);
+      }
     };
 
     fetchDraft();
+
+    const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
+    const unsubscribe = onSnapshot(draftRef, (snap) => {
+      const data = snap.data();
+      const newDraftData = data || null;
+
+      if (newDraftData?.draftComplete && (!draftData || !draftData.draftComplete)) {
+        setShowCompletionModal(true);
+      }
+
+      setDraftData(newDraftData);
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribe(); // ✅ Clean up listener on unmount
+    };
   }, [leagueId]);
 
   // Server time synchronization

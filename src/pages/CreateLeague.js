@@ -207,12 +207,12 @@ function CreateLeague() {
                   placeholder="Enter league name"
                   value={leagueName}
                   onChange={(e) => setLeagueName(e.target.value)}
-                  maxLength={20}
+                  maxLength={25}
                   required
                   className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
                 />
                 <p className="mt-1 text-xs text-white/60">
-                  {leagueName.length}/20 characters
+                  {leagueName.length}/25 characters
                 </p>
               </div>
 
@@ -362,7 +362,7 @@ function CreateLeague() {
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-2">
-                  Your Username (max 15 chars)
+                  Your Username (max 15 characters)
                 </label>
                 <input
                   type="text"
@@ -377,14 +377,14 @@ function CreateLeague() {
 
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-2">
-                  Your Team Name (max 15 chars)
+                  Your Team Name (max 20 characters)
                 </label>
                 <input
                   type="text"
                   placeholder="Enter your team name"
                   value={teamName}
                   onChange={(e) => setTeamName(e.target.value)}
-                  maxLength={15}
+                  maxLength={20}
                   required
                   className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
                 />

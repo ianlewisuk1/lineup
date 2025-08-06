@@ -1,173 +1,444 @@
-  import React, { useEffect, useState } from "react";
-  import { useParams, Link, useNavigate } from "react-router-dom";
-  import { auth, db } from "../firebase/firebase";
-  import {
-    doc,
-    getDoc,
-    collection,
-    getDocs,
-    updateDoc
-  } from "firebase/firestore";
-  import LeagueNavBar from "../components/LeagueNavBar";
+import React, { useEffect, useState } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { auth, db } from "../firebase/firebase";
+import {
+  doc,
+  getDoc,
+  collection,
+  getDocs,
+  updateDoc
+} from "firebase/firestore";
+import { Settings, Trophy, Users, Star, TrendingUp } from "lucide-react";
+import BottomNavBar from "../components/BottomNavBar";
 
-  function MyLineup() {
-    const { leagueId } = useParams();
-    const navigate = useNavigate();
-    const [loading, setLoading] = useState(true);
-    const [teamName, setTeamName] = useState("");
-    const [starters, setStarters] = useState([]);
-    const [bench, setBench] = useState([]);
-    const [smackTalk, setSmackTalk] = useState("");
-    const [isEditingSmackTalk, setIsEditingSmackTalk] = useState(false);
-    const [smackTalkSaving, setSmackTalkSaving] = useState(false);
-    const [allTeams, setAllTeams] = useState({});
-    const [showSwapModal, setShowSwapModal] = useState(false);
-    const [swapFromIndex, setSwapFromIndex] = useState(null);
-    const [swapFromType, setSwapFromType] = useState(null); // 'starters' or 'bench'
-    const [showCutModal, setShowCutModal] = useState(false);
-    const [teamToCut, setTeamToCut] = useState(null);
-    const [squadPoints, setSquadPoints] = useState(0);
-    const [rosterLockDate, setRosterLockDate] = useState("");
-    const [rosterLockTime, setRosterLockTime] = useState(""); 
+function MyLineup() {
+  const { leagueId } = useParams();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [teamName, setTeamName] = useState("");
+  const [starters, setStarters] = useState([]);
+  const [bench, setBench] = useState([]);
+  const [smackTalk, setSmackTalk] = useState("");
+  const [isEditingSmackTalk, setIsEditingSmackTalk] = useState(false);
+  const [smackTalkSaving, setSmackTalkSaving] = useState(false);
+  const [allTeams, setAllTeams] = useState({});
+  const [showSwapModal, setShowSwapModal] = useState(false);
+  const [swapFromIndex, setSwapFromIndex] = useState(null);
+  const [swapFromType, setSwapFromType] = useState(null);
+  const [showCutModal, setShowCutModal] = useState(false);
+  const [teamToCut, setTeamToCut] = useState(null);
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [moveModalData, setMoveModalData] = useState(null);
+  const [squadPoints, setSquadPoints] = useState(0);
+  const [rosterLockDate, setRosterLockDate] = useState("");
+  const [rosterLockTime, setRosterLockTime] = useState("");
+  const [currentWeek, setCurrentWeek] = useState("Preseason");
+  const [expandedTeams, setExpandedTeams] = useState(Array(7).fill(false)); // 5 starters + 2 bench
 
+  const openCutModal = (team, index, section) => {
+    setTeamToCut({ team, index, section });
+    setShowCutModal(true);
+  };
 
-    const openCutModal = (team, index, section) => {
-      setTeamToCut({ team, index, section });
-      setShowCutModal(true);
-    };
-    const confirmCut = () => {
-      if (teamToCut) {
-        handleCutTeam(teamToCut.team, teamToCut.index, teamToCut.section);
-        setShowCutModal(false);
-        setTeamToCut(null);
+  const confirmCut = () => {
+    if (teamToCut) {
+      handleCutTeam(teamToCut.team, teamToCut.index, teamToCut.section);
+      setShowCutModal(false);
+      setTeamToCut(null);
+    }
+  };
+
+  const handleMoveTeam = (team, fromSection, fromIndex, toSection) => {
+    const hasVacancy = toSection === 'starters' 
+      ? starters.some(t => t === null)
+      : bench.some(t => t === null);
+
+    if (hasVacancy) {
+      // Direct move - there's an empty slot
+      if (toSection === 'starters') {
+        moveToStarters(team, fromIndex);
+      } else {
+        moveToBench(team, fromIndex);
+      }
+    } else {
+      // Show modal to select which team to replace
+      setMoveModalData({
+        movingTeam: team,
+        fromSection,
+        fromIndex,
+        toSection,
+        availableTeams: toSection === 'starters' ? starters : bench
+      });
+      setShowMoveModal(true);
+    }
+  };
+
+  const confirmMove = (replacedTeamIndex) => {
+    if (!moveModalData) return;
+
+    const { movingTeam, fromSection, fromIndex, toSection } = moveModalData;
+    
+    const newStarters = [...starters];
+    const newBench = [...bench];
+
+    if (toSection === 'starters') {
+      // Moving to starters - replace the selected starter
+      const replacedTeam = newStarters[replacedTeamIndex];
+      newStarters[replacedTeamIndex] = movingTeam;
+      newBench[fromIndex] = replacedTeam;
+    } else {
+      // Moving to bench - replace the selected bench player
+      const replacedTeam = newBench[replacedTeamIndex];
+      newBench[replacedTeamIndex] = movingTeam;
+      newStarters[fromIndex] = replacedTeam;
+    }
+
+    setStarters(newStarters);
+    setBench(newBench);
+
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      const normalizeTeamName = (team) => {
+        if (!team?.school) return null;
+        return team.school
+          .toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/&/g, "")
+          .replace(/[^a-z0-9\-]/g, "");
+      };
+
+      const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
+      updateDoc(memberRef, {
+        "lineup.starters": newStarters.map(t => normalizeTeamName(t)),
+        "lineup.bench": newBench.map(t => normalizeTeamName(t))
+      });
+    }
+
+    setShowMoveModal(false);
+    setMoveModalData(null);
+  };
+
+  // Team Logo Component (reused from MyLeague)
+  const TeamLogo = ({ teamName, size = 48, clickable = false }) => {
+    const normalize = (name) =>
+      name
+        ?.toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/&/g, "")
+        .replace(/[^a-z0-9\-]/g, "");
+
+    const team = allTeams[normalize(teamName)];
+    const logoUrl = team?.logo;
+
+    const handleClick = () => {
+      if (clickable && teamName) {
+        navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
       }
     };
 
-    const openSwapModal = (index, type) => {
-    setSwapFromIndex(index);
-    setSwapFromType(type);
-    setShowSwapModal(true);
+    const logoStyle = {
+      width: size,
+      height: size,
+      borderRadius: "50%",
+      overflow: "hidden",
+      border: "2px solid rgba(255, 255, 255, 0.3)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "white", // Changed from rgba to white
+      cursor: clickable ? "pointer" : "default",
+      transition: "all 0.3s ease",
+      flexShrink: 0,
+      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+      transform: "scale(1)",
+      position: "relative",
+      backdropFilter: "blur(10px)"
     };
 
-    // Cut Modal Component
-    const CutModal = () => {
-      if (!showCutModal) return null;
-
+    if (logoUrl) {
       return (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-          padding: "16px"
-        }}>
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "16px",
-            padding: "24px",
-            maxWidth: "400px",
-            width: "100%"
-          }}>
-            <h3 style={{ 
-              fontSize: "18px", 
-              fontWeight: "600", 
-              marginBottom: "16px",
-              textAlign: "center"
+        <div style={{ position: "relative", display: "inline-block" }}>
+          {/* Weekly Points Badge - Made Larger */}
+          {clickable && (
+            <div style={{
+              position: "absolute",
+              top: "-8px",
+              right: "-8px",
+              backgroundColor: team?.gameComplete 
+                ? (team?.currentWeekPoints > 0 ? "#10b981" : "#6b7280")
+                : "#f59e0b",
+              color: "white",
+              borderRadius: "50%",
+              width: "28px", // Increased from 18px
+              height: "28px", // Increased from 18px
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "12px", // Increased from 9px
+              fontWeight: "700",
+              zIndex: 10,
+              border: "2px solid rgba(255, 255, 255, 0.3)",
+              boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)"
             }}>
-              Cut {teamToCut?.team?.school}?
-            </h3>
-            
-            <p style={{ 
-              textAlign: "center", 
-              marginBottom: "24px",
-              color: "#64748b" 
+              {team?.gameComplete ? (team?.currentWeekPoints || 0) : "?"}
+            </div>
+          )}
+          
+          <div 
+            style={logoStyle}
+            onClick={handleClick}
+            onMouseEnter={(e) => {
+              if (clickable) {
+                e.currentTarget.style.transform = "scale(1.05)";
+                e.currentTarget.style.boxShadow = "0 6px 20px rgba(59, 130, 246, 0.3)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (clickable) {
+                e.currentTarget.style.transform = "scale(1)";
+                e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.1)";
+              }
+            }}
+            title={clickable ? `Click to view ${teamName} details` : teamName}
+          >
+            <img 
+              src={logoUrl} 
+              alt={teamName}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover"
+              }}
+              onError={(e) => {
+                const fallbackUrl = team?.logos2;
+                if (fallbackUrl && e.target.src !== fallbackUrl) {
+                  e.target.src = fallbackUrl;
+                } else {
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'flex';
+                }
+              }}
+            />
+            <div style={{
+              display: 'none',
+              width: '100%',
+              height: '100%',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: size < 30 ? '10px' : '12px',
+              fontWeight: '600',
+              color: '#1e293b', // Changed to dark color for white background
+              textAlign: 'center',
+              background: 'white' // Changed to white
             }}>
-              This will remove them from your lineup completely.
-            </p>
-
-            <div style={{ display: "flex", gap: "12px" }}>
-              <button
-                onClick={() => setShowCutModal(false)}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  backgroundColor: "#6b7280",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  cursor: "pointer"
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmCut}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  backgroundColor: "#dc2626",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  cursor: "pointer"
-                }}
-              >
-                Cut Team
-              </button>
+              {teamName ? teamName.split(' ').map(word => word[0]).join('').slice(0, 3) : '?'}
             </div>
           </div>
         </div>
       );
-    };
+    }
 
-    useEffect(() => {
-      const fetchLineup = async () => {
-        const currentUser = auth.currentUser;
-        if (!currentUser) return;
-
-        const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
-        const memberSnap = await getDoc(memberRef);
-        const memberData = memberSnap.data();
-
-        const starterList = memberData?.lineup?.starters || [];
-        const benchList = memberData?.lineup?.bench || [];
-
-        setTeamName(memberData?.teamName || "Unnamed Squad");
-        setSmackTalk(memberData?.smackTalk || "");
-        setSquadPoints(memberData?.points || 0); // ADD THIS LINE
-
-        // Fetch season info for roster lock
-        const seasonRef = doc(db, "config", "season");
-        const seasonSnap = await getDoc(seasonRef);
-        const seasonData = seasonSnap.data();
+    // Fallback placeholder
+    return (
+      <div style={{ position: "relative", display: "inline-block" }}>
+        {/* Weekly Points Badge - Made Larger */}
+        {clickable && (
+          <div style={{
+            position: "absolute",
+            top: "-8px",
+            right: "-8px",
+            backgroundColor: team?.gameComplete 
+              ? (team?.currentWeekPoints > 0 ? "#10b981" : "#6b7280")
+              : "#f59e0b",
+            color: "white",
+            borderRadius: "50%",
+            width: "28px", // Increased from 18px
+            height: "28px", // Increased from 18px
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "12px", // Increased from 9px
+            fontWeight: "700",
+            zIndex: 10,
+            border: "2px solid rgba(255, 255, 255, 0.3)",
+            boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)"
+          }}>
+            {team?.gameComplete ? (team?.currentWeekPoints || 0) : "?"}
+          </div>
+        )}
         
-        setRosterLockDate(seasonData?.rosterLockDate || "");
-        setRosterLockTime(seasonData?.rosterLockTime || "");
+        <div 
+          style={{
+            ...logoStyle,
+            background: "white", // Changed to white
+            color: "#1e293b", // Changed to dark color
+            fontSize: size < 30 ? '10px' : '12px',
+            fontWeight: '600'
+          }}
+          onClick={handleClick}
+          onMouseEnter={(e) => {
+            if (clickable) {
+              e.currentTarget.style.transform = "scale(1.05)";
+              e.currentTarget.style.boxShadow = "0 6px 20px rgba(59, 130, 246, 0.3)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (clickable) {
+              e.currentTarget.style.transform = "scale(1)";
+              e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.1)";
+            }
+          }}
+          title={clickable ? `Click to view ${teamName} details` : teamName}
+        >
+          {teamName ? teamName.split(' ').map(word => word[0]).join('').slice(0, 3) : '?'}
+        </div>
+      </div>
+    );
+  };
 
-        const teamsSnap = await getDocs(collection(db, "teams"));
-        const teamsMap = {};
-        teamsSnap.forEach(doc => {
-          const teamData = doc.data();
-          if (teamData.school) {
-            teamsMap[doc.id] = {
-              id: doc.id,
-              ...teamData,
-              logo: teamData.logos1 || teamData.logos2 || null,
-              currentWeekPoints: teamData.currentSeason?.currentWeekPoints || null,
-              gameComplete: teamData.currentSeason?.gameComplete || false,
-              color: teamData.color || null
-            };
-          }
-        });
-        setAllTeams(teamsMap);
+  // Move Modal Component
+  const MoveModal = () => {
+    if (!showMoveModal || !moveModalData) return null;
 
-      // Create a reverse lookup map: normalized school name -> team data
+    const { movingTeam, toSection, availableTeams } = moveModalData;
+    const isMovingToStarters = toSection === 'starters';
+
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white/95 backdrop-blur-lg rounded-2xl p-6 max-w-md w-full border border-white/20 shadow-2xl">
+          <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">
+            {isMovingToStarters ? 'Replace Starter' : 'Replace Bench Team'}
+          </h3>
+          
+          <p className="text-center mb-4 text-gray-600">
+            Which {isMovingToStarters ? 'starter' : 'bench team'} should {movingTeam.school} replace?
+          </p>
+
+          <div className="space-y-3 mb-6 max-h-60 overflow-y-auto">
+            {availableTeams.map((team, index) => (
+              team && (
+                <button
+                  key={index}
+                  onClick={() => confirmMove(index)}
+                  className="w-full p-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-lg transition-all duration-200 flex items-center justify-between shadow-lg hover:shadow-blue-500/25 transform hover:scale-105"
+                >
+                  <div className="text-left">
+                    <div className="text-sm font-bold">
+                      {team.school}
+                    </div>
+                    <div className="text-xs text-blue-100">
+                      {team.conference}
+                    </div>
+                  </div>
+                  <div className="text-blue-200">
+                    →
+                  </div>
+                </button>
+              )
+            ))}
+          </div>
+
+          <button
+            onClick={() => setShowMoveModal(false)}
+            className="w-full py-3 px-4 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors duration-200"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  };
+  const CutModal = () => {
+    if (!showCutModal) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white/95 backdrop-blur-lg rounded-2xl p-6 max-w-md w-full border border-white/20 shadow-2xl">
+          <h3 className="text-xl font-bold text-gray-900 mb-4 text-center">
+            Cut {teamToCut?.team?.school}?
+          </h3>
+          
+          <p className="text-center mb-6 text-gray-600">
+            This will remove them from your lineup completely.
+          </p>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowCutModal(false)}
+              className="flex-1 py-3 px-4 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors duration-200"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmCut}
+              className="flex-1 py-3 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors duration-200"
+            >
+              Cut Team
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  useEffect(() => {
+    const fetchLineup = async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
+      const memberSnap = await getDoc(memberRef);
+      const memberData = memberSnap.data();
+
+      const starterList = memberData?.lineup?.starters || [];
+      const benchList = memberData?.lineup?.bench || [];
+
+      setTeamName(memberData?.teamName || "Unnamed Squad");
+      setSmackTalk(memberData?.smackTalk || "");
+      setSquadPoints(memberData?.points || 0);
+
+      // Fetch season info for roster lock
+      const seasonRef = doc(db, "config", "season");
+      const seasonSnap = await getDoc(seasonRef);
+      const seasonData = seasonSnap.data();
+      
+      setRosterLockDate(seasonData?.rosterLockDate || "");
+      setRosterLockTime(seasonData?.rosterLockTime || "");
+      setCurrentWeek(seasonData?.currentWeek || "Preseason");
+
+      const teamsSnap = await getDocs(collection(db, "teams"));
+      const teamsMap = {};
+      teamsSnap.forEach(doc => {
+        const teamData = doc.data();
+        if (teamData.school) {
+          const normalize = (name) =>
+            name
+              ?.toLowerCase()
+              .replace(/\s+/g, "-")
+              .replace(/&/g, "")
+              .replace(/[^a-z0-9\-]/g, "");
+
+          teamsMap[normalize(teamData.school)] = {
+            id: doc.id,
+            ...teamData,
+            logo: teamData.logos1 || teamData.logos2 || null,
+            logos1: teamData.logos1 || null,
+            logos2: teamData.logos2 || null,
+            colors: teamData.colors || {},
+            conference: teamData.conference || "Unknown",
+            mascot: teamData.mascot || "",
+            city: teamData.city || "",
+            state: teamData.state || "",
+            currentWeekPoints: teamData.currentSeason?.currentWeekPoints || null,
+            gameComplete: teamData.currentSeason?.gameComplete || false,
+            name: teamData.school,
+            school: teamData.school
+          };
+        }
+      });
+      setAllTeams(teamsMap);
+
+      // Create a reverse lookup map
       const schoolToTeamMap = {};
       Object.values(teamsMap).forEach(team => {
         if (team.school) {
@@ -188,924 +459,679 @@
         schoolName ? schoolToTeamMap[schoolName] || null : null
       );
 
-        setStarters(startersResolved);
-        setBench(benchResolved);
-        setLoading(false);
-      };
-
-      fetchLineup();
-    }, [leagueId]);
-
-    const handleTeamClick = (teamName) => {
-      navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
+      setStarters(startersResolved);
+      setBench(benchResolved);
+      setLoading(false);
     };
 
-    const handleSwap = (starterIndex, benchTeam) => {
-      const starterTeam = starters[starterIndex];
-      const newStarters = [...starters];
-      const newBench = [...bench];
+    fetchLineup();
+  }, [leagueId]);
 
-      newStarters[starterIndex] = benchTeam;
-      const benchIndex = newBench.findIndex(t => t?.school === benchTeam.school);
-      newBench[benchIndex] = starterTeam;
+  const handleTeamClick = (teamName) => {
+    navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
+  };
 
-      setStarters(newStarters);
-      setBench(newBench);
+  const handleSwap = (starterIndex, benchTeam) => {
+    const starterTeam = starters[starterIndex];
+    const newStarters = [...starters];
+    const newBench = [...bench];
 
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
+    newStarters[starterIndex] = benchTeam;
+    const benchIndex = newBench.findIndex(t => t?.school === benchTeam.school);
+    newBench[benchIndex] = starterTeam;
 
-      // NORMALIZE TEAM NAMES BEFORE SAVING
-      const normalizeTeamName = (team) => {
-        if (!team?.school) return null;
-        return team.school
-          .toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/&/g, "")
-          .replace(/[^a-z0-9\-]/g, "");
-      };
+    setStarters(newStarters);
+    setBench(newBench);
 
-      const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
-      updateDoc(memberRef, {
-        "lineup.starters": newStarters.map(t => normalizeTeamName(t)),
-        "lineup.bench": newBench.map(t => normalizeTeamName(t))
-      });
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    const normalizeTeamName = (team) => {
+      if (!team?.school) return null;
+      return team.school
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/&/g, "")
+        .replace(/[^a-z0-9\-]/g, "");
     };
 
-    const moveToStarters = (benchTeam, benchIndex) => {
+    const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
+    updateDoc(memberRef, {
+      "lineup.starters": newStarters.map(t => normalizeTeamName(t)),
+      "lineup.bench": newBench.map(t => normalizeTeamName(t))
+    });
+  };
 
-      const normalizeTeamName = (team) => {
-        if (!team?.school) return null;
-        return team.school
-          .toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/&/g, "")
-          .replace(/[^a-z0-9\-]/g, "");
-      };
-      
-      // Find first empty starter slot
-      const emptyStarterIndex = starters.findIndex(t => t === null);
-      if (emptyStarterIndex === -1) return; // No empty slots
+  const moveToStarters = (benchTeam, benchIndex) => {
+    const normalizeTeamName = (team) => {
+      if (!team?.school) return null;
+      return team.school
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/&/g, "")
+        .replace(/[^a-z0-9\-]/g, "");
+    };
+    
+    const emptyStarterIndex = starters.findIndex(t => t === null);
+    if (emptyStarterIndex === -1) return;
 
-      const newStarters = [...starters];
-      const newBench = [...bench];
+    const newStarters = [...starters];
+    const newBench = [...bench];
 
-      newStarters[emptyStarterIndex] = benchTeam;
-      newBench[benchIndex] = null;
+    newStarters[emptyStarterIndex] = benchTeam;
+    newBench[benchIndex] = null;
 
-      setStarters(newStarters);
-      setBench(newBench);
+    setStarters(newStarters);
+    setBench(newBench);
 
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
 
-      const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
-      updateDoc(memberRef, {
-        "lineup.starters": newStarters.map(t => normalizeTeamName(t)), // CHANGED THIS LINE
-        "lineup.bench": newBench.map(t => normalizeTeamName(t))        // CHANGED THIS LINE
-      });
+    const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
+    updateDoc(memberRef, {
+      "lineup.starters": newStarters.map(t => normalizeTeamName(t)),
+      "lineup.bench": newBench.map(t => normalizeTeamName(t))
+    });
+  };
+
+  const moveToBench = (starterTeam, starterIndex) => {
+    const normalizeTeamName = (team) => {
+      if (!team?.school) return null;
+      return team.school
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/&/g, "")
+        .replace(/[^a-z0-9\-]/g, "");
+    };
+    
+    const emptyBenchIndex = bench.findIndex(t => t === null);
+    if (emptyBenchIndex === -1) return;
+
+    const newStarters = [...starters];
+    const newBench = [...bench];
+
+    newStarters[starterIndex] = null;
+    newBench[emptyBenchIndex] = starterTeam;
+
+    setStarters(newStarters);
+    setBench(newBench);
+
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
+    updateDoc(memberRef, {
+      "lineup.starters": newStarters.map(t => normalizeTeamName(t)),
+      "lineup.bench": newBench.map(t => normalizeTeamName(t))
+    });
+  };
+
+  const handleCutTeam = async (team, index, section) => {
+    const normalizeTeamName = (team) => {
+      if (!team?.school) return null;
+      return team.school
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/&/g, "")
+        .replace(/[^a-z0-9\-]/g, "");
     };
 
-    const moveToBench = (starterTeam, starterIndex) => {
+    const newStarters = [...starters];
+    const newBench = [...bench];
+    
+    if (section === 'starters') {
+      newStarters[index] = null;
+    } else {
+      newBench[index] = null;
+    }
+    
+    setStarters(newStarters);
+    setBench(newBench);
+    
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
 
-      const normalizeTeamName = (team) => {
-        if (!team?.school) return null;
-        return team.school
-          .toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/&/g, "")
-          .replace(/[^a-z0-9\-]/g, "");
-      };
-      
-      // Find first empty bench slot
-      const emptyBenchIndex = bench.findIndex(t => t === null);
-      if (emptyBenchIndex === -1) return; // No empty slots
+    const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
+    await updateDoc(memberRef, {
+      "lineup.starters": newStarters.map(t => normalizeTeamName(t)),
+      "lineup.bench": newBench.map(t => normalizeTeamName(t))
+    });
+    
+    alert(`✅ ${team.school} has been cut from your lineup.`);
+  };
 
-      const newStarters = [...starters];
-      const newBench = [...bench];
+  const handleSaveSmackTalk = async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
 
-      newStarters[starterIndex] = null;
-      newBench[emptyBenchIndex] = starterTeam;
-
-      setStarters(newStarters);
-      setBench(newBench);
-
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
-
-      const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
-      updateDoc(memberRef, {
-        "lineup.starters": newStarters.map(t => normalizeTeamName(t)),
-        "lineup.bench": newBench.map(t => normalizeTeamName(t))
-      });
-    };
-
-    const handleCutTeam = async (team, index, section) => {
-
-      const normalizeTeamName = (team) => {
-        if (!team?.school) return null;
-        return team.school
-          .toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/&/g, "")
-          .replace(/[^a-z0-9\-]/g, "");
-      };
-
-      const newStarters = [...starters];
-      const newBench = [...bench];
-      
-      if (section === 'starters') {
-        newStarters[index] = null;
-      } else {
-        newBench[index] = null;
-      }
-      
-      setStarters(newStarters);
-      setBench(newBench);
-      
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
-
+    setSmackTalkSaving(true);
+    try {
       const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
       await updateDoc(memberRef, {
-        "lineup.starters": newStarters.map(t => normalizeTeamName(t)),
-        "lineup.bench": newBench.map(t => normalizeTeamName(t))
+        smackTalk: smackTalk.trim()
       });
-      
-      alert(`✅ ${team.school} has been cut from your lineup.`);
-    };
+      setIsEditingSmackTalk(false);
+      alert("✅ Smack talk updated!");
+    } catch (error) {
+      console.error("Error saving smack talk:", error);
+      alert("Failed to save smack talk. Please try again.");
+    } finally {
+      setSmackTalkSaving(false);
+    }
+  };
 
-    const handleSaveSmackTalk = async () => {
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
+  const formatNextGame = (season) => {
+    if (!season?.nextOpponent) return "—";
+    const isHome = season.nextGameIsHome;
+    const spread = season.nextOpponentSpread ?? "TBD";
+    const prefix = isHome === false ? "@" : isHome === true ? "vs" : "?";
+    return `${prefix} ${season.nextOpponent} (${spread})`;
+  };
 
-      setSmackTalkSaving(true);
-      try {
-        const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
-        await updateDoc(memberRef, {
-          smackTalk: smackTalk.trim()
-        });
-        setIsEditingSmackTalk(false);
-        alert("✅ Smack talk updated!");
-      } catch (error) {
-        console.error("Error saving smack talk:", error);
-        alert("Failed to save smack talk. Please try again.");
-      } finally {
-        setSmackTalkSaving(false);
-      }
-    };
-
-    const formatNextGame = (season) => {
-      if (!season?.nextOpponent) return "—";
-      const isHome = season.nextGameIsHome;
-      const spread = season.nextOpponentSpread ?? "TBD";
-      const prefix = isHome === false ? "@" : isHome === true ? "vs" : "?";
-      return `${prefix} ${season.nextOpponent} (${spread})`;
-    };
-
-    const formatRosterLockInfo = () => {
-      if (!rosterLockDate || !rosterLockTime) return "";
-      
-      try {
-        // Parse date string directly without creating Date object
-        // Expected format: "2025-08-23"
-        const dateParts = rosterLockDate.split('-');
-        if (dateParts.length !== 3) {
-          return `${rosterLockDate} at ${rosterLockTime}`;
-        }
-        
-        const year = dateParts[0];
-        const monthNum = parseInt(dateParts[1], 10);
-        const day = parseInt(dateParts[2], 10);
-        
-        // Month names array
-        const monthNames = [
-          'January', 'February', 'March', 'April', 'May', 'June',
-          'July', 'August', 'September', 'October', 'November', 'December'
-        ];
-        
-        const monthName = monthNames[monthNum - 1]; // monthNum is 1-based
-        
-        // Parse time - expected format: "11:00" (remove any quotes)
-        const cleanTime = rosterLockTime.trim().replace(/"/g, '');
-        const timeParts = cleanTime.split(':');
-        
-        if (timeParts.length === 0) {
-          return `${monthName} ${day} at ${cleanTime} EST`;
-        }
-        
-        const hour = parseInt(timeParts[0], 10);
-        
-        // Check if hour parsing was successful
-        if (isNaN(hour)) {
-          return `${monthName} ${day} at ${cleanTime} EST`;
-        }
-        
-        // Convert to 12-hour format
-        const isAM = hour < 12;
-        const displayHour = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
-        const ampm = isAM ? 'am' : 'pm';
-        
-        return `${monthName} ${day} at ${displayHour}${ampm} EST`;
-        
-      } catch (error) {
-        console.error('Error formatting roster lock date:', error);
+  const formatRosterLockInfo = () => {
+    if (!rosterLockDate || !rosterLockTime) return "";
+    
+    try {
+      const dateParts = rosterLockDate.split('-');
+      if (dateParts.length !== 3) {
         return `${rosterLockDate} at ${rosterLockTime}`;
       }
-    };
-
-    // Team logo component
-    const TeamCard = ({ team, showBadge = false }) => {
-      const [expanded, setExpanded] = useState(false);
-
-      if (!team) return null;
-
-      const toggleExpanded = () => setExpanded((prev) => !prev);
-
-      return (
-        <div style={{
-          flex: 1,
-          padding: expanded ? "16px" : "12px",
-          borderRadius: "8px",
-          backgroundColor: "white",
-          border: "1px solid rgba(0, 0, 0, 0.1)",
-          position: "relative",
-          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-          transition: "all 0.2s ease"
-        }}>
-          {/* Weekly Points Badge */}
-          {showBadge && (
-            <div style={{
-              position: "absolute",
-              top: "12px",
-              right: "12px",
-              backgroundColor: team?.gameComplete 
-                ? (team?.currentWeekPoints > 0 ? "#059669" : "#6b7280")
-                : "#f59e0b",
-              color: "white",
-              borderRadius: "6px",
-              padding: "4px 8px",
-              fontSize: "12px",
-              fontWeight: "700",
-              boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)"
-            }}>
-              {team?.gameComplete ? (team?.currentWeekPoints || 0) : "?"} pts
-            </div>
-          )}
-
-          {/* Main Team Info */}
-          <div>
-            <strong 
-              onClick={() => handleTeamClick(team.school)}
-              style={{ 
-                cursor: "pointer", 
-                color: "#1e293b", 
-                textDecoration: "underline",
-                fontSize: "18px",
-                fontWeight: "700"
-              }}
-            >
-              {team.school}
-            </strong>
-            <div style={{ color: "#64748b", fontSize: "13px", marginTop: "2px" }}>
-              {team.conference}
-            </div>
-          </div>
-
-          {/* Next Game */}
-          <div style={{
-            marginTop: "10px",
-            padding: "6px 10px",
-            backgroundColor: "#f8fafc",
-            borderRadius: "6px",
-            fontSize: "12px"
-          }}>
-            <span style={{ color: "#64748b", fontWeight: "500" }}>Next: </span>
-            <span style={{ color: "#1e293b", fontWeight: "600" }}>
-              {formatNextGame(team.currentSeason)}
-            </span>
-          </div>
-
-          {/* Expanded Details */}
-          {expanded && (
-            <div style={{ 
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "8px", 
-              marginTop: "10px",
-              fontSize: "12px",
-              paddingTop: "8px",
-              borderTop: "1px solid #e2e8f0"
-            }}>
-              <div>
-                <span style={{ color: "#64748b" }}>Record: </span>
-                <span style={{ color: "#1e293b", fontWeight: "600" }}>
-                  {team.currentSeason?.record || "0-0"}
-                </span>
-              </div>
-              <div>
-                <span style={{ color: "#64748b" }}>ATS: </span>
-                <span style={{ color: "#1e293b", fontWeight: "600" }}>
-                  {team.currentSeason?.atsRecord || "0-0"}
-                </span>
-              </div>
-              <div>
-                <span style={{ color: "#64748b" }}>Conf: </span>
-                <span style={{ color: "#1e293b", fontWeight: "600" }}>
-                  {team.currentSeason?.confRecord || "0-0"}
-                </span>
-              </div>
-              <div>
-                <span style={{ color: "#64748b" }}>Points: </span>
-                <span style={{ color: "#059669", fontWeight: "700" }}>
-                  {team.currentSeason?.gamePoints ?? 0}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Toggle Button */}
-          <button
-            onClick={toggleExpanded}
-            style={{
-              position: "absolute",
-              bottom: "8px",
-              right: "8px",
-              backgroundColor: "#e5e7eb",
-              border: "none",
-              borderRadius: "50%",
-              width: "24px",
-              height: "24px",
-              fontSize: "14px",
-              cursor: "pointer"
-            }}
-          >
-            {expanded ? "▲" : "▼"}
-          </button>
-        </div>
-      );
-    };
-
-    if (loading) {
-      return (
-        <div style={{ 
-          padding: "20px", 
-          textAlign: "center",
-          color: "#64748b",
-          fontSize: "16px"
-        }}>
-          Loading your lineup...
-        </div>
-      );
+      
+      const year = dateParts[0];
+      const monthNum = parseInt(dateParts[1], 10);
+      const day = parseInt(dateParts[2], 10);
+      
+      const monthNames = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+      
+      const monthName = monthNames[monthNum - 1];
+      
+      const cleanTime = rosterLockTime.trim().replace(/"/g, '');
+      const timeParts = cleanTime.split(':');
+      
+      if (timeParts.length === 0) {
+        return `${monthName} ${day} at ${cleanTime} EST`;
+      }
+      
+      const hour = parseInt(timeParts[0], 10);
+      
+      if (isNaN(hour)) {
+        return `${monthName} ${day} at ${cleanTime} EST`;
+      }
+      
+      const isAM = hour < 12;
+      const displayHour = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+      const ampm = isAM ? 'am' : 'pm';
+      
+      return `${monthName} ${day} at ${displayHour}${ampm} EST`;
+      
+    } catch (error) {
+      console.error('Error formatting roster lock date:', error);
+      return `${rosterLockDate} at ${rosterLockTime}`;
     }
+  };
 
-    const hasEmptyStarterSlots = starters.some(t => t === null);
-    const hasEmptyBenchSlots = bench.some(t => t === null);
+  const handleLogout = async () => {
+    if (window.confirm("Are you sure you want to log out?")) {
+      try {
+        await auth.signOut();
+        navigate("/");
+      } catch (err) {
+        console.error("Logout error:", err);
+      }
+    }
+  };
 
+  if (loading) {
     return (
-      <div style={{ backgroundColor: "#f8fafc", minHeight: "100vh" }}>
-        <LeagueNavBar />
-        
-      {/* Header */}
-      <div style={{ 
-        padding: "20px 16px 16px 16px",
-        background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)",
-        color: "white"
-      }}>
-        <h1 style={{ 
-          fontSize: "32px",
-          fontWeight: "700", 
-          margin: "0",
-          textAlign: "left"
-        }}>
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px"
-          }}>
-            {/* Team Logo Placeholder */}
-            <div style={{
-              width: "80px",
-              height: "80px",
-              borderRadius: "50%",
-              backgroundColor: "rgba(255, 255, 255, 0.3)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "36px",
-              fontWeight: "700",
-              color: "white"
-            }}>
-              {teamName.charAt(0)}
-            </div>
-            {teamName}
-          </div>
-        </h1>
-        <div style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          alignItems: "center",
-          height: "80px",           // ADDED THIS LINE
-          marginTop: "-80px"        // ADDED THIS LINE to overlay with the logo
-        }}>
-          <div style={{
-            fontSize: "18px",
-            fontWeight: "700",
-            backgroundColor: "white",
-            color: "#1e40af",
-            padding: "8px 16px",
-            borderRadius: "16px",
-            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)"
-          }}>
-            {squadPoints.toLocaleString()} pts
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        </div>
+        <div className="relative z-10 flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="text-4xl mb-4 animate-spin">🏈</div>
+            <p className="text-xl text-white/80">Loading your lineup...</p>
           </div>
         </div>
       </div>
+    );
+  }
 
-        {/* Roster Lock Info */}
-        {rosterLockDate && rosterLockTime && (
-          <div style={{
-            backgroundColor: "#fef3c7",
-            border: "1px solid #f59e0b",
-            padding: "12px 16px",
-            textAlign: "center",
-            fontSize: "14px",
-            fontWeight: "500",
-            color: "#92400e"
-          }}>
+  const hasEmptyStarterSlots = starters.some(t => t === null);
+  const hasEmptyBenchSlots = bench.some(t => t === null);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      </div>
+
+      <BottomNavBar leagueId={leagueId} isDraftComplete={true} />
+
+      {/* Navigation */}
+      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
+        <Link to="/home" className="flex items-center space-x-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
+            L
+          </div>
+          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            Lineup
+          </span>
+        </Link>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
+          >
+            Logout
+          </button>
+        </div>
+      </nav>
+
+      {/* Header */}
+      <div className="relative z-10 text-center mb-8 px-4 sm:px-6">
+        <div className="mb-4">
+          <span className="inline-block text-4xl sm:text-5xl mb-2">🏈</span>
+        </div>
+        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black leading-tight mb-2">
+          <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+            {teamName}
+          </span>
+        </h1>
+        <div className="text-2xl font-bold text-blue-400 mb-2">
+          {squadPoints.toLocaleString()} Season Pts
+        </div>
+        <p className="text-lg sm:text-xl text-white/80">
+          Current Week: {currentWeek}
+        </p>
+      </div>
+
+      {/* Roster Lock Info */}
+      {rosterLockDate && rosterLockTime && (
+        <div className="relative z-10 mx-4 sm:mx-6 mb-6 bg-yellow-400/20 backdrop-blur-sm border border-yellow-400/30 rounded-xl p-4 text-center">
+          <div className="text-yellow-400 font-semibold">
             ⏰ Roster locks on {formatRosterLockInfo()}
           </div>
-        )}
+        </div>
+      )}
 
-        <div style={{ padding: "16px" }}>
-          {/* Smack Talk Section */}
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "16px",
-            padding: "20px",
-            marginBottom: "16px",
-            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-            border: "1px solid #e2e8f0"
-          }}>
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: "12px"
-            }}>
-              <h3 style={{
-                fontSize: "18px",
-                fontWeight: "600",
-                color: "#1e293b",
-                margin: 0
-              }}>
-                💬 Smack Talk
-              </h3>
-              {!isEditingSmackTalk && (
-                <button
-                  onClick={() => setIsEditingSmackTalk(true)}
-                  style={{
-                    backgroundColor: "#1e40af",
-                    color: "white",
-                    border: "none",
-                    padding: "6px 12px",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                    fontWeight: "500",
-                    cursor: "pointer"
-                  }}
-                >
-                  Edit
-                </button>
-              )}
-            </div>
-
-            {isEditingSmackTalk ? (
-              <div>
-                <textarea
-                  value={smackTalk}
-                  onChange={(e) => setSmackTalk(e.target.value.slice(0, 80))}
-                  placeholder="Say something to intimidate your opponents... (max 80 chars)"
-                  style={{
-                    width: "100%",
-                    minHeight: "60px",
-                    padding: "12px",
-                    border: "2px solid #e5e7eb",
-                    borderRadius: "12px",
-                    fontSize: "14px",
-                    fontFamily: "inherit",
-                    resize: "none",
-                    boxSizing: "border-box"
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = "#1e40af"}
-                  onBlur={(e) => e.target.style.borderColor = "#e5e7eb"}
-                />
-                <div style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginTop: "8px"
-                }}>
-                  <span style={{
-                    fontSize: "12px",
-                    color: smackTalk.length > 70 ? "#dc2626" : "#64748b"
-                  }}>
-                    {smackTalk.length}/80 characters
-                  </span>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button
-                      onClick={() => {
-                        setIsEditingSmackTalk(false);
-                      }}
-                      style={{
-                        backgroundColor: "#6b7280",
-                        color: "white",
-                        border: "none",
-                        padding: "8px 16px",
-                        borderRadius: "8px",
-                        fontSize: "14px",
-                        cursor: "pointer"
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleSaveSmackTalk}
-                      disabled={smackTalkSaving}
-                      style={{
-                        backgroundColor: smackTalkSaving ? "#94a3b8" : "#059669",
-                        color: "white",
-                        border: "none",
-                        padding: "8px 16px",
-                        borderRadius: "8px",
-                        fontSize: "14px",
-                        cursor: smackTalkSaving ? "not-allowed" : "pointer"
-                      }}
-                    >
-                      {smackTalkSaving ? "Saving..." : "Save"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div>
-                {smackTalk.trim() ? (
-                  <div style={{
-                    backgroundColor: "#1e40af",
-                    color: "white",
-                    padding: "12px 16px",
-                    borderRadius: "16px",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    position: "relative",
-                    display: "inline-block",
-                    maxWidth: "100%",
-                    wordWrap: "break-word"
-                  }}>
-                    {smackTalk}
-                    {/* Speech bubble tail */}
-                    <div style={{
-                      position: "absolute",
-                      bottom: "-6px",
-                      left: "16px",
-                      width: 0,
-                      height: 0,
-                      borderLeft: "6px solid transparent",
-                      borderRight: "6px solid transparent",
-                      borderTop: "6px solid #1e40af"
-                    }} />
-                  </div>
-                ) : (
-                  <p style={{
-                    color: "#64748b",
-                    fontSize: "14px",
-                    margin: 0,
-                    fontStyle: "italic"
-                  }}>
-                    No smack talk set. Click Edit to add some trash talk for your opponents to see!
-                  </p>
-                )}
-              </div>
+      {/* Main Content */}
+      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 pb-32">
+        
+        {/* Smack Talk Section */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+              💬 Smack Talk
+            </h3>
+            {!isEditingSmackTalk && (
+              <button
+                onClick={() => setIsEditingSmackTalk(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
+              >
+                Edit
+              </button>
             )}
           </div>
 
-          {/* Starters Section */}
-          <div style={{
-            backgroundColor: "white",
-            borderRadius: "16px",
-            padding: "20px",
-            marginBottom: "16px",
-            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-            border: "1px solid #e2e8f0"
-          }}>
-            <h3 style={{
-              fontSize: "18px",
-              fontWeight: "600",
-              color: "#1e293b",
-              margin: "0 0 16px 0"
-            }}>
-              🏈 Starters (5)
-            </h3>
-            
+          {isEditingSmackTalk ? (
+            <div>
+              <textarea
+                value={smackTalk}
+                onChange={(e) => setSmackTalk(e.target.value.slice(0, 80))}
+                placeholder="Say something to intimidate your opponents... (max 80 chars)"
+                className="w-full min-h-[80px] p-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl text-white placeholder-white/60 resize-none focus:outline-none focus:border-blue-400 transition-colors duration-200"
+              />
+              <div className="flex justify-between items-center mt-3">
+                <span className={`text-sm ${smackTalk.length > 70 ? 'text-red-400' : 'text-white/60'}`}>
+                  {smackTalk.length}/80 characters
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setIsEditingSmackTalk(false)}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors duration-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveSmackTalk}
+                    disabled={smackTalkSaving}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-500 text-white rounded-lg text-sm font-medium transition-colors duration-200"
+                  >
+                    {smackTalkSaving ? "Saving..." : "Save"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              {smackTalk.trim() ? (
+                <div className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 py-3 rounded-2xl inline-block max-w-full relative">
+                  {smackTalk}
+                  <div className="absolute bottom-0 left-4 transform translate-y-full">
+                    <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-blue-500" />
+                  </div>
+                </div>
+              ) : (
+                <p className="text-white/60 italic">
+                  No smack talk set. Click Edit to add some trash talk for your opponents to see!
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Starters Section */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
+          <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+            <Users className="text-green-400" size={20} />
+            🏈 Starters (5)
+          </h3>
+          
+          <div className="space-y-4">
             {Array.from({ length: 5 }).map((_, idx) => {
               const team = starters[idx];
               return (
                 <div
                   key={idx}
-                  style={{
-                    padding: "16px",
-                    marginBottom: idx < 4 ? "8px" : 0,
-                    borderRadius: "12px",
-                    backgroundColor: team?.color || "#f8fafc",
-                    border: team ? "1px solid #d1fae5" : "2px dashed #059669",
-                    position: "relative",
-                    minHeight: "100px",
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: "16px"
-                  }}
+                  className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:bg-white/10 transition-all duration-300 overflow-hidden"
                 >
                   {team ? (
-                    <div style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: "12px",
-                      width: "100%"
-                    }}>
-                      <TeamCard team={team} showBadge={true} />
-                      
-                        <div style={{ 
-                          display: "flex", 
-                          flexDirection: "column", 
-                          gap: "6px",
-                          alignItems: "flex-end", // Remove this line
-                          alignItems: "stretch", // Add this instead
-                          flexShrink: 0,
-                          width: "80px" // Add consistent width
-                        }}>
+                    <>
+                      {/* Compact Team Info Card - Always Visible */}
+                      <div className="p-4 flex gap-3">
+                        {/* Left Side - Logo and Expand Button */}
+                        <div className="flex-shrink-0 flex flex-col items-center gap-1">
+                          <TeamLogo teamName={team.school} size={48} clickable={false} />
+                          <div className="mt-2">
+                            <button
+                              onClick={() => {
+                                const newExpanded = [...expandedTeams];
+                                newExpanded[idx] = !newExpanded[idx];
+                                setExpandedTeams(newExpanded);
+                              }}
+                              className="w-6 h-6 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-all duration-200 text-xs font-bold"
+                              title={expandedTeams[idx] ? "Collapse details" : "Expand details"}
+                            >
+                              {expandedTeams[idx] ? '▲' : '▼'}
+                            </button>
+                          </div>
+                        </div>
                         
-                        {hasEmptyBenchSlots && (
-                          <button 
-                            onClick={() => moveToBench(team, idx)}
-                            style={{
-                              backgroundColor: "#A78BFA",
-                              color: "white",
-                              border: "none",
-                              padding: "8px 12px",
-                              borderRadius: "6px",
-                              fontSize: "12px",
-                              cursor: "pointer",
-                              fontWeight: "500"
-                            }}
-                          >
-                            → Bench
-                          </button>
-                        )}
-
-                        
-                        {/* Drop Button */}
-                        <Link
-                          to={`/${leagueId}/free-agents?drop=${encodeURIComponent(team.school)}&from=starters&index=${idx}`}
-                          style={{
-                            backgroundColor: "#0ea5e9",
-                            color: "white",
-                            padding: "8px 12px",
-                            textDecoration: "none",
-                            borderRadius: "6px",
-                            fontSize: "12px",
-                            fontWeight: "500",
-                            textAlign: "center"
-                          }}
-                        >
-                          🔄 Drop
-                        </Link>
-                        
-                        <button
-                          onClick={() => openCutModal(team, idx, 'starters')}
-                          style={{
-                            backgroundColor: "#7f1d1d",
-                            color: "white",
-                            padding: "8px 12px",
-                            border: "none",
-                            borderRadius: "6px",
-                            fontSize: "12px",
-                            fontWeight: "500",
-                            textAlign: "center",
-                            cursor: "pointer",
-                            display: "flex",           // Add this
-                            alignItems: "center",      // Add this
-                            justifyContent: "center"   // Add this
-                          }}
-                        >
-                          ❌ Cut
-                        </button>
+                        {/* Team Info - Ultra Compact */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between mb-1">
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-base font-bold text-white truncate">
+                                {team.school}
+                              </h4>
+                              <div className="text-xs text-white/60 leading-tight">
+                                {team.conference}
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
+                              <span className="text-green-400 font-bold text-xs bg-green-400/20 px-2 py-1 rounded-full">
+                                {team.currentSeason?.gamePoints || 0} Overall Pts
+                              </span>
+                              <span className="text-orange-400 font-bold text-xs bg-orange-400/20 px-2 py-1 rounded-full">
+                                {team.currentWeekPoints || 0} Weekly Pts
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="text-xs text-white/80 leading-tight pr-2">
+                            <div className="truncate">
+                              {formatNextGame(team.currentSeason)}
+                            </div>
+                            {team.currentSeason?.nextGameDate && (
+                              <div className="text-white/60 text-xs leading-none">
+                                {new Date(team.currentSeason.nextGameDate).toLocaleDateString('en-US', { 
+                                  month: 'short', 
+                                  day: 'numeric' 
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
+
+                      {/* Expandable Section - Only when expanded */}
+                      {expandedTeams[idx] && (
+                        <div className="border-t border-white/10 bg-white/5">
+                          {/* Additional Stats */}
+                          <div className="px-4 py-3">
+                            <div className="flex gap-4 text-xs text-white/60 mb-3">
+                              <span>Record: {team.currentSeason?.record || "0-0"}</span>
+                              <span>ATS: {team.currentSeason?.atsRecord || "0-0"}</span>
+                              <span 
+                                onClick={() => handleTeamClick(team.school)}
+                                className="text-blue-400 hover:text-blue-300 cursor-pointer underline"
+                              >
+                                View Details →
+                              </span>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-2">
+                              {/* Drop to Bench Button */}
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMoveTeam(team, 'starters', idx, 'bench');
+                                }}
+                                className="flex-1 px-3 py-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white text-xs rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-purple-500/25 transform hover:scale-105"
+                                title="Move this team to your bench"
+                              >
+                                📋 Drop to Bench
+                              </button>
+                              
+                              {/* Cut Button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openCutModal(team, idx, 'starters');
+                                }}
+                                className="flex-1 px-3 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white text-xs rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-red-500/25 transform hover:scale-105"
+                                title="Remove this team from your lineup completely"
+                              >
+                                ✂️ Cut
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   ) : (
-                    <div style={{ 
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: "100%",
-                      height: "100%",        // Add this for vertical centering
-                      gap: "12px",
-                      flexDirection: "column" // Add this to stack vertically
-                    }}>
+                    <div className="flex items-center justify-center py-6 border-2 border-dashed border-green-400/50 rounded-xl m-4 min-h-[80px]">
                       <Link
                         to={`/${leagueId}/free-agents`}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          width: "48px",
-                          height: "48px",
-                          backgroundColor: "#059669",
-                          color: "white",
-                          borderRadius: "50%",
-                          textDecoration: "none",
-                          fontSize: "24px",
-                          fontWeight: "700",
-                          boxShadow: "0 2px 8px rgba(5, 150, 105, 0.3)",
-                          transition: "all 0.2s ease"
-                        }}
+                        className="flex flex-col items-center gap-2 text-green-400 hover:text-green-300 transition-colors duration-200 no-underline"
                       >
-                        +
+                        <div className="w-8 h-8 bg-green-600 hover:bg-green-700 rounded-full flex items-center justify-center text-lg text-white transition-colors duration-200">
+                          +
+                        </div>
+                        <span className="font-semibold text-sm">Add Team from Free Agents</span>
                       </Link>
-                      <div style={{
-                        color: "#059669",
-                        fontSize: "16px",
-                        fontWeight: "600"
-                      }}>
-                        Add Team from Free Agents
-                      </div>
                     </div>
                   )}
                 </div>
               );
             })}
           </div>
+        </div>
 
-          {/* Bench Section */}
-                  <div style={{
-                    backgroundColor: "white",
-                    borderRadius: "16px",
-                    padding: "20px",
-                    marginBottom: "16px",
-                    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-                    border: "1px solid #e2e8f0"
-                  }}>
-                    <h3 style={{
-                      fontSize: "18px",
-                      fontWeight: "600",
-                      color: "#1e293b",
-                      margin: "0 0 16px 0"
-                    }}>
-                      🪑 Bench (2)
-                    </h3>
-                    
-                    {Array.from({ length: 2 }).map((_, idx) => {
-                      const team = bench[idx];
-                      return (
-                        <div
-                          key={idx}
-                          style={{
-                            padding: "16px",
-                            marginBottom: idx < 1 ? "8px" : 0,
-                            borderRadius: "12px",
-                            backgroundColor: team?.color || "#f8fafc",
-                            border: team ? "1px solid #fed7aa" : "2px dashed #d97706",
-                            position: "relative",
-                            minHeight: "100px",
-                            display: "flex",
-                            alignItems: "flex-start",
-                            gap: "16px"
-                          }}
-                        >
-                          {team ? (
-                            <div style={{
-                              display: "flex",
-                              alignItems: "flex-start",
-                              gap: "12px",
-                              width: "100%"
-                            }}>
-                              <TeamCard team={team} showBadge={true} />
-                              
-                              <div style={{ 
-                                display: "flex", 
-                                flexDirection: "column", 
-                                gap: "6px",
-                                alignItems: "stretch",
-                                flexShrink: 0
-                              }}>
-                                
-                                {hasEmptyStarterSlots && (
-                                  <button 
-                                    onClick={() => moveToStarters(team, idx)}
-                                    style={{
-                                      backgroundColor: "#059669",
-                                      color: "white",
-                                      border: "none",
-                                      padding: "8px 12px",
-                                      borderRadius: "6px",
-                                      fontSize: "12px",
-                                      cursor: "pointer",
-                                      fontWeight: "500"
-                                    }}
-                                  >
-                                    → Starters
-                                  </button>
-                                )}
-                                
-                                {/* Drop Button */}
-                                <Link
-                                  to={`/${leagueId}/free-agents?drop=${encodeURIComponent(team.school)}&from=bench&index=${idx}`}
-                                  style={{
-                                    backgroundColor: "#0ea5e9",
-                                    color: "white",
-                                    padding: "8px 12px",
-                                    textDecoration: "none",
-                                    borderRadius: "6px",
-                                    fontSize: "12px",
-                                    fontWeight: "500",
-                                    textAlign: "center"
-                                  }}
-                                >
-                                  🔄 Drop
-                                </Link>
-                                
-                                <button
-                                  onClick={() => openCutModal(team, idx, 'bench')}
-                                  style={{
-                                    backgroundColor: "#7f1d1d",
-                                    color: "white",
-                                    padding: "8px 12px",
-                                    border: "none",
-                                    borderRadius: "6px",
-                                    fontSize: "12px",
-                                    fontWeight: "500",
-                                    textAlign: "center",
-                                    cursor: "pointer",
-                                    display: "flex",           // Add this
-                                    alignItems: "center",      // Add this
-                                    justifyContent: "center"   // Add this
-                                  }}
-                                >
-                                  ❌ Cut
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div style={{ 
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              width: "100%",
-                              height: "100%",        // ADD THIS
-                              gap: "12px",
-                              flexDirection: "column" // ADD THIS
-                            }}>
-                              <Link
-                                to={`/${leagueId}/free-agents`}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  width: "48px",
-                                  height: "48px",
-                                  backgroundColor: "#d97706",
-                                  color: "white",
-                                  borderRadius: "50%",
-                                  textDecoration: "none",
-                                  fontSize: "24px",
-                                  fontWeight: "700",
-                                  boxShadow: "0 2px 8px rgba(217, 119, 6, 0.3)",
-                                  transition: "all 0.2s ease"
-                                }}
-                              >
-                                +
-                              </Link>
-                              <div style={{
-                                color: "#d97706",
-                                fontSize: "16px",
-                                fontWeight: "600"
-                              }}>
-                                Add Team from Free Agents
-                              </div>
-                            </div>
-                          )}
+        {/* Bench Section */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
+          <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+            <Star className="text-orange-400" size={20} />
+            🪑 Bench (2)
+          </h3>
+          
+          <div className="space-y-4">
+            {Array.from({ length: 2 }).map((_, idx) => {
+              const team = bench[idx];
+              return (
+                <div
+                  key={idx}
+                  className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:bg-white/10 transition-all duration-300 overflow-hidden"
+                >
+                  {team ? (
+                    <>
+                      {/* Compact Team Info Card - Always Visible */}
+                      <div className="p-4 flex gap-3">
+                        {/* Left Side - Logo and Expand Button */}
+                        <div className="flex-shrink-0 flex flex-col items-center gap-1">
+                          <TeamLogo teamName={team.school} size={48} clickable={false} />
+                          <div className="mt-2">
+                            <button
+                              onClick={() => {
+                                const newExpanded = [...expandedTeams];
+                                newExpanded[idx + 5] = !newExpanded[idx + 5]; // +5 for bench offset
+                                setExpandedTeams(newExpanded);
+                              }}
+                              className="w-6 h-6 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-all duration-200 text-xs font-bold"
+                              title={expandedTeams[idx + 5] ? "Collapse details" : "Expand details"}
+                            >
+                              {expandedTeams[idx + 5] ? '▲' : '▼'}
+                            </button>
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                        
+                        {/* Team Info - Ultra Compact */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between mb-1">
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-base font-bold text-white truncate">
+                                {team.school}
+                              </h4>
+                              <div className="text-xs text-white/60 leading-tight">
+                                {team.conference}
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
+                              <span className="text-green-400 font-bold text-xs bg-green-400/20 px-2 py-1 rounded-full">
+                                {team.currentSeason?.gamePoints || 0} Overall Pts
+                              </span>
+                              <span className="text-orange-400 font-bold text-xs bg-orange-400/20 px-2 py-1 rounded-full">
+                                {team.currentWeekPoints || 0} Weekly Pts
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="text-xs text-white/80 leading-tight pr-2">
+                            <div className="truncate">
+                              {formatNextGame(team.currentSeason)}
+                            </div>
+                            {team.currentSeason?.nextGameDate && (
+                              <div className="text-white/60 text-xs leading-none">
+                                {new Date(team.currentSeason.nextGameDate).toLocaleDateString('en-US', { 
+                                  month: 'short', 
+                                  day: 'numeric' 
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Expandable Section - Only when expanded */}
+                      {expandedTeams[idx + 5] && (
+                        <div className="border-t border-white/10 bg-white/5">
+                          {/* Additional Stats */}
+                          <div className="px-4 py-3">
+                            <div className="flex gap-4 text-xs text-white/60 mb-3">
+                              <span>Record: {team.currentSeason?.record || "0-0"}</span>
+                              <span>ATS: {team.currentSeason?.atsRecord || "0-0"}</span>
+                              <span 
+                                onClick={() => handleTeamClick(team.school)}
+                                className="text-blue-400 hover:text-blue-300 cursor-pointer underline"
+                              >
+                                View Details →
+                              </span>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-2">
+                              {/* Make Starter Button */}
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMoveTeam(team, 'bench', idx, 'starters');
+                                }}
+                                className="flex-1 px-3 py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white text-xs rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-green-500/25 transform hover:scale-105"
+                                title="Move this team to your starters"
+                              >
+                                🚀 Make Starter
+                              </button>
+                              
+                              {/* Cut Button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openCutModal(team, idx, 'bench');
+                                }}
+                                className="flex-1 px-3 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white text-xs rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-red-500/25 transform hover:scale-105"
+                                title="Remove this team from your lineup completely"
+                              >
+                                ✂️ Cut
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center py-6 border-2 border-dashed border-orange-400/50 rounded-xl m-4 min-h-[80px]">
+                      <Link
+                        to={`/${leagueId}/free-agents`}
+                        className="flex flex-col items-center gap-2 text-orange-400 hover:text-orange-300 transition-colors duration-200 no-underline"
+                      >
+                        <div className="w-8 h-8 bg-orange-600 hover:bg-orange-700 rounded-full flex items-center justify-center text-lg text-white transition-colors duration-200">
+                          +
+                        </div>
+                        <span className="font-semibold text-sm">Add Team from Free Agents</span>
+                      </Link>
+                    </div>
+                  )}
                 </div>
+              );
+            })}
+          </div>
+        </div>
 
-                {/* Cut Modal */}
-                <CutModal />
-
-                {/* Bottom spacing for navigation */}
-                <div style={{ height: "80px" }} />
+        {/* Free Agent Instructions */}
+        <div className="bg-blue-500/20 backdrop-blur-sm border border-blue-400/30 rounded-xl p-4 mb-6">
+          <div className="flex items-center gap-3 text-blue-300">
+            <div className="text-2xl">💡</div>
+            <div>
+              <div className="font-semibold text-blue-200">Want to add new teams?</div>
+              <div className="text-sm text-blue-300 mt-1">
+                Cut a team to make room, or visit the{" "}
+                <Link 
+                  to={`/${leagueId}/free-agents`}
+                  className="font-semibold text-blue-100 hover:text-white underline transition-colors duration-200"
+                >
+                  Free Agents page
+                </Link>
+                {" "}to browse and add available teams directly.
               </div>
-            );
-          }
+            </div>
+          </div>
+        </div>
+      </div>
 
-  export default MyLineup;
+      {/* Cut Modal */}
+      <CutModal />
+      
+      {/* Move Modal */}
+      <MoveModal />
+    </div>
+  );
+}
+
+export default MyLineup;
