@@ -15,6 +15,19 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 
+const th = {
+  padding: "8px",
+  borderBottom: "1px solid #ccc",
+  textAlign: "left"
+};
+
+const td = {
+  padding: "8px",
+  borderBottom: "1px solid #eee",
+  verticalAlign: "top",
+  fontFamily: "monospace"
+};
+
 function AdminLeagueDetail() {
   const { leagueId } = useParams();
   const [league, setLeague] = useState(null);
@@ -149,122 +162,120 @@ function AdminLeagueDetail() {
     }
   };
 
+  const handleSimulateDraft = async () => {
+    if (!window.confirm("This will simulate a complete draft using the same logic as live drafts. Continue?")) return;
 
-// REPLACE your handleSimulateDraft function with this:
-const handleSimulateDraft = async () => {
-  if (!window.confirm("This will simulate a complete draft using the same logic as live drafts. Continue?")) return;
+    try {
+      // ✅ MATCH DRAFTROOM: Get teams the exact same way
+      const teamsSnap = await getDocs(collection(db, "teams"));
+      const teamNames = teamsSnap.docs
+        .filter(doc => {
+          const data = doc.data();
+          return data.school && 
+                typeof data.school === "string" && 
+                data.classification?.toLowerCase() === "fbs";
+        })
+        .map(doc => doc.id); // ✅ Use document ID (matches DraftRoom)
 
-  try {
-    // ✅ MATCH DRAFTROOM: Get teams the exact same way
-    const teamsSnap = await getDocs(collection(db, "teams"));
-    const teamNames = teamsSnap.docs
-      .filter(doc => {
-        const data = doc.data();
-        return data.school && 
-              typeof data.school === "string" && 
-              data.classification?.toLowerCase() === "fbs";
-      })
-      .map(doc => doc.id); // ✅ Use document ID (matches DraftRoom)
-
-    if (teamNames.length === 0) {
-      alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
-      return;
-    }
-
-    // ✅ MATCH DRAFTROOM: Build team rankings map
-    const allTeamsData = {};
-    teamsSnap.docs.forEach(doc => {
-      allTeamsData[doc.id] = doc.data();
-    });
-
-    const draftOrder = members.map(m => m.id);
-    const totalPicks = draftOrder.length * 7;
-
-    let availableTeams = [...teamNames];
-    const selectedTeams = {};
-    
-    // Initialize empty arrays for each manager
-    draftOrder.forEach(uid => {
-      selectedTeams[uid] = [];
-    });
-
-    // ✅ MATCH DRAFTROOM: Simulate all picks using exact same logic
-    for (let pickIndex = 0; pickIndex < totalPicks; pickIndex++) {
-      const currentUid = getCurrentPicker(draftOrder, pickIndex);
-      
-      if (!currentUid || availableTeams.length === 0) {
-        console.error(`Simulation failed at pick ${pickIndex}: no current UID or no available teams`);
-        break;
+      if (teamNames.length === 0) {
+        alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
+        return;
       }
 
-      // ✅ MATCH DRAFTROOM: Use exact same team selection logic as handleAutoPick
-      const teamRankings = {};
+      // ✅ MATCH DRAFTROOM: Build team rankings map
+      const allTeamsData = {};
+      teamsSnap.docs.forEach(doc => {
+        allTeamsData[doc.id] = doc.data();
+      });
+
+      const draftOrder = members.map(m => m.id);
+      const totalPicks = draftOrder.length * 7;
+
+      let availableTeams = [...teamNames];
+      const selectedTeams = {};
       
-      availableTeams.forEach(teamId => {
-        const teamData = allTeamsData[teamId];
-        if (teamData && teamData.philMetricDraftRank !== undefined) {
-          teamRankings[teamId] = teamData.philMetricDraftRank;
+      // Initialize empty arrays for each manager
+      draftOrder.forEach(uid => {
+        selectedTeams[uid] = [];
+      });
+
+      // ✅ MATCH DRAFTROOM: Simulate all picks using exact same logic
+      for (let pickIndex = 0; pickIndex < totalPicks; pickIndex++) {
+        const currentUid = getCurrentPicker(draftOrder, pickIndex);
+        
+        if (!currentUid || availableTeams.length === 0) {
+          console.error(`Simulation failed at pick ${pickIndex}: no current UID or no available teams`);
+          break;
         }
+
+        // ✅ MATCH DRAFTROOM: Use exact same team selection logic as handleAutoPick
+        const teamRankings = {};
+        
+        availableTeams.forEach(teamId => {
+          const teamData = allTeamsData[teamId];
+          if (teamData && teamData.philMetricDraftRank !== undefined) {
+            teamRankings[teamId] = teamData.philMetricDraftRank;
+          }
+        });
+
+        const availableTeamsWithRanks = availableTeams
+          .map(teamId => ({
+            id: teamId,
+            rank: teamRankings[teamId] || 999
+          }))
+          .sort((a, b) => a.rank - b.rank);
+
+        const bestTeam = availableTeamsWithRanks[0];
+        const pickedTeam = bestTeam.id; // ✅ Use document ID
+
+        // Add to selected teams
+        selectedTeams[currentUid].push(pickedTeam);
+        
+        // Remove from available teams
+        availableTeams = availableTeams.filter(t => t !== pickedTeam);
+      }
+
+      // ✅ MATCH DRAFTROOM: Create draft metadata in exact same format
+      await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), {
+        draftOrder,
+        currentPickIndex: totalPicks,
+        availableTeams,
+        selectedTeams,
+        draftComplete: true
       });
 
-      const availableTeamsWithRanks = availableTeams
-        .map(teamId => ({
-          id: teamId,
-          rank: teamRankings[teamId] || 999
-        }))
-        .sort((a, b) => a.rank - b.rank);
+      // ✅ MATCH DRAFTROOM: Update league status
+      await updateDoc(doc(db, "leagues", leagueId), {
+        draftComplete: true
+      });
 
-      const bestTeam = availableTeamsWithRanks[0];
-      const pickedTeam = bestTeam.id; // ✅ Use document ID
+      // ✅ MATCH DRAFTROOM: Update member lineups exactly like completeDraft function
+      const memberUpdates = Object.entries(selectedTeams).map(async ([uid, teams]) => {
+        const starters = teams.slice(0, 5);
+        const bench = teams.slice(5);
 
-      // Add to selected teams
-      selectedTeams[currentUid].push(pickedTeam);
-      
-      // Remove from available teams
-      availableTeams = availableTeams.filter(t => t !== pickedTeam);
+        const memberRef = doc(db, "leagues", leagueId, "members", uid);
+        await updateDoc(memberRef, {
+          "lineup.drafted": teams,
+          "lineup.starters": starters,
+          "lineup.bench": bench,
+          freeAgentMoves: 0,
+          points: 0,
+          weeklyPoints: 0,
+          smackTalk: ""
+        });
+      });
+
+      await Promise.all(memberUpdates);
+
+      alert("✅ Draft simulated using live draft logic!");
+      refresh();
+
+    } catch (err) {
+      console.error("Error simulating draft:", err);
+      alert("Error: " + err.message);
     }
-
-    // ✅ MATCH DRAFTROOM: Create draft metadata in exact same format
-    await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), {
-      draftOrder,
-      currentPickIndex: totalPicks,
-      availableTeams,
-      selectedTeams,
-      draftComplete: true
-    });
-
-    // ✅ MATCH DRAFTROOM: Update league status
-    await updateDoc(doc(db, "leagues", leagueId), {
-      draftComplete: true
-    });
-
-    // ✅ MATCH DRAFTROOM: Update member lineups exactly like completeDraft function
-    const memberUpdates = Object.entries(selectedTeams).map(async ([uid, teams]) => {
-      const starters = teams.slice(0, 5);
-      const bench = teams.slice(5);
-
-      const memberRef = doc(db, "leagues", leagueId, "members", uid);
-      await updateDoc(memberRef, {
-        "lineup.drafted": teams,
-        "lineup.starters": starters,
-        "lineup.bench": bench,
-        freeAgentMoves: 0,
-        points: 0,
-        weeklyPoints: 0,
-        smackTalk: ""
-      });
-    });
-
-    await Promise.all(memberUpdates);
-
-    alert("✅ Draft simulated using live draft logic!");
-    refresh();
-
-  } catch (err) {
-    console.error("Error simulating draft:", err);
-    alert("Error: " + err.message);
-  }
-};
+  };
 
   const handleSimulateAllButFinalPick = async () => {
     if (!window.confirm("This will simulate the entire draft except for the final pick using exact live draft logic. Continue?")) return;
@@ -739,181 +750,178 @@ const handleSimulateDraft = async () => {
   if (!league) return <p>League not found.</p>;
 
   return (
-    <div style={{ padding: "2rem" }}>
-      <h2>Admin View: {league.name}</h2>
-      
-      {/* Current Week Management Section */}
+    <div style={{ 
+      minHeight: "100vh",
+      backgroundColor: "#ffffff",
+      padding: "0"
+    }}>
       <div style={{ 
-        backgroundColor: "#f0f8ff", 
-        border: "1px solid #0ea5e9", 
-        borderRadius: "8px", 
-        padding: "1rem", 
-        marginBottom: "2rem" 
+        padding: "2rem",
+        backgroundColor: "#ffffff",
+        minHeight: "100vh"
       }}>
-        <h3 style={{ margin: "0 0 1rem 0", color: "#0c4a6e" }}>Season Management</h3>
-        <p><strong>Current Week (Global):</strong> <span style={{ color: "#1e40af", fontSize: "1.1em" }}>{currentWeek}</span></p>
+        <h2>Admin View: {league.name}</h2>
         
-        <div style={{ marginTop: "1rem", display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
-          <select
-            value={newWeekValue}
-            onChange={(e) => setNewWeekValue(e.target.value)}
-            style={{ padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc" }}
-          >
-            {weekOptions.map(week => (
-              <option key={week} value={week}>{week}</option>
-            ))}
-          </select>
+        {/* Current Week Management Section */}
+        <div style={{ 
+          backgroundColor: "#f0f8ff", 
+          border: "1px solid #0ea5e9", 
+          borderRadius: "8px", 
+          padding: "1rem", 
+          marginBottom: "2rem" 
+        }}>
+          <h3 style={{ margin: "0 0 1rem 0", color: "#0c4a6e" }}>Season Management</h3>
+          <p><strong>Current Week (Global):</strong> <span style={{ color: "#1e40af", fontSize: "1.1em" }}>{currentWeek}</span></p>
           
+          <div style={{ marginTop: "1rem", display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
+            <select
+              value={newWeekValue}
+              onChange={(e) => setNewWeekValue(e.target.value)}
+              style={{ padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc" }}
+            >
+              {weekOptions.map(week => (
+                <option key={week} value={week}>{week}</option>
+              ))}
+            </select>
+            
+            <button 
+              onClick={handleUpdateCurrentWeek}
+              style={{
+                backgroundColor: "#1e40af",
+                color: "white",
+                border: "none",
+                padding: "0.5rem 1rem",
+                borderRadius: "4px",
+                cursor: "pointer"
+              }}
+            >
+              Update Global Week
+            </button>
+          </div>
+          
+          <p style={{ fontSize: "0.9em", color: "#64748b", marginTop: "0.5rem", marginBottom: 0 }}>
+            ⚠️ This updates the current week for ALL leagues globally.
+          </p>
+        </div>
+
+        {/* League Info */}
+        <p><strong>League ID:</strong> {league.id}</p>
+        <p><strong>Admin UID:</strong> {league.admin}</p>
+        <p><strong>Created By:</strong> {league.createdBy}</p>
+        <p><strong>Scoring Type:</strong> {league.scoringType}</p>
+        <p><strong>Max Managers:</strong> {league.maxManagers}</p>
+        <p><strong>Members:</strong> {league.members?.length || 0}</p>
+        <p><strong>Draft Status:</strong> {draftStatus()}</p>
+        <p><strong>Draft Type:</strong> {formatDraftType()}</p>
+        <p><strong>Draft Order:</strong> {formatDraftOrderType()}</p>
+        {league.draftType === "live" && (
+          <>
+            <p><strong>Draft Date:</strong> {formatDraftDateTime()}</p>
+            <p><strong>Time Per Pick:</strong> {league.timePerPick ? `${league.timePerPick} minute${league.timePerPick !== 1 ? 's' : ''}` : "-"}</p>
+          </>
+        )}
+        <p><strong>League Current Week:</strong> {league.currentWeek || "Not Set"}</p>
+        <p><strong>Created At:</strong> {league.createdAt?.toDate().toLocaleString()}</p>
+
+        <div style={{ marginTop: "1rem" }}>
+          <button onClick={handleSeedRemainingUsers}>
+            Seed Remaining Users
+          </button>
+
+          <button onClick={handleSimulateDraft} style={{ marginLeft: "1rem" }}>
+            Simulate Full Draft
+          </button>
+
           <button 
-            onClick={handleUpdateCurrentWeek}
-            style={{
-              backgroundColor: "#1e40af",
-              color: "white",
-              border: "none",
-              padding: "0.5rem 1rem",
-              borderRadius: "4px",
-              cursor: "pointer"
+            onClick={handleSimulateAllButFinalPick} 
+            style={{ 
+              marginLeft: "1rem", 
+              backgroundColor: "#1976d2", 
+              color: "white", 
+              border: "none", 
+              padding: "8px 12px", 
+              borderRadius: "4px" 
             }}
           >
-            Update Global Week
+            🎯 Simulate All But Final Pick
+          </button>
+
+          <button 
+            onClick={handleSimulateNext10Picks}
+            disabled={!draftMeta || draftMeta.draftComplete}
+            style={{ 
+              marginLeft: "1rem", 
+              backgroundColor: draftMeta && !draftMeta.draftComplete ? "#9c27b0" : "#ccc", 
+              color: "white", 
+              border: "none", 
+              padding: "8px 12px", 
+              borderRadius: "4px",
+              cursor: draftMeta && !draftMeta.draftComplete ? "pointer" : "not-allowed"
+            }}
+          >
+            ⚡ Simulate Next 10 Picks
+          </button>
+
+          <button onClick={handleResetDraft} style={{ marginLeft: "1rem", color: "red" }}>
+            🗑️ Reset Draft
           </button>
         </div>
-        
-        <p style={{ fontSize: "0.9em", color: "#64748b", marginTop: "0.5rem", marginBottom: 0 }}>
-          ⚠️ This updates the current week for ALL leagues globally.
-        </p>
-      </div>
 
-      {/* League Info */}
-      <p><strong>League ID:</strong> {league.id}</p>
-      <p><strong>Admin UID:</strong> {league.admin}</p>
-      <p><strong>Created By:</strong> {league.createdBy}</p>
-      <p><strong>Scoring Type:</strong> {league.scoringType}</p>
-      <p><strong>Max Managers:</strong> {league.maxManagers}</p>
-      <p><strong>Members:</strong> {league.members?.length || 0}</p>
-      <p><strong>Draft Status:</strong> {draftStatus()}</p>
-      <p><strong>Draft Type:</strong> {formatDraftType()}</p>
-      <p><strong>Draft Order:</strong> {formatDraftOrderType()}</p>
-      {league.draftType === "live" && (
-        <>
-          <p><strong>Draft Date:</strong> {formatDraftDateTime()}</p>
-          <p><strong>Time Per Pick:</strong> {league.timePerPick ? `${league.timePerPick} minute${league.timePerPick !== 1 ? 's' : ''}` : "-"}</p>
-        </>
-      )}
-      <p><strong>League Current Week:</strong> {league.currentWeek || "Not Set"}</p>
-      <p><strong>Created At:</strong> {league.createdAt?.toDate().toLocaleString()}</p>
-
-      <div style={{ marginTop: "1rem" }}>
-        <button onClick={handleSeedRemainingUsers}>
-          Seed Remaining Users
-        </button>
-
-        <button onClick={handleSimulateDraft} style={{ marginLeft: "1rem" }}>
-          Simulate Full Draft
-        </button>
-
-        <button 
-          onClick={handleSimulateAllButFinalPick} 
-          style={{ 
-            marginLeft: "1rem", 
-            backgroundColor: "#1976d2", 
-            color: "white", 
-            border: "none", 
-            padding: "8px 12px", 
-            borderRadius: "4px" 
-          }}
-        >
-          🎯 Simulate All But Final Pick
-        </button>
-
-        <button 
-          onClick={handleSimulateNext10Picks}
-          disabled={!draftMeta || draftMeta.draftComplete}
-          style={{ 
-            marginLeft: "1rem", 
-            backgroundColor: draftMeta && !draftMeta.draftComplete ? "#9c27b0" : "#ccc", 
-            color: "white", 
-            border: "none", 
-            padding: "8px 12px", 
-            borderRadius: "4px",
-            cursor: draftMeta && !draftMeta.draftComplete ? "pointer" : "not-allowed"
-          }}
-        >
-          ⚡ Simulate Next 10 Picks
-        </button>
-
-        <button onClick={handleResetDraft} style={{ marginLeft: "1rem", color: "red" }}>
-          🗑️ Reset Draft
-        </button>
-      </div>
-
-      <h3 style={{ marginTop: "2rem" }}>League Members</h3>
-      {members.length === 0 ? (
-        <p>No members in this league.</p>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "1rem", fontSize: "0.9rem" }}>
-          <thead>
-            <tr style={{ backgroundColor: "#f5f5f5" }}>
-              <th style={th}>UID</th>
-              <th style={th}>Display Name</th>
-              <th style={th}>Team Name</th>
-              <th style={th}>Email</th>
-              <th style={th}>Starters</th>
-              <th style={th}>Bench</th>
-              <th style={th}>Drafted</th>
-              <th style={th}>FA Moves</th>
-              <th style={th}>Joined</th>
-              <th style={th}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((m, idx) => (
-              <tr key={m.id} style={{ backgroundColor: idx % 2 === 0 ? "#fafafa" : "white" }}>
-                <td style={td}>{m.id}</td>
-                <td style={td}>{m.displayName}</td>
-                <td style={td}>{m.teamName}</td>
-                <td style={td}>{m.email}</td>
-                <td style={td}>{formatList(m.lineup?.starters)}</td>
-                <td style={td}>{formatList(m.lineup?.bench)}</td>
-                <td style={td}>{formatList(m.lineup?.drafted)}</td>
-                <td style={td}>{m.freeAgentMoves || 0}</td>
-                <td style={td}>
-                  {m.joinedAt?.toDate().toLocaleString() || "-"}
-                </td>
-                <td style={td}>
-                  {m.id !== league.admin ? (
-                    <>
-                      <button onClick={() => handleKick(m.id)} style={{ marginRight: "0.5rem", color: "red" }}>
-                        Kick
-                      </button>
-                      <button onClick={() => handlePromote(m.id)}>
-                        Promote
-                      </button>
-                    </>
-                  ) : (
-                    <em>Admin</em>
-                  )}
-                </td>
+        <h3 style={{ marginTop: "2rem" }}>League Members</h3>
+        {members.length === 0 ? (
+          <p>No members in this league.</p>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "1rem", fontSize: "0.9rem" }}>
+            <thead>
+              <tr style={{ backgroundColor: "#f5f5f5" }}>
+                <th style={th}>UID</th>
+                <th style={th}>Display Name</th>
+                <th style={th}>Team Name</th>
+                <th style={th}>Email</th>
+                <th style={th}>Starters</th>
+                <th style={th}>Bench</th>
+                <th style={th}>Drafted</th>
+                <th style={th}>FA Moves</th>
+                <th style={th}>Joined</th>
+                <th style={th}>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {members.map((m, idx) => (
+                <tr key={m.id} style={{ backgroundColor: idx % 2 === 0 ? "#fafafa" : "white" }}>
+                  <td style={td}>{m.id}</td>
+                  <td style={td}>{m.displayName}</td>
+                  <td style={td}>{m.teamName}</td>
+                  <td style={td}>{m.email}</td>
+                  <td style={td}>{formatList(m.lineup?.starters)}</td>
+                  <td style={td}>{formatList(m.lineup?.bench)}</td>
+                  <td style={td}>{formatList(m.lineup?.drafted)}</td>
+                  <td style={td}>{m.freeAgentMoves || 0}</td>
+                  <td style={td}>
+                    {m.joinedAt?.toDate().toLocaleString() || "-"}
+                  </td>
+                  <td style={td}>
+                    {m.id !== league.admin ? (
+                      <>
+                        <button onClick={() => handleKick(m.id)} style={{ marginRight: "0.5rem", color: "red" }}>
+                          Kick
+                        </button>
+                        <button onClick={() => handlePromote(m.id)}>
+                          Promote
+                        </button>
+                      </>
+                    ) : (
+                      <em>Admin</em>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
-
-const th = {
-  padding: "8px",
-  borderBottom: "1px solid #ccc",
-  textAlign: "left"
-};
-
-const td = {
-  padding: "8px",
-  borderBottom: "1px solid #eee",
-  verticalAlign: "top",
-  fontFamily: "monospace"
-};
 
 export default AdminLeagueDetail;
