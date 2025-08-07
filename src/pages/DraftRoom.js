@@ -686,16 +686,28 @@ function DraftRoom() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+// Updated formatCountdown function to handle days
   const formatCountdown = (seconds) => {
-    const hours = Math.floor(seconds / 3600);
+    const days = Math.floor(seconds / 86400); // 86400 seconds in a day
+    const hours = Math.floor((seconds % 86400) / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
     
-    if (hours > 0) {
+    if (days > 0) {
+      // Show days and hours when more than 24 hours
+      if (hours > 0) {
+        return `${days}d ${hours}h`;
+      } else {
+        return `${days}d`;
+      }
+    } else if (hours > 0) {
+      // Show hours, minutes, and seconds when less than 24 hours but more than 1 hour
       return `${hours}h ${minutes}m ${secs}s`;
     } else if (minutes > 0) {
+      // Show minutes and seconds when less than 1 hour
       return `${minutes}m ${secs}s`;
     } else {
+      // Show only seconds when less than 1 minute
       return `${secs}s`;
     }
   };
