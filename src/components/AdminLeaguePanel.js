@@ -203,9 +203,8 @@ function AdminLeaguePanel() {
         leagueIds: arrayUnion(leagueRef.id)
       });
 
-      // ✅ Create member document with consistent structure matching CreateLeague.js and JoinLeague.js
+      // ✅ Create member document without displayName field
       await setDoc(doc(db, "leagues", leagueRef.id, "members", userId), {
-        displayName: `${userData.firstName || 'User'}Bot`, // Add 'Bot' suffix for test leagues
         teamName: `${userData.lastName || 'Test'} FC`,
         email: userData.email || "",
         lineup: {

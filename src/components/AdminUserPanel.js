@@ -177,11 +177,21 @@ Go to Firebase Console → Authentication → Users and delete manually if neede
       const uid = uuidv4();
 
       const userDoc = {
+        email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}${i}@example.com`,
         firstName,
         lastName,
-        email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}${i}@example.com`,
-        dob: randomDate(),
-        leagueIds: []
+        freeAgentMoves: 0,
+        joinedAt: new Date().toISOString(),
+        lineup: {
+          bench: [],
+          drafted: [],
+          starters: []
+        },
+        points: 0,
+        smackTalk: "",
+        teamName: `${firstName}'s Team`,
+        weeklyPoints: 0,
+        weeklyPointsHistory: []
       };
 
       await setDoc(doc(db, "users", uid), userDoc);
