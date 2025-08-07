@@ -46,28 +46,47 @@ function DraftRoom() {
         const leagueDoc = await getDoc(doc(db, "leagues", leagueId));
         const leagueData = leagueDoc.exists() ? leagueDoc.data() : null;
         setLeagueData(leagueData);
+
         const user = auth.currentUser;
         if (!user) return;
-
         setUserId(user.uid);
 
         const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
         const userMapData = {};
-        membersSnap.forEach((doc) => {
-          userMapData[doc.id] = doc.data();
+        const userFirstNamesData = {};
+
+        const userFetches = [];
+
+        membersSnap.forEach((memberDoc) => {
+          const memberData = memberDoc.data();
+          userMapData[memberDoc.id] = memberData;
+          userFetches.push(
+            getDoc(doc(db, "users", memberDoc.id)).then((userDoc) => {
+              if (userDoc.exists()) {
+                const userData = userDoc.data();
+                userFirstNamesData[memberDoc.id] = userData.firstName || 'Unknown';
+              }
+            })
+          );
         });
+
+        await Promise.all(userFetches);
+
         setUserMap(userMapData);
+        setUserFirstNames(userFirstNamesData);
+
+        console.log("✅ setUserMap:", userMapData);
+        console.log("✅ setUserFirstNames:", userFirstNamesData);
 
         setIsLeagueAdmin(user.uid === leagueData?.admin);
         setMaxManagers(leagueData?.maxManagers || 8);
 
         const teamsSnap = await getDocs(collection(db, "teams"));
         const teamDataMap = {};
-        teamsSnap.forEach((doc) => {
-          teamDataMap[doc.id] = doc.data();
+        teamsSnap.forEach((teamDoc) => {
+          teamDataMap[teamDoc.id] = teamDoc.data();
         });
         setAllTeams(teamDataMap);
-
       } catch (error) {
         console.error("Error loading draft data:", error);
       }
@@ -266,16 +285,69 @@ function DraftRoom() {
         return;
       }
 
-      // ✅ FIXED: Use allTeams state instead of fetching again, and use document IDs
+      // ✅ CRITICAL FIX: Ensure allTeams is populated before proceeding
+      if (!allTeams || Object.keys(allTeams).length === 0) {
+        console.warn("⚠️ allTeams not loaded yet, fetching fresh team data...");
+        
+        // Fetch fresh team data if allTeams is not populated
+        const teamsSnap = await getDocs(collection(db, "teams"));
+        const freshTeamData = {};
+        teamsSnap.forEach((teamDoc) => {
+          freshTeamData[teamDoc.id] = teamDoc.data();
+        });
+        
+        // Use fresh data for rankings
+        const teamRankings = {};
+        availableTeamIds.forEach(teamId => {
+          const teamData = freshTeamData[teamId];
+          if (teamData && teamData.philMetricDraftRank !== undefined) {
+            teamRankings[teamId] = teamData.philMetricDraftRank;
+          }
+        });
+
+        // Filter available teams and sort by philMetricDraftRank (lowest = best)
+        const availableTeamsWithRanks = availableTeamIds
+          .map(teamId => ({
+            id: teamId,
+            rank: teamRankings[teamId] || 999 // Default high rank if not found
+          }))
+          .sort((a, b) => a.rank - b.rank); // Sort ascending (lower rank = better)
+
+        // Pick the best available team (lowest philMetricDraftRank)
+        const bestTeam = availableTeamsWithRanks[0];
+        const teamData = freshTeamData[bestTeam.id];
+        const teamDisplayName = teamData?.school || bestTeam.id;
+        
+        const fallbackName = userMap[currentUid]?.displayName || "Unknown";
+        const firstName = userFirstNames?.[currentUid];
+        const displayName = firstName || fallbackName;
+
+        console.log(`🤖 Auto-picking best available team (fresh data): ${teamDisplayName} (rank: ${bestTeam.rank}) for ${displayName}`);
+        
+        // ✅ Use the document ID (bestTeam.id) for the pick
+        await performPick(bestTeam.id, currentUid, true);
+        return;
+      }
+
+      // ✅ USE EXISTING allTeams STATE: Map document IDs to their philMetricDraftRank scores
       const teamRankings = {};
       
-      // Map document IDs to their philMetricDraftRank scores using allTeams state
+      // Verify we have ranking data for available teams
+      let teamsWithRankings = 0;
       availableTeamIds.forEach(teamId => {
         const teamData = allTeams[teamId];
         if (teamData && teamData.philMetricDraftRank !== undefined) {
           teamRankings[teamId] = teamData.philMetricDraftRank;
+          teamsWithRankings++;
         }
       });
+
+      console.log(`📊 Found ranking data for ${teamsWithRankings} of ${availableTeamIds.length} available teams`);
+
+      // If we don't have ranking data for most teams, something is wrong
+      if (teamsWithRankings < availableTeamIds.length * 0.5) {
+        console.warn("⚠️ Missing ranking data for most teams, this may indicate allTeams state is stale");
+      }
 
       // Filter available teams and sort by philMetricDraftRank (lowest = best)
       const availableTeamsWithRanks = availableTeamIds
@@ -290,8 +362,13 @@ function DraftRoom() {
       const teamData = allTeams[bestTeam.id];
       const teamDisplayName = teamData?.school || bestTeam.id;
       
-      console.log(`🤖 Auto-picking best available team: ${teamDisplayName} (rank: ${bestTeam.rank}) for ${userMap[currentUid]?.displayName}`);
-      
+      const fallbackName = userMap[currentUid]?.displayName || "Unknown";
+      const firstName = userFirstNames?.[currentUid];
+      const displayName = firstName || fallbackName;
+
+      console.log(`🤖 Auto-picking best available team: ${teamDisplayName} (rank: ${bestTeam.rank}) for ${displayName}`);
+      console.log(`📋 Top 5 available teams by rank:`, availableTeamsWithRanks.slice(0, 5).map(t => `${allTeams[t.id]?.school || t.id} (${t.rank})`));
+
       // ✅ Use the document ID (bestTeam.id) for the pick
       await performPick(bestTeam.id, currentUid, true);
 
@@ -347,7 +424,7 @@ function DraftRoom() {
       return;
     }
 
-    // ✅ FIXED: Use teamName directly without transformation
+    // ✅ Construct new selected teams object
     const newSelected = {
       ...freshDraftData.selectedTeams,
       [pickingUserId]: [...alreadyPicked, teamName]
@@ -372,7 +449,12 @@ function DraftRoom() {
       updateData.currentPickStartTime = serverTimestamp();
     }
 
-    console.log(`✅ Making pick: ${teamName} for ${userMap[pickingUserId]?.displayName} (Pick ${newIndex})`);
+    // ✅ Get proper display name using first name fallback
+    const fallbackName = userMap[pickingUserId]?.displayName || "Unknown";
+    const firstName = userFirstNames?.[pickingUserId];
+    const displayName = firstName || fallbackName;
+
+    console.log(`✅ Making pick: ${teamName} for ${displayName} (Pick ${newIndex})`);
 
     await updateDoc(draftRef, updateData);
 
@@ -388,7 +470,7 @@ function DraftRoom() {
     }
 
     if (isAutoPick) {
-      console.log(`Auto-picked ${teamName} for ${userMap[pickingUserId]?.displayName}`);
+      console.log(`Auto-picked ${teamName} for ${displayName}`);
     }
   };
 
@@ -893,9 +975,13 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
               {/* Full Width DraftBoard */}
 
               <div className="w-screen -mx-4 sm:-mx-6">
-                <DraftBoard draftData={draftData} userMap={userMap} allTeams={allTeams} />
+                <DraftBoard 
+                  draftData={draftData} 
+                  userMap={userMap} 
+                  allTeams={allTeams} 
+                  userFirstNames={userFirstNames}
+                />
               </div>
-
             </>
         ) : (
           /* Draft Entry Interface */
@@ -1616,7 +1702,12 @@ return (
 
       {/* Draft Board - Full Width */}
       <div className="w-screen -mx-4 sm:-mx-6">
-        <DraftBoard draftData={draftData} userMap={userMap} allTeams={allTeams} />
+        <DraftBoard 
+          draftData={draftData} 
+          userMap={userMap} 
+          allTeams={allTeams} 
+          userFirstNames={userFirstNames}
+        />
       </div>
 
     </div>

@@ -618,6 +618,7 @@ function LeagueRules() {
                           disabled={draftStarted}
                           className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:border-purple-400 focus:outline-none transition-colors disabled:opacity-50"
                         >
+                          <option value={0.1667} className="bg-slate-800">10 seconds</option>
                           <option value={1} className="bg-slate-800">1 minute</option>
                           <option value={2} className="bg-slate-800">2 minutes</option>
                           <option value={5} className="bg-slate-800">5 minutes</option>

@@ -1,6 +1,6 @@
 import React from "react";
 
-function DraftBoard({ draftData, userMap, allTeams }) {
+function DraftBoard({ draftData, userMap, allTeams, userFirstNames }) {
   if (!draftData) return null;
 
   if (!draftData.draftOrder || !Array.isArray(draftData.draftOrder)) {
@@ -62,7 +62,7 @@ function DraftBoard({ draftData, userMap, allTeams }) {
           <div style={{ display: "flex", background: "linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)", color: "white" }}>
             {draftOrder.map((uid, index) => {
               const teamName = userMap[uid]?.teamName || "Unnamed Team";
-              const firstName = userMap[uid]?.firstName || "Unknown";
+              const firstName = userFirstNames?.[uid] || "Unknown";
               return (
                 <div key={uid} style={{
                   width: "120px",

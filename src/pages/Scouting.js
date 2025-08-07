@@ -16,9 +16,12 @@ function Scouting() {
   const [searchQuery, setSearchQuery] = useState("");
 
   // Helper function to normalize team names for comparison
-  const normalizeTeamName = (teamName) => {
-    return teamName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-  };
+  const normalizeName = (name) =>
+    name
+      ?.toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/&/g, "-")
+      .replace(/[^a-z0-9\-]/g, "");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -56,9 +59,9 @@ function Scouting() {
                 Object.values(draftData.selectedTeams).forEach(userTeams => {
                   if (Array.isArray(userTeams)) {
                     userTeams.forEach(teamName => {
-                      // 🔧 FIX: Use team name directly (not normalized) for comparison
-                      draftedTeamsSet.add(teamName);
-                      console.log("📝 Added drafted team:", teamName);
+                      const normalized = normalizeName(teamName);
+                      draftedTeamsSet.add(normalized);
+                      console.log("📝 Added drafted team:", normalized);
                     });
                   }
                 });
@@ -83,10 +86,11 @@ function Scouting() {
           .filter((team) => (team.classification || "").toLowerCase() === "fbs")
           .map(team => ({
             ...team,
-            // 🔧 FIX: Check both document ID and school name for drafted status
-            isDrafted: draftedTeamsSet.has(team.id) || draftedTeamsSet.has(team.school)
+            isDrafted:
+              draftedTeamsSet.has(normalizeName(team.id)) ||
+              draftedTeamsSet.has(normalizeName(team.school))
           }));
-        
+  
         console.log("📊 Teams with draft status:", fbsTeams.filter(t => t.isDrafted).length, "drafted out of", fbsTeams.length);
         setTeams(fbsTeams);
         setLoading(false);
