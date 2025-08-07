@@ -14,7 +14,6 @@ function JoinLeague() {
   const navigate = useNavigate();
 
   const [leagueId, setLeagueId] = useState("");
-  const [displayName, setDisplayName] = useState("");
   const [teamName, setTeamName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -30,14 +29,14 @@ function JoinLeague() {
       const user = auth.currentUser;
       if (!user) throw new Error("User not logged in");
 
-      if (!displayName.trim() || !teamName.trim()) {
-        setError("Please enter a username and team name.");
+      if (!teamName.trim()) {
+        setError("Please enter a team name.");
         setLoading(false);
         return;
       }
 
-      if (displayName.length > 15 || teamName.length > 15) {
-        setError("Username must be 15 characters or fewer. Team name must be 20 characters or fewer.");
+      if (teamName.length > 20) {
+        setError("Team name must be 20 characters or fewer.");
         setLoading(false);
         return;
       }
@@ -69,9 +68,8 @@ function JoinLeague() {
         leagueIds: arrayUnion(leagueId)
       });
 
-      // Create member document with consistent structure
+      // Create member document with consistent structure (no displayName)
       await setDoc(memberRef, {
-        displayName: displayName.trim(),
         teamName: teamName.trim(),
         email: user.email || "",
         joinedAt: new Date(),
@@ -194,25 +192,6 @@ function JoinLeague() {
               </p>
             </div>
 
-            {/* Display Name Input */}
-            <div>
-              <label className="block text-sm font-medium text-white/80 mb-2">
-                Your Username *
-              </label>
-              <input
-                type="text"
-                placeholder="How others will see you"
-                value={displayName}
-                maxLength={15}
-                onChange={(e) => setDisplayName(e.target.value)}
-                required
-                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-              />
-              <p className="mt-1 text-xs text-white/60">
-                {displayName.length}/15 characters
-              </p>
-            </div>
-
             {/* Team Name Input */}
             <div>
               <label className="block text-sm font-medium text-white/80 mb-2">
@@ -235,9 +214,9 @@ function JoinLeague() {
             {/* Submit Button */}
             <button 
               type="submit" 
-              disabled={loading || !leagueId.trim() || !displayName.trim() || !teamName.trim()}
+              disabled={loading || !leagueId.trim() || !teamName.trim()}
               className={`w-full py-4 px-8 rounded-xl text-lg font-bold transition-all duration-300 transform flex items-center justify-center space-x-3 ${
-                loading || !leagueId.trim() || !displayName.trim() || !teamName.trim()
+                loading || !leagueId.trim() || !teamName.trim()
                   ? 'bg-white/20 text-white/50 cursor-not-allowed' 
                   : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white hover:scale-105 shadow-2xl hover:shadow-green-500/40'
               }`}
@@ -265,9 +244,8 @@ function JoinLeague() {
           </h3>
           <ul className="text-blue-200 text-sm space-y-2 leading-relaxed">
             <li>• Ask your league commissioner for the League ID</li>
-            <li>• Choose a unique username that others will recognize</li>
             <li>• Pick a creative team name - you can change it later</li>
-            <li>• Team name is limited to 15 characters</li>
+            <li>• Team name is limited to 20 characters</li>
           </ul>
         </div>
       </div>

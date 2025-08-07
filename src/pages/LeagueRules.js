@@ -431,9 +431,9 @@ function LeagueRules() {
 
   const getWeekLabel = (i) => {
     const m = formState.maxManagers;
-    if (m === 8 && i >= 12) return i === 12 ? "Playoffs" : "Championship";
+    if (m === 8 && i >= 12) return i === 12 ? "Playoffs • Free Agency Closed" : "Championship • Free Agency Closed";
     if ((m === 10 || m === 12) && i >= 11)
-      return i === 11 ? "Playoffs" : i === 12 ? "Semifinals" : "Championship";
+      return i === 11 ? "Playoffs • Free Agency Closed" : i === 12 ? "Semifinals • Free Agency Closed" : "Championship • Free Agency Closed";
     return "Regular Season";
   };
 
@@ -894,7 +894,100 @@ function LeagueRules() {
             </div>
             <div className="flex items-center space-x-2">
               <div className="w-4 h-4 bg-gradient-to-br from-blue-400/20 to-blue-500/20 border border-blue-400/30 rounded"></div>
-              <span>Playoffs or Championship</span>
+              <span>Playoffs/Championship (Free agency closed)</span>
+            </div>
+          </div>
+        </div>
+
+        {/* FAQ Section */}
+        <div className="mt-8 bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 w-full">
+          <div className="flex items-center space-x-4 mb-6">
+            <div className="text-3xl">❓</div>
+            <h2 className="text-2xl font-bold text-white min-w-0">Frequently Asked Questions</h2>
+          </div>
+
+          <div className="space-y-6 w-full">
+            {/* Lineup Management */}
+            <div className="border-b border-white/10 pb-4">
+              <h3 className="text-lg font-semibold text-white mb-2">Am I required to set a lineup each week?</h3>
+              <p className="text-white/80 text-sm leading-relaxed">
+                No, setting a lineup is optional. If you don't set a lineup for a particular week, you simply won't score any points for that week.
+              </p>
+            </div>
+
+            <div className="border-b border-white/10 pb-4">
+              <h3 className="text-lg font-semibold text-white mb-2">How does team scoring work?</h3>
+              <p className="text-white/80 text-sm leading-relaxed mb-3">
+                Teams in your starting lineup accumulate points based on their real-world performance each week. Points can be positive or negative depending on how the team performs. For detailed scoring information:
+              </p>
+              <button 
+                onClick={() => {
+                  // TODO: Link to scoring system page when available
+                  alert("Scoring system page coming soon!");
+                }}
+                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-medium rounded-lg transition-all duration-300"
+              >
+                View Detailed Scoring System
+              </button>
+            </div>
+
+            {/* Captain System */}
+            <div className="border-b border-white/10 pb-4">
+              <h3 className="text-lg font-semibold text-white mb-2">What is the captain system?</h3>
+              <p className="text-white/80 text-sm leading-relaxed">
+                Starting in Week 2, you can designate one team in your lineup as captain. The captain receives double points (positive or negative) for their performance that week. Captain selection is available from Week 2 through the championship game.
+              </p>
+            </div>
+
+            <div className="border-b border-white/10 pb-4">
+              <h3 className="text-lg font-semibold text-white mb-2">Do I have to select a captain?</h3>
+              <p className="text-white/80 text-sm leading-relaxed">
+                No, captain selection is optional. However, using the captain feature strategically can significantly boost your weekly score.
+              </p>
+            </div>
+
+            {/* Game Bonuses */}
+            <div className="border-b border-white/10 pb-4">
+              <h3 className="text-lg font-semibold text-white mb-2">What are game bonuses and how do they work?</h3>
+              <p className="text-white/80 text-sm leading-relaxed mb-3">
+                There are two types of game bonuses available:
+              </p>
+              <div className="ml-4 space-y-3">
+                <div>
+                  <p className="text-white font-medium text-sm mb-1">3x Play Chip (1 per season)</p>
+                  <p className="text-white/80 text-xs leading-relaxed">
+                    Can be used from Week 4 until the week before playoffs begin. Multiplies a team's points by 3x. When combined with a captain, creates a 5x multiplier (2x captain + 3x chip).
+                  </p>
+                </div>
+                <div>
+                  <p className="text-white font-medium text-sm mb-1">Freeze Play (3 per season)</p>
+                  <p className="text-white/80 text-xs leading-relaxed">
+                    Locks in a team's current point total during the second half of their game. Once used, the freeze cannot be undone, and the team's score won't change regardless of subsequent performance.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-b border-white/10 pb-4">
+              <h3 className="text-lg font-semibold text-white mb-2">Can I combine different bonuses?</h3>
+              <p className="text-white/80 text-sm leading-relaxed">
+                Yes! You can combine freeze plays with both captain bonuses and 3x play chips. However, you cannot use multiple bonuses of the same type on one team in a single week.
+              </p>
+            </div>
+
+            {/* League Structure */}
+            <div className="border-b border-white/10 pb-4">
+              <h3 className="text-lg font-semibold text-white mb-2">How do playoffs work?</h3>
+              <p className="text-white/80 text-sm leading-relaxed">
+                Unlike the regular season, playoffs are conducted head-to-head. You'll be matched against another manager, and whoever scores more points that week advances. The playoff format depends on your league size.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">When does free agency close?</h3>
+              <p className="text-white/80 text-sm leading-relaxed">
+                Free agency closes at the start of playoff weeks. Once playoffs begin, you cannot add or drop teams from your roster. Plan your roster moves accordingly during the regular season.
+              </p>
             </div>
           </div>
         </div>

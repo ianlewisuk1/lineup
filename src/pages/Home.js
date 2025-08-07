@@ -259,7 +259,10 @@ function Home() {
             </span>
           </h1>
           <p className="text-lg sm:text-xl text-white/80 max-w-2xl mx-auto">
-            Here are your fantasy leagues. Ready to dominate?
+            {leagueList.length === 0 
+              ? "Ready to start your fantasy journey?" 
+              : "Here are your fantasy leagues. Ready to dominate?"
+            }
           </p>
         </div>
 

@@ -15,7 +15,6 @@ function CreateLeague() {
   const navigate = useNavigate();
 
   const [leagueName, setLeagueName] = useState("");
-  const [displayName, setDisplayName] = useState("");
   const [teamName, setTeamName] = useState("");
   const [maxManagers, setMaxManagers] = useState(8);
   const [draftType, setDraftType] = useState("manual");
@@ -62,8 +61,8 @@ function CreateLeague() {
       const user = auth.currentUser;
       if (!user) throw new Error("User not logged in");
 
-      if (!displayName.trim() || !teamName.trim()) {
-        alert("Please enter both a display name and team name.");
+      if (!teamName.trim()) {
+        alert("Please enter a team name.");
         setLoading(false);
         return;
       }
@@ -119,8 +118,8 @@ function CreateLeague() {
         leagueIds: arrayUnion(leagueRef.id)
       });
 
+      // Note: displayName removed, using user's first name from auth/user profile instead
       await setDoc(doc(db, "leagues", leagueRef.id, "members", user.uid), {
-        displayName: displayName.trim(),
         teamName: teamName.trim(),
         email: user.email || "",
         lineup: {
@@ -353,28 +352,13 @@ function CreateLeague() {
             </div>
           )}
 
-          {/* Your Info Card */}
+          {/* Your Team Info Card */}
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20">
             <h3 className="text-xl sm:text-2xl font-bold mb-6 text-white">
-              Your Information
+              Your Team Information
             </h3>
 
             <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Your Username (max 15 characters)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Enter your username"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  maxLength={15}
-                  required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                />
-              </div>
-
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-2">
                   Your Team Name (max 20 characters)
