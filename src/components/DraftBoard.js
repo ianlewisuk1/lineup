@@ -319,53 +319,6 @@ const DraftBoard = React.memo(({ draftData, userMap, allTeams, userFirstNames })
           </div>
         </div>
       </div>
-
-      {/* Draft Progress Bar */}
-      {!draftData.draftComplete && (
-        <div style={{
-          marginTop: "16px",
-          backgroundColor: "white",
-          borderRadius: "12px",
-          padding: "16px",
-          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-          border: "1px solid #e2e8f0"
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-            <span style={{ fontSize: "14px", fontWeight: "600", color: "#1e293b" }}>Draft Progress</span>
-            <span style={{ fontSize: "12px", color: "#64748b" }}>
-              {Math.round(((draftData.currentPickIndex || 0) / (totalRounds * numManagers)) * 100)}%
-            </span>
-          </div>
-          <div style={{ height: "8px", backgroundColor: "#e2e8f0", borderRadius: "4px" }}>
-            <div style={{
-              width: `${((draftData.currentPickIndex || 0) / (totalRounds * numManagers)) * 100}%`,
-              height: "100%",
-              background: "linear-gradient(90deg, #1e40af 0%, #0ea5e9 100%)",
-              borderRadius: "4px",
-              transition: "width 0.3s ease-out" // Smooth progress updates
-            }} />
-          </div>
-        </div>
-      )}
-
-      {/* Enhanced Animations */}
-      <style>{`
-        @keyframes pulse {
-          0%, 100% {
-            opacity: 1;
-            transform: scale(1);
-          }
-          50% {
-            opacity: 0.5;
-            transform: scale(0.95);
-          }
-        }
-        
-        /* Smooth transitions for data updates */
-        div[style*="backgroundColor"] {
-          transition: background-color 0.2s ease-out;
-        }
-      `}</style>
     </div>
   );
 }, (prevProps, nextProps) => {
