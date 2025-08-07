@@ -10,6 +10,7 @@ import {
 } from "firebase/firestore";
 import { Settings, Trophy, Users, Star, TrendingUp } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
+import ScoringSystemModal from "../components/ScoringSystemModal";
 
 function MyLineup() {
   const { leagueId } = useParams();
@@ -33,7 +34,8 @@ function MyLineup() {
   const [rosterLockDate, setRosterLockDate] = useState("");
   const [rosterLockTime, setRosterLockTime] = useState("");
   const [currentWeek, setCurrentWeek] = useState("Preseason");
-  const [expandedTeams, setExpandedTeams] = useState(Array(7).fill(false)); // 5 starters + 2 bench
+  const [expandedTeams, setExpandedTeams] = useState(Array(7).fill(false));
+  const [showScoringModal, setShowScoringModal] = useState(false);
 
   const openCutModal = (team, index, section) => {
     setTeamToCut({ team, index, section });
@@ -769,14 +771,22 @@ function MyLineup() {
             <h3 className="text-xl font-bold text-white flex items-center gap-2">
               💬 Smack Talk
             </h3>
-            {!isEditingSmackTalk && (
+            <div className="flex gap-2">
               <button
-                onClick={() => setIsEditingSmackTalk(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
+                onClick={() => setShowScoringModal(true)}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
               >
-                Edit
+                📊 Scoring
               </button>
-            )}
+              {!isEditingSmackTalk && (
+                <button
+                  onClick={() => setIsEditingSmackTalk(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
           </div>
 
           {isEditingSmackTalk ? (
@@ -1124,6 +1134,13 @@ function MyLineup() {
           </div>
         </div>
       </div>
+
+      {/* Scoring System Modal */}
+      {showScoringModal && (
+        <ScoringSystemModal 
+          onClose={() => setShowScoringModal(false)}
+        />
+      )}
 
       {/* Cut Modal */}
       <CutModal />

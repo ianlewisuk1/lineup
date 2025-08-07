@@ -28,6 +28,7 @@ import {
   ArrowLeft
 } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
+import ScoringSystemModal from '../components/ScoringSystemModal';
 
 function LeagueRules() {
   const { leagueId } = useParams();
@@ -48,6 +49,7 @@ function LeagueRules() {
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [modalMessage, setModalMessage] = useState("");
   const [modalTitle, setModalTitle] = useState("");
+  const [showScoringModal, setShowScoringModal] = useState(false);
 
   // Helper functions for modals
   const showSuccess = (title, message) => {
@@ -66,6 +68,7 @@ function LeagueRules() {
     setShowSuccessModal(false);
     setShowErrorModal(false);
     setShowDeleteModal(false);
+    setShowScoringModal(false); // Add this line
     setModalTitle("");
     setModalMessage("");
   };
@@ -476,7 +479,7 @@ function LeagueRules() {
       </nav>
 
       {/* Main Content */}
-      <div className="relative z-10 w-full max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 pb-32">
+      <div className="relative z-10 w-full max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 pb-40">
         {/* Header */}
         <div className="text-center mb-8 sm:mb-12">
           <div className="mb-4 sm:mb-6">
@@ -921,10 +924,7 @@ function LeagueRules() {
                 Teams in your starting lineup accumulate points based on their real-world performance each week. Points can be positive or negative depending on how the team performs. For detailed scoring information:
               </p>
               <button 
-                onClick={() => {
-                  // TODO: Link to scoring system page when available
-                  alert("Scoring system page coming soon!");
-                }}
+                onClick={() => setShowScoringModal(true)}
                 className="px-4 py-2 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-medium rounded-lg transition-all duration-300"
               >
                 View Detailed Scoring System
@@ -994,6 +994,14 @@ function LeagueRules() {
       </div>
 
       {/* Modals */}
+
+      {/* Scoring System Modal */}
+      {showScoringModal && (
+        <ScoringSystemModal 
+          onClose={() => setShowScoringModal(false)}
+        />
+      )}
+
       {/* Delete League Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">

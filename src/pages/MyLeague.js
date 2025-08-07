@@ -4,6 +4,7 @@ import { db, auth } from "../firebase/firebase";
 import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { Trophy, Users, Star, TrendingUp, Settings } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
+import ScoringSystemModal from "../components/ScoringSystemModal";
 
 function MyLeague() {
   const { leagueId } = useParams();
@@ -15,6 +16,7 @@ function MyLeague() {
   const [currentWeek, setCurrentWeek] = useState("Preseason");
   const [loading, setLoading] = useState(true);
   const [selectedTeam, setSelectedTeam] = useState(null);
+  const [showScoringModal, setShowScoringModal] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -936,6 +938,17 @@ function MyLeague() {
           </div>
         )}
 
+        {/* Scoring Modal */}
+        <div className="text-center mb-6">
+          <button
+            onClick={() => setShowScoringModal(true)}
+            className="text-white/80 hover:text-white text-lg font-medium transition-colors duration-200 underline underline-offset-2 hover:underline-offset-4"
+          >
+            How does scoring work?
+          </button>
+        </div>
+
+
         {/* Standings Cards */}
         {sortedMembers.length === 0 ? (
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-12 border border-white/20 text-center">
@@ -1109,6 +1122,13 @@ function MyLeague() {
         <TeamCardModal 
           team={selectedTeam} 
           onClose={() => setSelectedTeam(null)} 
+        />
+      )}
+
+      {/* Scoring System Modal */}
+      {showScoringModal && (
+        <ScoringSystemModal 
+          onClose={() => setShowScoringModal(false)}
         />
       )}
     </div>
