@@ -382,9 +382,13 @@ function FreeAgents() {
         return;
       }
 
+      // INCREMENT FREE AGENT MOVES COUNTER
+      const currentMoves = memberData?.freeAgentMoves || 0;
+
       await updateDoc(memberRef, {
         "lineup.starters": starters,
-        "lineup.bench": bench
+        "lineup.bench": bench,
+        "freeAgentMoves": currentMoves + 1
       });
 
       setUserTeams([...starters, ...bench].filter(Boolean));
@@ -440,9 +444,13 @@ function FreeAgents() {
         bench[benchIndex] = normalizedNewTeam;
       }
 
+      // INCREMENT FREE AGENT MOVES COUNTER
+      const currentMoves = memberData?.freeAgentMoves || 0;
+
       await updateDoc(memberRef, {
         "lineup.starters": starters,
-        "lineup.bench": bench
+        "lineup.bench": bench,
+        "freeAgentMoves": currentMoves + 1
       });
 
       setUserTeams([...starters, ...bench].filter(Boolean));
