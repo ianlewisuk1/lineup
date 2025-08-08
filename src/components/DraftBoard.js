@@ -30,21 +30,26 @@ const DraftBoard = React.memo(({ draftData, userMap, allTeams, userFirstNames })
     );
   }
 
-  // Handle different draft data formats with better fallbacks
-  if (!draftData.draftOrder || !Array.isArray(draftData.draftOrder)) {
-    const managerIds = Object.keys(draftData.teams || draftData.selectedTeams || {});
-    if (managerIds.length === 0) {
-      return (
-        <div style={{ padding: "16px", textAlign: "center" }}>
-          <p style={{ color: "#64748b" }}>No draft data available</p>
-        </div>
-      );
-    }
-    draftData.draftOrder = managerIds;
+  // CRITICAL FIX: Handle different draft data formats with better fallbacks
+  let draftOrder = draftData.draftOrder;
+  
+  if (!draftOrder || !Array.isArray(draftOrder) || draftOrder.length === 0) {
+    // For manual drafts, create draft order from ALL managers in userMap, not just those with teams
+    const allManagerIds = Object.keys(userMap);
+    
+    // If we have team data, prioritize managers who have teams entered
+    const teamSelections = draftData.selectedTeams || draftData.teams || {};
+    const managersWithTeams = Object.keys(teamSelections);
+    const managersWithoutTeams = allManagerIds.filter(id => !managersWithTeams.includes(id));
+    
+    // Combine them: managers with teams first, then managers without
+    draftOrder = [...managersWithTeams, ...managersWithoutTeams];
+    
+    // IMPORTANT: Don't return early if no team data - show empty board for all managers
+    console.log(`📊 Created draft order for ${draftOrder.length} managers:`, draftOrder);
   }
 
   const totalRounds = 7;
-  const draftOrder = draftData.draftOrder;
   const numManagers = draftOrder.length;
   const teamSelections = draftData.selectedTeams || draftData.teams || {};
 
@@ -104,6 +109,10 @@ const DraftBoard = React.memo(({ draftData, userMap, allTeams, userFirstNames })
     return userMap[uid]?.teamName || "Unnamed Team";
   };
 
+  // Calculate current progress for manual drafts
+  const totalTeamsEntered = Object.values(teamSelections).reduce((sum, teams) => sum + (teams?.length || 0), 0);
+  const totalPossiblePicks = totalRounds * numManagers;
+
   return (
     <div style={{ padding: "16px", width: "100%" }}>
       {/* Header */}
@@ -114,7 +123,9 @@ const DraftBoard = React.memo(({ draftData, userMap, allTeams, userFirstNames })
         <p style={{ fontSize: "14px", color: "#cbd5e1", margin: 0 }}>
           {draftData.draftComplete 
             ? "Draft Complete" 
-            : `Pick ${(draftData.currentPickIndex || 0) + 1} of ${totalRounds * numManagers}`
+            : draftData.type === "manual"
+              ? `${totalTeamsEntered} of ${totalPossiblePicks} teams entered`
+              : `Pick ${(draftData.currentPickIndex || 0) + 1} of ${totalPossiblePicks}`
           }
         </p>
       </div>
@@ -193,7 +204,7 @@ const DraftBoard = React.memo(({ draftData, userMap, allTeams, userFirstNames })
                 }}>
                   {slotMap[uid].map(({ team, pickNumber }, roundIndex) => {
                     const isEmpty = !team;
-                    const isCurrentPick = pickNumber === ((draftData.currentPickIndex || 0) + 1) && !draftData.draftComplete;
+                    const isCurrentPick = pickNumber === ((draftData.currentPickIndex || 0) + 1) && !draftData.draftComplete && draftData.type !== "manual";
                     const isEvenRound = roundIndex % 2 === 0;
 
                     const teamData = allTeams[team];
@@ -334,7 +345,7 @@ const DraftBoard = React.memo(({ draftData, userMap, allTeams, userFirstNames })
     prevData.currentPickIndex === nextData.currentPickIndex &&
     prevData.draftComplete === nextData.draftComplete &&
     prevData.lastUpdateTime === nextData.lastUpdateTime &&
-    JSON.stringify(prevData.selectedTeams) === JSON.stringify(nextData.selectedTeams) &&
+    JSON.stringify(prevData.selectedTeams || prevData.teams) === JSON.stringify(nextData.selectedTeams || nextData.teams) &&
     Object.keys(prevProps.userMap).length === Object.keys(nextProps.userMap).length &&
     Object.keys(prevProps.allTeams).length === Object.keys(nextProps.allTeams).length
   );

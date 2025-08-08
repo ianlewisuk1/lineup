@@ -603,17 +603,34 @@ function DraftRoom() {
   }
   };
 
+// Replace the handleStartManualDraft function in DraftRoom.js with this:
+
   const handleStartManualDraft = async () => {
     if (!leagueId || Object.keys(userMap).length === 0) return;
 
     try {
+      // ✅ CRITICAL FIX: Use the saved custom draft order if it exists
+      let managerIds;
+      
+      if (leagueData.draftOrderType === "admin" && leagueData.customDraftOrder && leagueData.customDraftOrder.length > 0) {
+        // Use the custom order set by admin
+        managerIds = leagueData.customDraftOrder;
+        console.log("✅ Using admin-set draft order for manual draft:", managerIds);
+      } else {
+        // Fallback to userMap order (for random or if no custom order set)
+        managerIds = Object.keys(userMap).filter(Boolean);
+        console.log("✅ Using fallback draft order for manual draft:", managerIds);
+      }
+      
       const manualDraftPayload = {
         type: "manual",
         inProgress: true,
         managersCompleted: [],
         currentManager: null,
         teams: {},
-        draftComplete: false
+        draftComplete: false,
+        // Use the correct draft order (either custom or fallback)
+        draftOrder: managerIds
       };
 
       const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
@@ -787,8 +804,8 @@ if (isManualDraft) {
         </nav>
 
         {/* Main Content */}
-            <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-24">
-            <div className="text-center mb-8">
+        <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-24">
+          <div className="text-center mb-8">
             <div className="mb-4">
               <span className="inline-block text-4xl sm:text-5xl mb-2">📝</span>
             </div>
@@ -900,6 +917,8 @@ if (isManualDraft) {
     );
   }
 
+// Replace the existing manual draft non-admin section (around lines 680-750) with this:
+
 {/* Manual draft in progress or complete */}
 if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftData.teams !== undefined)) {
   return (
@@ -971,35 +990,36 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
             </div>
           </div>
         )}
-          {/* Draft Complete State */}
-          {draftData.draftComplete ? (
-            <>
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-6">
-                <div className="text-center">
-                  <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-4">
-                    <p className="text-green-200 font-bold text-lg">
-                      ✅ Manual Draft Complete!
-                    </p>
-                  </div>
+
+        {/* Draft Complete State */}
+        {draftData.draftComplete ? (
+          <>
+            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-6">
+              <div className="text-center">
+                <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-4">
+                  <p className="text-green-200 font-bold text-lg">
+                    ✅ Manual Draft Complete!
+                  </p>
                 </div>
               </div>
-              
-              {/* Full Width DraftBoard */}
-
-              <div className="w-screen -mx-4 sm:-mx-6">
-                <DraftBoard 
-                  draftData={draftData} 
-                  userMap={userMap} 
-                  allTeams={allTeams} 
-                  userFirstNames={userFirstNames}
-                />
-              </div>
-            </>
+            </div>
+            
+            {/* Full Width DraftBoard */}
+            <div className="w-screen -mx-4 sm:-mx-6">
+              <DraftBoard 
+                draftData={draftData} 
+                userMap={userMap} 
+                allTeams={allTeams} 
+                userFirstNames={userFirstNames}
+              />
+            </div>
+          </>
         ) : (
           /* Draft Entry Interface */
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20">
+          <>
             {isLeagueAdmin ? (
-              <>
+              /* Admin Entry Interface */
+              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
                 <h3 className="text-xl sm:text-2xl font-bold text-white mb-6">
                   Enter Draft Results
                 </h3>
@@ -1015,40 +1035,68 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
                   userMap={userMap}
                   draftData={draftData}
                 />
-              </>
+              </div>
             ) : (
-              /* Non-Admin Waiting View */
-              <div className="text-center py-8">
-                <div className="text-6xl sm:text-7xl mb-6 animate-pulse">⏳</div>
-                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4">
-                  Commissioner is entering draft results...
-                </h3>
-                <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4 mb-6">
-                  <p className="text-amber-200 font-semibold">
-                    Progress: {(draftData.managersCompleted || []).length} of {Object.keys(userMap).length} managers completed
-                  </p>
-                </div>
-                <p className="text-white/70 text-lg">
-                  Please wait while your commissioner enters everyone's teams from the offline draft.
-                </p>
-                
-                {/* Progress Indicator */}
-                <div className="mt-6">
-                  <div className="bg-white/20 rounded-full h-3 w-full max-w-md mx-auto">
-                    <div 
-                      className="bg-gradient-to-r from-purple-500 to-blue-500 h-3 rounded-full transition-all duration-500 ease-out"
-                      style={{ 
-                        width: `${((draftData.managersCompleted || []).length / Object.keys(userMap).length) * 100}%` 
-                      }}
-                    ></div>
+              /* Non-Admin Progress View */
+              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
+                <div className="text-center">
+                  <div className="text-4xl sm:text-5xl mb-6 animate-pulse">📝</div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white mb-4">
+                    Commissioner is entering draft results...
+                  </h3>
+                  <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4 mb-6">
+                    <p className="text-amber-200 font-semibold">
+                      Progress: {(draftData.managersCompleted || []).length} of {Object.keys(userMap).length} managers completed
+                    </p>
                   </div>
-                  <p className="text-white/60 text-sm mt-2">
-                    {Math.round(((draftData.managersCompleted || []).length / Object.keys(userMap).length) * 100)}% Complete
+                  <p className="text-white/70 text-lg mb-6">
+                    Please wait while your commissioner enters everyone's teams from the offline draft.
                   </p>
+                  
+                  {/* Progress Indicator */}
+                  <div className="mt-6">
+                    <div className="bg-white/20 rounded-full h-3 w-full max-w-md mx-auto">
+                      <div 
+                        className="bg-gradient-to-r from-purple-500 to-blue-500 h-3 rounded-full transition-all duration-500 ease-out"
+                        style={{ 
+                          width: `${((draftData.managersCompleted || []).length / Object.keys(userMap).length) * 100}%` 
+                        }}
+                      ></div>
+                    </div>
+                    <p className="text-white/60 text-sm mt-2">
+                      {Math.round(((draftData.managersCompleted || []).length / Object.keys(userMap).length) * 100)}% Complete
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
-          </div>
+
+            {/* ALWAYS SHOW DRAFT BOARD - Key Change Here */}
+            {/* Show Draft Board for ALL users (both admin and non-admin) */}
+            <div className="bg-blue-500/20 border border-blue-400/30 rounded-2xl p-6 mb-8">
+              <div className="text-center">
+                <h4 className="text-lg font-semibold text-blue-200 mb-3">
+                  📊 Draft Progress
+                </h4>
+                <p className="text-blue-200 text-sm">
+                  {isLeagueAdmin 
+                    ? "Enter team selections above to see them appear in the board below."
+                    : "See teams entered so far. Board updates as commissioner enters more results."
+                  }
+                </p>
+              </div>
+            </div>
+
+            {/* Full Width DraftBoard - Always Shown */}
+            <div className="w-screen -mx-4 sm:-mx-6">
+              <DraftBoard 
+                draftData={draftData} 
+                userMap={userMap} 
+                allTeams={allTeams} 
+                userFirstNames={userFirstNames}
+              />
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -1056,10 +1104,6 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
 }
   
   // If we have draft data but it's not manual format, treat as error
-// Replace the error state section (around lines 565-650)
-// This is the section that starts with "// If we have draft data but it's not manual format, treat as error"
-
-// If we have draft data but it's not manual format, treat as error
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
       {/* Animated Background Elements */}
@@ -1187,9 +1231,6 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
 }
 
 // Live Draft Flow (existing logic)
-// Replace the existing pre-draft waiting screen section (around line 680-880)
-// This is the section that starts with "if (!draftData) {" in the Live Draft Flow
-
 if (!draftData) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
@@ -1261,7 +1302,6 @@ if (!draftData) {
         </div>
       </div>
     )}
-
 
       {/* Animated Background Elements */}
       <div className="absolute inset-0 opacity-10">
@@ -1457,9 +1497,7 @@ if (!draftData) {
   );
 }
 
-// Replace the existing active draft interface (around line 880-1100)
-// This replaces everything from the final return statement with the old CSS-in-JS styling
-
+// Live Draft Active Interface
 const isMyTurn = draftData && draftData.draftOrder 
   ? getCurrentPicker(draftData.draftOrder, draftData.currentPickIndex) === userId 
   : false;
