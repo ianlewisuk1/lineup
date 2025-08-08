@@ -1076,7 +1076,11 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
           <p className="text-lg sm:text-xl text-white/80">
             {draftData.draftComplete 
               ? "All teams have been entered" 
-              : `Progress: ${(draftData.managersCompleted || []).length} of ${Object.keys(userMap).length} managers completed`
+              : (() => {
+                  const totalPicks = Object.values(draftData.teams || {}).reduce((sum, teams) => sum + teams.length, 0);
+                  const totalRequired = Object.keys(userMap).length * 7;
+                  return `Progress: ${totalPicks} of ${totalRequired} picks made`;
+                })()
             }
           </p>
         </div>
@@ -1139,8 +1143,9 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
                 <ManualDraftEntry 
                   leagueId={leagueId}
                   userMap={userMap}
+                  userFirstNames={userFirstNames}  // ← ADD THIS LINE
                   draftData={draftData}
-                  onConfirmPick={handleManualPickConfirm}  // Add this prop
+                  onConfirmPick={handleManualPickConfirm}
                 />
               </div>
             ) : (
@@ -1153,7 +1158,11 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
                   </h3>
                   <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4 mb-6">
                     <p className="text-amber-200 font-semibold">
-                      Progress: {(draftData.managersCompleted || []).length} of {Object.keys(userMap).length} managers completed
+                      Progress: {(() => {
+                        const totalPicks = Object.values(draftData.teams || {}).reduce((sum, teams) => sum + teams.length, 0);
+                        const totalRequired = Object.keys(userMap).length * 7;
+                        return `${totalPicks} of ${totalRequired} picks made`;
+                      })()}
                     </p>
                   </div>
                   <p className="text-white/70 text-lg mb-6">
@@ -1166,13 +1175,21 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
                       <div 
                         className="bg-gradient-to-r from-purple-500 to-blue-500 h-3 rounded-full transition-all duration-500 ease-out"
                         style={{ 
-                          width: `${((draftData.managersCompleted || []).length / Object.keys(userMap).length) * 100}%` 
+                          width: `${(() => {
+                            const totalPicks = Object.values(draftData.teams || {}).reduce((sum, teams) => sum + teams.length, 0);
+                            const totalRequired = Object.keys(userMap).length * 7;
+                            return totalRequired > 0 ? Math.round((totalPicks / totalRequired) * 100) : 0;
+                          })()}%` 
                         }}
                       ></div>
                     </div>
-                    <p className="text-white/60 text-sm mt-2">
-                      {Math.round(((draftData.managersCompleted || []).length / Object.keys(userMap).length) * 100)}% Complete
-                    </p>
+                      <p className="text-white/60 text-sm mt-2">
+                        {(() => {
+                          const totalPicks = Object.values(draftData.teams || {}).reduce((sum, teams) => sum + teams.length, 0);
+                          const totalRequired = Object.keys(userMap).length * 7;
+                          return totalRequired > 0 ? Math.round((totalPicks / totalRequired) * 100) : 0;
+                        })()}% Complete
+                      </p>
                   </div>
                 </div>
               </div>
