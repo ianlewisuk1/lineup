@@ -8,13 +8,31 @@ import {
   getDocs
 } from "firebase/firestore";
 
-function ManualDraftEntry({ leagueId, userMap, draftData, onConfirmPick }) {
+function ManualDraftEntry({ leagueId, userMap, userFirstNames, draftData, onConfirmPick }) {
   const [selectedManager, setSelectedManager] = useState("");
   const [selectedTeam, setSelectedTeam] = useState("");
   const [availableTeams, setAvailableTeams] = useState([]);
   const [teamSearchQuery, setTeamSearchQuery] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [allTeams, setAllTeams] = useState({});
+
+  // Helper function to get proper display name
+  const getManagerDisplayName = (userId) => {
+    // Try firstName first
+    const firstName = userFirstNames?.[userId];
+    if (firstName && firstName !== 'Unknown') {
+      return firstName;
+    }
+    
+    // Fallback to userMap data
+    const memberData = userMap?.[userId];
+    if (memberData) {
+      return memberData.displayName || memberData.teamName || `Manager ${userId.slice(0, 8)}`;
+    }
+    
+    // Last resort
+    return `Manager ${userId.slice(0, 8)}`;
+  };
 
   useEffect(() => {
     const fetchTeams = async () => {
@@ -185,6 +203,7 @@ function ManualDraftEntry({ leagueId, userMap, draftData, onConfirmPick }) {
             const managerTeamCount = getManagerTeams(uid).length;
             const isCompleted = managerTeamCount >= 7;
             const isSelected = selectedManager === uid;
+            const displayName = getManagerDisplayName(uid);
             
             return (
               <button
@@ -204,7 +223,7 @@ function ManualDraftEntry({ leagueId, userMap, draftData, onConfirmPick }) {
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-white font-semibold">
-                      {userData.displayName}
+                      {displayName}
                     </div>
                     <div className="text-white/70 text-sm">
                       {userData.teamName} • {managerTeamCount}/7 teams
@@ -230,7 +249,7 @@ function ManualDraftEntry({ leagueId, userMap, draftData, onConfirmPick }) {
         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
           <div className="flex items-center justify-between mb-4">
             <h4 className="text-white font-semibold text-lg">
-              {userMap[selectedManager]?.displayName}'s Teams
+              {getManagerDisplayName(selectedManager)}'s Teams
             </h4>
             <span className="text-white/70 text-sm">
               {managerTeams.length}/7 teams
@@ -395,7 +414,7 @@ function ManualDraftEntry({ leagueId, userMap, draftData, onConfirmPick }) {
                 Draft Complete!
               </h5>
               <p className="text-green-200/80 text-sm">
-                {userMap[selectedManager]?.displayName} has all 7 teams
+                {getManagerDisplayName(selectedManager)} has all 7 teams
               </p>
             </div>
           )}
