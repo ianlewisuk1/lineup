@@ -603,7 +603,111 @@ function DraftRoom() {
   }
   };
 
-// Replace the handleStartManualDraft function in DraftRoom.js with this:
+  const handleManualPickConfirm = async (managerId, teamId, pickNumber) => {
+  if (!draftData || !managerId || !teamId) return;
+
+  try {
+    const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
+    
+    // Get fresh draft data
+    const freshDraftSnap = await getDoc(draftRef);
+    const freshDraftData = freshDraftSnap.data();
+    
+    if (!freshDraftData) {
+      console.error("No draft data found");
+      return;
+    }
+
+    // Update the teams structure for manual drafts
+    const currentTeams = freshDraftData.teams || {};
+    const managerTeams = currentTeams[managerId] || [];
+    
+    // Ensure we don't duplicate picks
+    if (managerTeams.includes(teamId)) {
+      alert("This team has already been picked for this manager!");
+      return;
+    }
+    
+    // Add the new team pick
+    const updatedManagerTeams = [...managerTeams, teamId];
+    const updatedTeams = {
+      ...currentTeams,
+      [managerId]: updatedManagerTeams
+    };
+
+    // Calculate total picks and check if draft is complete
+    const totalPicks = Object.values(updatedTeams).reduce((sum, teams) => sum + teams.length, 0);
+    const totalRequiredPicks = draftData.draftOrder.length * 7;
+    const draftComplete = totalPicks >= totalRequiredPicks;
+
+    // Update draft data
+    const updateData = {
+      teams: updatedTeams
+    };
+
+    // If this manager now has 7 teams, add them to completed list
+    if (updatedManagerTeams.length >= 7) {
+      const currentCompleted = freshDraftData.managersCompleted || [];
+      if (!currentCompleted.includes(managerId)) {
+        updateData.managersCompleted = [...currentCompleted, managerId];
+      }
+    }
+
+    // Mark draft complete if all picks are done
+    if (draftComplete) {
+      updateData.draftComplete = true;
+    }
+
+    // Update Firestore
+    await updateDoc(draftRef, updateData);
+
+    // Update member lineup in parallel
+    const memberRef = doc(db, "leagues", leagueId, "members", managerId);
+    await updateDoc(memberRef, {
+      "lineup.drafted": arrayUnion(teamId)
+    });
+
+    // If draft is complete, trigger completion
+    if (draftComplete) {
+      await completeManualDraft(updatedTeams);
+    }
+
+    console.log(`✅ Manual pick confirmed: ${teamId} for manager ${managerId} (Pick ${pickNumber})`);
+
+  } catch (error) {
+    console.error("Error confirming manual pick:", error);
+    alert("Failed to confirm pick. Please try again.");
+  }
+  };
+
+  const completeManualDraft = async (finalTeams) => {
+    try {
+      // Update all member lineups with starters and bench
+      const updates = Object.entries(finalTeams).map(async ([uid, teams]) => {
+        const starters = teams.slice(0, 5);
+        const bench = teams.slice(5);
+
+        const memberRef = doc(db, "leagues", leagueId, "members", uid);
+        await updateDoc(memberRef, {
+          "lineup.drafted": teams,
+          "lineup.starters": starters,
+          "lineup.bench": bench
+        });
+      });
+
+      await Promise.all(updates);
+
+      // Mark league as draft complete
+      await updateDoc(doc(db, "leagues", leagueId), {
+        draftComplete: true
+      });
+
+      console.log("✅ Manual draft completed automatically!");
+
+    } catch (err) {
+      console.error("Error completing manual draft:", err);
+    }
+  };
 
   const handleStartManualDraft = async () => {
     if (!leagueId || Object.keys(userMap).length === 0) return;
@@ -1004,14 +1108,16 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
               </div>
             </div>
             
-            {/* Full Width DraftBoard */}
-            <div className="w-screen -mx-4 sm:-mx-6">
-              <DraftBoard 
-                draftData={draftData} 
-                userMap={userMap} 
-                allTeams={allTeams} 
-                userFirstNames={userFirstNames}
-              />
+            {/* Draft Board - Full Width and Centered */}
+            <div className="w-full overflow-x-auto">
+              <div className="min-w-max mx-auto">
+                <DraftBoard 
+                  draftData={draftData} 
+                  userMap={userMap} 
+                  allTeams={allTeams} 
+                  userFirstNames={userFirstNames}
+                />
+              </div>
             </div>
           </>
         ) : (
@@ -1034,6 +1140,7 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
                   leagueId={leagueId}
                   userMap={userMap}
                   draftData={draftData}
+                  onConfirmPick={handleManualPickConfirm}  // Add this prop
                 />
               </div>
             ) : (
@@ -1087,14 +1194,16 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
               </div>
             </div>
 
-            {/* Full Width DraftBoard - Always Shown */}
-            <div className="w-screen -mx-4 sm:-mx-6">
-              <DraftBoard 
-                draftData={draftData} 
-                userMap={userMap} 
-                allTeams={allTeams} 
-                userFirstNames={userFirstNames}
-              />
+            {/* Draft Board - Full Width and Centered */}
+            <div className="w-full overflow-x-auto">
+              <div className="min-w-max mx-auto">
+                <DraftBoard 
+                  draftData={draftData} 
+                  userMap={userMap} 
+                  allTeams={allTeams} 
+                  userFirstNames={userFirstNames}
+                />
+              </div>
             </div>
           </>
         )}
@@ -1750,14 +1859,16 @@ return (
         </div>
       )}
 
-      {/* Draft Board - Full Width */}
-      <div className="w-screen -mx-4 sm:-mx-6">
-        <DraftBoard 
-          draftData={draftData} 
-          userMap={userMap} 
-          allTeams={allTeams} 
-          userFirstNames={userFirstNames}
-        />
+      {/* Draft Board - Full Width and Centered */}
+      <div className="w-full overflow-x-auto">
+        <div className="min-w-max mx-auto">
+          <DraftBoard 
+            draftData={draftData} 
+            userMap={userMap} 
+            allTeams={allTeams} 
+            userFirstNames={userFirstNames}
+          />
+        </div>
       </div>
 
     </div>

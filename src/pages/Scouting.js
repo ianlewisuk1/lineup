@@ -43,36 +43,48 @@ function Scouting() {
         });
         setAllTeams(teamsMap);
 
-        // 🔧 FIX: Correct draft data fetching path
-        const draftedTeamsSet = new Set();
-        if (leagueId) {
-          try {
-            // Try the correct path: leagues/{leagueId}/meta/draft
-            const draftDoc = await getDoc(doc(db, "leagues", leagueId, "meta", "draft"));
-            if (draftDoc.exists()) {
-              const draftData = draftDoc.data();
-              console.log("🔍 Draft data found:", draftData);
-              
-              // Check if selectedTeams exists in the draft data
-              if (draftData.selectedTeams) {
-                // Collect all drafted teams from all users
-                Object.values(draftData.selectedTeams).forEach(userTeams => {
-                  if (Array.isArray(userTeams)) {
-                    userTeams.forEach(teamName => {
-                      const normalized = normalizeName(teamName);
-                      draftedTeamsSet.add(normalized);
-                      console.log("📝 Added drafted team:", normalized);
-                    });
-                  }
-                });
-              }
-            } else {
-              console.log("⚠️ No draft document found for league:", leagueId);
-            }
-          } catch (draftError) {
-            console.error("❌ Error fetching draft data:", draftError);
+    // 🔧 FIX: Correct draft data fetching path
+    const draftedTeamsSet = new Set();
+    if (leagueId) {
+      try {
+        // Try the correct path: leagues/{leagueId}/meta/draft
+        const draftDoc = await getDoc(doc(db, "leagues", leagueId, "meta", "draft"));
+        if (draftDoc.exists()) {
+          const draftData = draftDoc.data();
+          console.log("🔍 Draft data found:", draftData);
+          
+          // 🚀 NEW: Handle both live drafts and manual drafts
+          let teamsToProcess = {};
+          
+          if (draftData.selectedTeams) {
+            // Live draft format: { selectedTeams: { userId: [team1, team2, ...] } }
+            teamsToProcess = draftData.selectedTeams;
+            console.log("📝 Processing live draft teams");
+          } else if (draftData.teams) {
+            // Manual draft format: { teams: { userId: [team1, team2, ...] } }
+            teamsToProcess = draftData.teams;
+            console.log("📝 Processing manual draft teams");
           }
+          
+          // Collect all drafted teams from all users
+          Object.values(teamsToProcess).forEach(userTeams => {
+            if (Array.isArray(userTeams)) {
+              userTeams.forEach(teamName => {
+                const normalized = normalizeName(teamName);
+                draftedTeamsSet.add(normalized);
+                console.log("📝 Added drafted team:", normalized);
+              });
+            }
+          });
+          
+          console.log("🎯 Draft type detected:", draftData.selectedTeams ? "Live" : "Manual");
+        } else {
+          console.log("⚠️ No draft document found for league:", leagueId);
         }
+      } catch (draftError) {
+        console.error("❌ Error fetching draft data:", draftError);
+      }
+    }
         
         console.log("🎯 Total drafted teams:", draftedTeamsSet.size, Array.from(draftedTeamsSet));
         setDraftedTeams(draftedTeamsSet);
