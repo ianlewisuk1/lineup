@@ -512,8 +512,7 @@ function TeamPage() {
       </nav>
 
       {/* Main Content */}
-      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-24">
-        
+      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-28">              
         {/* Back Button */}
         <button 
           onClick={() => navigate(-1)} 
