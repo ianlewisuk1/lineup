@@ -5,6 +5,7 @@ import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { Trophy, Users, Star, TrendingUp, Settings } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 import ScoringSystemModal from "../components/ScoringSystemModal";
+import RecentMovesWidget from '../components/RecentMovesWidget';
 
 function MyLeague() {
   const { leagueId } = useParams();
@@ -878,6 +879,9 @@ function MyLeague() {
             Current Week: {currentWeek}
           </p>
         </div>
+
+        {/* Recent Moves Widget */}
+        <RecentMovesWidget leagueId={leagueId} />
 
         {/* Condensed Leaderboard Summary */}
         {sortedMembers.length > 0 && (

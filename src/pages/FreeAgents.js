@@ -10,6 +10,7 @@ import {
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Plus, Search, Filter, ChevronDown } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
+import { logFreeAgentMove } from '../components/LogFreeAgentMove';
 
 // Custom Dropdown Component with matching height and truncation
 const CustomDropdown = ({ 
@@ -391,6 +392,20 @@ function FreeAgents() {
         "freeAgentMoves": currentMoves + 1
       });
 
+      // Log the move for the news ticker
+      try {
+        await logFreeAgentMove(leagueId, {
+          userId: user.uid,
+          teamName: memberData.displayName || memberData.firstName || "Unknown Manager",          pickedUp: teamToAdd.school,
+          dropped: null,
+          week: "Preseason", // You can change this to dynamic later
+          moveType: 'pickup'
+        });
+      } catch (error) {
+        console.error('Error logging move:', error);
+        // Don't fail the whole operation if logging fails
+      }
+
       setUserTeams([...starters, ...bench].filter(Boolean));
       
       // Update draftedTeams to reflect the new team ownership
@@ -452,6 +467,29 @@ function FreeAgents() {
         "lineup.bench": bench,
         "freeAgentMoves": currentMoves + 1
       });
+
+      // Log the move for the news ticker
+      try {
+        // Get display name for dropped team
+        const droppedTeamData = Object.values(teamsByConference).flat().find(team => 
+          team.school?.toLowerCase()
+            .replace(/\s+/g, "-")
+            .replace(/&/g, "-")
+            .replace(/[^a-z0-9\-]/g, "") === selectedDropTeam
+        );
+        const droppedTeamName = droppedTeamData?.school || selectedDropTeam;
+
+        await logFreeAgentMove(leagueId, {
+          userId: user.uid,
+          teamName: memberData.displayName || memberData.firstName || "Unknown Manager",          pickedUp: pendingAddTeam,
+          dropped: droppedTeamName,
+          week: "Preseason", // You can change this to dynamic later
+          moveType: 'swap'
+        });
+      } catch (error) {
+        console.error('Error logging move:', error);
+        // Don't fail the whole operation if logging fails
+      }
 
       setUserTeams([...starters, ...bench].filter(Boolean));
       

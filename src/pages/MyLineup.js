@@ -11,6 +11,7 @@ import {
 import { Settings, Trophy, Users, Star, TrendingUp } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 import ScoringSystemModal from "../components/ScoringSystemModal";
+import { logFreeAgentMove } from '../components/LogFreeAgentMove';
 
 function MyLineup() {
   const { leagueId } = useParams();
@@ -598,7 +599,34 @@ function MyLineup() {
       "lineup.starters": newStarters.map(t => normalizeTeamName(t)),
       "lineup.bench": newBench.map(t => normalizeTeamName(t))
     });
-    
+
+    // Log the cut for the news ticker
+    try {
+      // Get user's first name
+      let firstName = "Unknown Manager";
+      try {
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          firstName = userData.firstName || userData.displayName || "Unknown Manager";
+        }
+      } catch (userError) {
+        console.warn("Could not fetch user data for logging:", userError);
+      }
+
+      await logFreeAgentMove(leagueId, {
+        userId: currentUser.uid,
+        teamName: firstName, // Use firstName instead of teamName
+        pickedUp: null,
+        dropped: team.school,
+        week: currentWeek,
+        moveType: 'drop'
+      });
+    } catch (error) {
+      console.error('Error logging move:', error);
+      // Don't fail the whole operation if logging fails
+    }
+
     alert(`✅ ${team.school} has been cut from your lineup.`);
   };
 
