@@ -526,10 +526,6 @@ function MyLineup() {
     if (allMyTeams.length === 0) {
       return (
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
-          <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Calendar className="text-blue-400" size={20} />
-            📅 Season Schedule Grid
-          </h3>
           <p className="text-white/60 text-center py-8">
             Add teams to your lineup to see their schedule grid.
           </p>
@@ -539,11 +535,6 @@ function MyLineup() {
 
     return (
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
-        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Calendar className="text-blue-400" size={20} />
-          📅 Season Schedule Grid
-        </h3>
-        
         <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-max">
@@ -608,10 +599,6 @@ function MyLineup() {
 
         <div className="mt-4 text-xs text-white/60 text-center">
           💡 Scroll horizontally to see all weeks
-        </div>
-        
-        <div className="mt-4 text-xs text-white/60 text-center">
-          💡 Scroll horizontally to see all weeks. Green rows = Starters, Orange rows = Bench
         </div>
       </div>
     );
