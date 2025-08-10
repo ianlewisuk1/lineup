@@ -426,6 +426,17 @@ function MyLineup() {
     const { movingTeam, toSection, availableTeams } = moveModalData;
     const isMovingToStarters = toSection === 'starters';
 
+    // Helper function to format next game info
+    const formatNextGame = (team) => {
+      if (!team?.currentSeason?.nextOpponent) return "No game scheduled";
+      
+      const { nextOpponent, nextGameIsHome, nextOpponentSpread } = team.currentSeason;
+      const prefix = nextGameIsHome ? "vs" : "@";
+      const spread = nextOpponentSpread || "TBD";
+      
+      return `${prefix} ${nextOpponent} (${spread})`;
+    };
+
     return (
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-white/95 backdrop-blur-lg rounded-2xl p-6 max-w-md w-full border border-white/20 shadow-2xl">
@@ -445,15 +456,28 @@ function MyLineup() {
                   onClick={() => confirmMove(index)}
                   className="w-full p-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-lg transition-all duration-200 flex items-center justify-between shadow-lg hover:shadow-blue-500/25 transform hover:scale-105"
                 >
-                  <div className="text-left">
-                    <div className="text-sm font-bold">
+                  <div className="text-left flex-1">
+                    <div className="text-sm font-bold mb-1">
                       {team.school}
                     </div>
-                    <div className="text-xs text-blue-100">
+                    <div className="text-xs text-blue-100 mb-1">
                       {team.conference}
                     </div>
+                    {/* Next Game Info */}
+                    <div className="text-xs text-blue-200 font-medium">
+                      {formatNextGame(team)}
+                    </div>
+                    {/* Optional: Game Date */}
+                    {team.currentSeason?.nextGameDate && (
+                      <div className="text-xs text-blue-300 mt-1">
+                        {new Date(team.currentSeason.nextGameDate).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric' 
+                        })}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-blue-200">
+                  <div className="text-blue-200 ml-2">
                     →
                   </div>
                 </button>
@@ -471,7 +495,7 @@ function MyLineup() {
       </div>
     );
   };
-
+  
   const CutModal = () => {
     if (!showCutModal) return null;
 
