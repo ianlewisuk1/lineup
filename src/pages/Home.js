@@ -3,6 +3,7 @@ import { auth, db } from "../firebase/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Trophy, Users, ArrowRight, Plus, Wifi, WifiOff } from "lucide-react";
+import ProfileDropdown from "../components/ProfileDropdown";
 
 function Home() {
   const [leagueList, setLeagueList] = useState([]);
@@ -235,12 +236,7 @@ function Home() {
             )}
           </div>
           
-          <button 
-            onClick={handleLogout}
-            className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
-          >
-            Logout
-          </button>
+          <ProfileDropdown />
         </div>
       </nav>
 
