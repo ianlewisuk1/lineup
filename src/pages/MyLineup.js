@@ -495,7 +495,7 @@ function MyLineup() {
       </div>
     );
   };
-  
+
   const CutModal = () => {
     if (!showCutModal) return null;
 
@@ -1154,7 +1154,7 @@ function MyLineup() {
                       <div className="p-4 flex gap-3">
                         {/* Left Side - Logo and Expand Button */}
                         <div className="flex-shrink-0 flex flex-col items-center gap-1">
-                          <TeamLogo teamName={team.school} size={48} clickable={false} />
+                          <TeamLogo teamName={team.school} size={42} clickable={false} />
                           <div className="mt-2">
                             <button
                               onClick={() => {
@@ -1293,7 +1293,7 @@ function MyLineup() {
                       <div className="p-4 flex gap-3">
                         {/* Left Side - Logo and Expand Button */}
                         <div className="flex-shrink-0 flex flex-col items-center gap-1">
-                          <TeamLogo teamName={team.school} size={48} clickable={false} />
+                          <TeamLogo teamName={team.school} size={42} clickable={false} />
                           <div className="mt-2">
                             <button
                               onClick={() => {
