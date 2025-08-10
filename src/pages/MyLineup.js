@@ -8,10 +8,10 @@ import {
   getDocs,
   updateDoc
 } from "firebase/firestore";
-import { Settings, Trophy, Users, Star, TrendingUp } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 import ScoringSystemModal from "../components/ScoringSystemModal";
 import { logFreeAgentMove } from '../components/LogFreeAgentMove';
+import { Settings, Trophy, Users, Star, TrendingUp, Calendar, ChevronDown, ChevronUp } from "lucide-react";
 
 function MyLineup() {
   const { leagueId } = useParams();
@@ -37,6 +37,12 @@ function MyLineup() {
   const [currentWeek, setCurrentWeek] = useState("Preseason");
   const [expandedTeams, setExpandedTeams] = useState(Array(7).fill(false));
   const [showScoringModal, setShowScoringModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [showScheduleGrid, setShowScheduleGrid] = useState(false);
+  const [scheduleData, setScheduleData] = useState({});
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [weekNumbers, setWeekNumbers] = useState([]);
 
   const openCutModal = (team, index, section) => {
     setTeamToCut({ team, index, section });
@@ -119,6 +125,93 @@ function MyLineup() {
 
     setShowMoveModal(false);
     setMoveModalData(null);
+  };
+  
+  const fetchScheduleData = async () => {
+    if (Object.keys(scheduleData).length > 0) return; // Already loaded
+    
+    setScheduleLoading(true);
+    try {
+      // Get all weeks
+      const weeksSnap = await getDocs(collection(db, "schedule", "2025", "weeks"));
+      const weeks = [];
+      const schedule = {};
+
+      // Collect all week numbers
+      weeksSnap.forEach(weekDoc => {
+        const weekNum = parseInt(weekDoc.id);
+        if (!isNaN(weekNum) && weekNum < 15) {
+          weeks.push(weekNum);
+        }
+      });
+
+      weeks.sort((a, b) => a - b);
+      setWeekNumbers(weeks);
+
+      // Fetch games for each week
+      for (const weekNum of weeks) {
+        const gamesSnap = await getDocs(collection(db, "schedule", "2025", "weeks", weekNum.toString(), "games"));
+        
+        gamesSnap.forEach(gameDoc => {
+          const gameData = gameDoc.data();
+          const { homeTeam, awayTeam, homePoints, awayPoints, gameComplete, date } = gameData;
+          
+          if (!schedule[weekNum]) schedule[weekNum] = {};
+          
+          // Store game data for both teams
+          if (homeTeam) {
+            schedule[weekNum][homeTeam] = {
+              opponent: awayTeam,
+              isHome: true,
+              homePoints,
+              awayPoints,
+              gameComplete,
+              date
+            };
+          }
+          
+          if (awayTeam) {
+            schedule[weekNum][awayTeam] = {
+              opponent: homeTeam,
+              isHome: false,
+              homePoints,
+              awayPoints,
+              gameComplete,
+              date
+            };
+          }
+        });
+      }
+
+      setScheduleData(schedule);
+    } catch (error) {
+      console.error("Error fetching schedule data:", error);
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
+
+  // Get game info for a specific team and week
+  const getGameInfo = (teamName, weekNum) => {
+    if (!scheduleData[weekNum] || !teamName) return null;
+    return scheduleData[weekNum][teamName] || null;
+  };
+
+  // Format game display
+  const formatGameDisplay = (gameInfo) => {
+    if (!gameInfo) return "BYE";
+    
+    const { opponent, isHome, homePoints, awayPoints, gameComplete } = gameInfo;
+    const prefix = isHome ? "vs" : "@";
+    
+    if (gameComplete && homePoints !== null && awayPoints !== null) {
+      const teamScore = isHome ? homePoints : awayPoints;
+      const oppScore = isHome ? awayPoints : homePoints;
+      const result = teamScore > oppScore ? "W" : teamScore < oppScore ? "L" : "T";
+      return `${result} ${teamScore}-${oppScore} ${prefix} ${opponent}`;
+    }
+    
+    return `${prefix} ${opponent}`;
   };
 
   // Team Logo Component (reused from MyLeague)
@@ -299,6 +392,33 @@ function MyLineup() {
     );
   };
 
+  // Success Modal Component
+  const SuccessModal = () => {
+    if (!showSuccessModal) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white/95 backdrop-blur-lg rounded-2xl p-6 max-w-md w-full border border-white/20 shadow-2xl animate-pulse">
+          <div className="text-center">
+            <div className="text-4xl mb-4">✅</div>
+            <h3 className="text-xl font-bold text-gray-900 mb-4">
+              Success!
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {successMessage}
+            </p>
+            <button
+              onClick={() => setShowSuccessModal(false)}
+              className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors duration-200"
+            >
+              Got it!
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Move Modal Component
   const MoveModal = () => {
     if (!showMoveModal || !moveModalData) return null;
@@ -351,6 +471,7 @@ function MyLineup() {
       </div>
     );
   };
+
   const CutModal = () => {
     if (!showCutModal) return null;
 
@@ -379,6 +500,118 @@ function MyLineup() {
               Cut Team
             </button>
           </div>
+        </div>
+      </div>
+    );
+  };
+
+  const ScheduleGrid = () => {
+    if (!showScheduleGrid) return null;
+
+    const allMyTeams = [...starters, ...bench].filter(team => team !== null);
+
+    if (scheduleLoading) {
+      return (
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="text-2xl mb-2 animate-spin">📅</div>
+              <p className="text-white/80">Loading schedule...</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (allMyTeams.length === 0) {
+      return (
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
+          <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <Calendar className="text-blue-400" size={20} />
+            📅 Season Schedule Grid
+          </h3>
+          <p className="text-white/60 text-center py-8">
+            Add teams to your lineup to see their schedule grid.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <Calendar className="text-blue-400" size={20} />
+          📅 Season Schedule Grid
+        </h3>
+        
+        <div className="bg-white/5 rounded-xl border border-white/10 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-max">
+              <thead>
+                <tr className="bg-white/10">
+                  <th className="sticky left-0 bg-white/10 px-4 py-3 text-left text-white font-bold border-r border-white/20 min-w-[80px]">
+                    Team
+                  </th>
+                  {weekNumbers.map(weekNum => (
+                    <th 
+                      key={weekNum} 
+                      className="px-3 py-3 text-center text-white font-bold border-r border-white/10 min-w-[140px] text-sm"
+                    >
+                      Week {weekNum}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {allMyTeams.map((team, teamIndex) => (
+                  <tr 
+                    key={team.school} 
+                    className="border-b border-white/10 hover:bg-white/5 transition-colors duration-200"
+                  >
+                    <td className="sticky left-0 bg-white/10 px-4 py-3 border-r border-white/20">
+                      <div className="flex items-center justify-center">
+                        <TeamLogo teamName={team.school} size={36} clickable={false} />
+                      </div>
+                    </td>
+                    {weekNumbers.map(weekNum => {
+                      const gameInfo = getGameInfo(team.school, weekNum);
+                      const gameDisplay = formatGameDisplay(gameInfo);
+                      const isBye = gameDisplay === "BYE";
+                      const isWin = gameDisplay.startsWith("W ");
+                      const isLoss = gameDisplay.startsWith("L ");
+                      
+                      return (
+                        <td 
+                          key={weekNum}
+                          className="px-3 py-3 border-r border-white/10 text-center"
+                        >
+                          <div className={`text-xs font-medium px-2 py-1 rounded ${
+                            isBye 
+                              ? 'text-gray-400 bg-gray-500/20' 
+                              : isWin
+                              ? 'text-green-300 bg-green-500/20'
+                              : isLoss
+                              ? 'text-red-300 bg-red-500/20'
+                              : 'text-white bg-blue-500/20'
+                          }`}>
+                            {gameDisplay}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="mt-4 text-xs text-white/60 text-center">
+          💡 Scroll horizontally to see all weeks
+        </div>
+        
+        <div className="mt-4 text-xs text-white/60 text-center">
+          💡 Scroll horizontally to see all weeks. Green rows = Starters, Orange rows = Bench
         </div>
       </div>
     );
@@ -469,6 +702,12 @@ function MyLineup() {
 
     fetchLineup();
   }, [leagueId]);
+
+  useEffect(() => {
+    if (showScheduleGrid && Object.keys(scheduleData).length === 0) {
+      fetchScheduleData();
+    }
+  }, [showScheduleGrid]);
 
   const handleTeamClick = (teamName) => {
     navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
@@ -627,7 +866,9 @@ function MyLineup() {
       // Don't fail the whole operation if logging fails
     }
 
-    alert(`✅ ${team.school} has been cut from your lineup.`);
+    // Show styled success modal instead of alert
+    setSuccessMessage(`${team.school} has been cut from your lineup.`);
+    setShowSuccessModal(true);
   };
 
   const handleSaveSmackTalk = async () => {
@@ -641,10 +882,12 @@ function MyLineup() {
         smackTalk: smackTalk.trim()
       });
       setIsEditingSmackTalk(false);
-      alert("✅ Smack talk updated!");
+      setSuccessMessage("Smack talk updated!");
+      setShowSuccessModal(true);
     } catch (error) {
       console.error("Error saving smack talk:", error);
-      alert("Failed to save smack talk. Please try again.");
+      setSuccessMessage("Failed to save smack talk. Please try again.");
+      setShowSuccessModal(true);
     } finally {
       setSmackTalkSaving(false);
     }
@@ -863,6 +1106,27 @@ function MyLineup() {
             </div>
           )}
         </div>
+        
+        {/* Schedule Grid Toggle */}
+        <div className="mb-6">
+          <button
+            onClick={() => setShowScheduleGrid(!showScheduleGrid)}
+            className="w-full bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 hover:bg-white/15 transition-all duration-200 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <Calendar className="text-blue-400" size={24} />
+              <span className="text-xl font-bold text-white">📅 Season Schedule Grid</span>
+            </div>
+            {showScheduleGrid ? (
+              <ChevronUp className="text-white/60" size={24} />
+            ) : (
+              <ChevronDown className="text-white/60" size={24} />
+            )}
+          </button>
+        </div>
+
+        {/* Schedule Grid */}
+        <ScheduleGrid />
 
         {/* Starters Section */}
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
@@ -1169,6 +1433,9 @@ function MyLineup() {
           onClose={() => setShowScoringModal(false)}
         />
       )}
+
+      {/* Success Modal */}
+      <SuccessModal />
 
       {/* Cut Modal */}
       <CutModal />

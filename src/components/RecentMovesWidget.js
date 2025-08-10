@@ -112,7 +112,7 @@ const RecentMovesWidget = ({ leagueId }) => {
           <div className="p-2 bg-blue-500/20 rounded-xl border border-blue-400/30 group-hover:bg-blue-500/30 transition-colors">
             <Activity size={18} className="text-blue-400" />
           </div>
-          <h3 className="text-lg font-bold text-white">Free Agent Moves</h3>
+          <h3 className="text-lg font-bold text-white">League Activity</h3>
         </div>
         
         <div className="flex items-center gap-3">

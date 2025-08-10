@@ -12,183 +12,6 @@ import { Plus, Search, Filter, ChevronDown } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 import { logFreeAgentMove } from '../components/LogFreeAgentMove';
 
-// Custom Dropdown Component with matching height and truncation
-const CustomDropdown = ({ 
-  value, 
-  onChange, 
-  options, 
-  placeholder = "Select an option",
-  icon: Icon = Filter 
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const dropdownRef = useRef(null);
-  const listRef = useRef(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false);
-        setHighlightedIndex(-1);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
-  }, []);
-
-  // Handle keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (!isOpen) return;
-
-      switch (event.key) {
-        case 'ArrowDown':
-          event.preventDefault();
-          setHighlightedIndex(prev => 
-            prev < options.length - 1 ? prev + 1 : 0
-          );
-          break;
-        case 'ArrowUp':
-          event.preventDefault();
-          setHighlightedIndex(prev => 
-            prev > 0 ? prev - 1 : options.length - 1
-          );
-          break;
-        case 'Enter':
-          event.preventDefault();
-          if (highlightedIndex >= 0) {
-            handleSelect(options[highlightedIndex]);
-          }
-          break;
-        case 'Escape':
-          setIsOpen(false);
-          setHighlightedIndex(-1);
-          break;
-        default:
-          break;
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-      return () => document.removeEventListener('keydown', handleKeyDown);
-    }
-  }, [isOpen, highlightedIndex, options]);
-
-  // Scroll highlighted item into view
-  useEffect(() => {
-    if (highlightedIndex >= 0 && listRef.current) {
-      const highlightedElement = listRef.current.children[highlightedIndex];
-      if (highlightedElement) {
-        highlightedElement.scrollIntoView({
-          block: 'nearest',
-          behavior: 'smooth'
-        });
-      }
-    }
-  }, [highlightedIndex]);
-
-  const handleSelect = (option) => {
-    onChange(option.value);
-    setIsOpen(false);
-    setHighlightedIndex(-1);
-  };
-
-  const toggleDropdown = () => {
-    setIsOpen(!isOpen);
-    setHighlightedIndex(-1);
-  };
-
-  const selectedOption = options.find(opt => opt.value === value);
-
-  // Truncate text if too long - balanced for readability
-  const truncateText = (text, maxLength = 10) => {
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength - 3) + '...';
-  };
-
-  return (
-    <div 
-      ref={dropdownRef}
-      className="relative w-full select-none"
-    >
-      {/* Dropdown Trigger - matching search input height exactly */}
-      <button
-        type="button"
-        onClick={toggleDropdown}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            toggleDropdown();
-          }
-        }}
-        className={`
-          w-full h-11 px-12 bg-white/10 backdrop-blur-sm border-2 rounded-xl text-sm text-white cursor-pointer
-          flex items-center justify-between text-left transition-all duration-300 outline-none appearance-none
-          ${isOpen ? 'border-blue-400' : 'border-white/30'}
-          hover:border-blue-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20
-        `}
-      >
-        {/* Left Icon */}
-        <Icon 
-          size={16} 
-          className="absolute left-3 text-white/60 pointer-events-none"
-        />
-        
-        {/* Selected Text with truncation */}
-        <span 
-          className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap pr-2"
-          title={selectedOption ? selectedOption.label : placeholder}
-        >
-          {selectedOption ? truncateText(selectedOption.label) : placeholder}
-        </span>
-        
-        {/* Chevron Icon */}
-        <ChevronDown 
-          size={16} 
-          className={`text-white/60 transition-transform duration-200 flex-shrink-0 ${
-            isOpen ? 'rotate-180' : 'rotate-0'
-          }`}
-        />
-      </button>
-
-      {/* Dropdown List */}
-      {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white/10 backdrop-blur-lg border-2 border-white/20 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto overflow-x-hidden">
-          <ul
-            ref={listRef}
-            className="m-0 p-1 list-none"
-          >
-            {options.map((option, index) => (
-              <li
-                key={option.value}
-                onClick={() => handleSelect(option)}
-                onMouseEnter={() => setHighlightedIndex(index)}
-                className={`
-                  p-3 cursor-pointer text-sm text-white transition-all duration-150 rounded-lg mx-1
-                  ${highlightedIndex === index ? 'bg-white/20' : ''}
-                  ${value === option.value ? 'bg-blue-500/20 border-l-2 border-blue-400 font-semibold' : ''}
-                  hover:bg-white/20
-                `}
-                onMouseDown={(e) => e.preventDefault()}
-                title={option.label} // Show full text on hover
-              >
-                {option.label}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-};
-
 // Compact Sort Button Component
 const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
   <button
@@ -394,9 +217,22 @@ function FreeAgents() {
 
       // Log the move for the news ticker
       try {
+        // Get user's first name from users collection
+        let firstName = "Unknown Manager";
+        try {
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            firstName = userData.firstName || userData.displayName || "Unknown Manager";
+          }
+        } catch (userError) {
+          console.warn("Could not fetch user data for logging:", userError);
+        }
+
         await logFreeAgentMove(leagueId, {
           userId: user.uid,
-          teamName: memberData.displayName || memberData.firstName || "Unknown Manager",          pickedUp: teamToAdd.school,
+          teamName: firstName, // Use firstName from users collection
+          pickedUp: teamToAdd.school,
           dropped: null,
           week: "Preseason", // You can change this to dynamic later
           moveType: 'pickup'
@@ -470,6 +306,18 @@ function FreeAgents() {
 
       // Log the move for the news ticker
       try {
+        // Get user's first name from users collection
+        let firstName = "Unknown Manager";
+        try {
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            firstName = userData.firstName || userData.displayName || "Unknown Manager";
+          }
+        } catch (userError) {
+          console.warn("Could not fetch user data for logging:", userError);
+        }
+
         // Get display name for dropped team
         const droppedTeamData = Object.values(teamsByConference).flat().find(team => 
           team.school?.toLowerCase()
@@ -481,7 +329,8 @@ function FreeAgents() {
 
         await logFreeAgentMove(leagueId, {
           userId: user.uid,
-          teamName: memberData.displayName || memberData.firstName || "Unknown Manager",          pickedUp: pendingAddTeam,
+          teamName: firstName, // Use firstName from users collection
+          pickedUp: pendingAddTeam,
           dropped: droppedTeamName,
           week: "Preseason", // You can change this to dynamic later
           moveType: 'swap'
@@ -616,12 +465,6 @@ function FreeAgents() {
     
     return `${prefix} ${season.nextOpponent} (${spread})${dateStr}`;
   };
-
-  // Convert conference list to dropdown options
-  const conferenceOptions = conferenceList.map(conf => ({
-    value: conf,
-    label: conf === "National" ? "All Conferences" : conf
-  }));
 
   // Team Card Component with DraftRoom styling
   const TeamCard = ({ team }) => {
@@ -810,14 +653,26 @@ function FreeAgents() {
             </div>
 
             {/* Conference Filter */}
-            <div className="flex-1 sm:max-w-48">
-              <CustomDropdown
+            <div className="flex-1 sm:max-w-48 relative">
+              <Filter size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60 pointer-events-none z-10" />
+              <select
                 value={activeConference}
-                onChange={setActiveConference}
-                options={conferenceOptions}
-                placeholder="All Conferences"
-                icon={Filter}
-              />
+                onChange={(e) => setActiveConference(e.target.value)}
+                className="w-full h-11 pl-10 pr-4 bg-white/10 backdrop-blur-sm border-2 border-white/30 rounded-xl text-white transition-all duration-300 hover:border-blue-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 focus:outline-none appearance-none cursor-pointer"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.6)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 1rem center',
+                  backgroundSize: '1rem'
+                }}
+              >
+                <option value="National" className="bg-slate-800 text-white">All Conferences</option>
+                {conferenceList.slice(1).map(conf => (
+                  <option key={conf} value={conf} className="bg-slate-800 text-white">
+                    {conf}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

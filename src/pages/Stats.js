@@ -5,162 +5,6 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { Search, Filter, ChevronDown, BarChart3, ChevronUp } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 
-// Custom Dropdown Component
-// Updated CustomDropdown Component with proper z-index handling
-
-const CustomDropdown = ({ 
-  value, 
-  onChange, 
-  options, 
-  placeholder = "Select an option",
-  icon: Icon = Filter 
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const dropdownRef = useRef(null);
-  const listRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false);
-        setHighlightedIndex(-1);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (!isOpen) return;
-
-      switch (event.key) {
-        case 'ArrowDown':
-          event.preventDefault();
-          setHighlightedIndex(prev => 
-            prev < options.length - 1 ? prev + 1 : 0
-          );
-          break;
-        case 'ArrowUp':
-          event.preventDefault();
-          setHighlightedIndex(prev => 
-            prev > 0 ? prev - 1 : options.length - 1
-          );
-          break;
-        case 'Enter':
-          event.preventDefault();
-          if (highlightedIndex >= 0) {
-            handleSelect(options[highlightedIndex]);
-          }
-          break;
-        case 'Escape':
-          setIsOpen(false);
-          setHighlightedIndex(-1);
-          break;
-        default:
-          break;
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-      return () => document.removeEventListener('keydown', handleKeyDown);
-    }
-  }, [isOpen, highlightedIndex, options]);
-
-  const handleSelect = (option) => {
-    onChange(option.value);
-    setIsOpen(false);
-    setHighlightedIndex(-1);
-  };
-
-  const toggleDropdown = () => {
-    setIsOpen(!isOpen);
-    setHighlightedIndex(-1);
-  };
-
-  const selectedOption = options.find(opt => opt.value === value);
-
-  const truncateText = (text, maxLength = 15) => {
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength - 3) + '...';
-  };
-
-  return (
-    <div 
-      ref={dropdownRef}
-      className={`relative w-full ${isOpen ? 'z-[9999]' : 'z-50'}`}
-    >
-      <button
-        type="button"
-        onClick={toggleDropdown}
-        className={`
-          w-full h-12 px-12 bg-white/10 backdrop-blur-sm border-2 rounded-xl 
-          text-sm text-white placeholder-white/60 transition-all duration-300
-          flex items-center justify-between text-left relative
-          ${isOpen ? 'border-blue-400 ring-2 ring-blue-400/20' : 'border-white/30'}
-          hover:border-blue-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 focus:outline-none
-        `}
-      >
-        <Icon 
-          size={16} 
-          className="absolute left-4 text-white/60 pointer-events-none"
-        />
-        
-        <span 
-          className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap pr-2"
-          title={selectedOption ? selectedOption.label : placeholder}
-        >
-          {selectedOption ? truncateText(selectedOption.label) : placeholder}
-        </span>
-        
-        <ChevronDown 
-          size={16} 
-          className={`
-            text-white/60 flex-shrink-0 transition-transform duration-200
-            ${isOpen ? 'rotate-180' : 'rotate-0'}
-          `}
-        />
-      </button>
-
-      {isOpen && (
-        <div 
-          className="absolute top-full left-0 right-0 mt-2 bg-white/10 backdrop-blur-lg border-2 border-white/20 rounded-xl shadow-2xl max-h-80 overflow-y-auto z-[9999]"
-        >
-          <ul className="py-2">
-            {options.map((option, index) => (
-              <li
-                key={option.value}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSelect(option);
-                }}
-                onMouseEnter={() => setHighlightedIndex(index)}
-                className={`
-                  px-4 py-3 cursor-pointer text-sm text-white transition-all duration-150
-                  ${highlightedIndex === index ? 'bg-white/20' : ''}
-                  ${value === option.value ? 'bg-blue-500/30 border-l-4 border-blue-400 font-semibold' : 'border-l-4 border-transparent'}
-                  hover:bg-white/20
-                `}
-                onMouseDown={(e) => e.preventDefault()}
-                title={option.label}
-              >
-                {option.label}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-};
-
 function Stats() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
@@ -182,7 +26,7 @@ function Stats() {
     { value: "avgPointsFor", label: "Avg Points For", type: "number" },
     { value: "avgPointsAgainst", label: "Avg Points Against", type: "number" },
     { value: "sosRank", label: "SOS Rank", type: "number" },
-    { value: "philMetrics", label: "Phil Metrics Rank", type: "number" },
+    { value: "philMetrics", label: "Phil Metrics Score", type: "number" },
     { value: "prevYearPoints", label: "2024 Points", type: "number" },
     { value: "nextOpponent", label: "Next Opponent", type: "string" }
   ];
@@ -251,7 +95,7 @@ function Stats() {
     const bVal = getValue(b, sortColumn);
 
     const currentStat = statOptions.find(s => s.value === sortColumn) || 
-                       { type: sortColumn === "school" ? "string" : "string" };
+                      { type: sortColumn === "school" ? "string" : "string" };
     
     if (currentStat?.type === "number") {
       return sortDirection === "ascending" ? aVal - bVal : bVal - aVal;
@@ -285,6 +129,8 @@ function Stats() {
   };
 
   const toggleSort = () => {
+    // Set the sort column to the currently selected stat and toggle direction
+    setSortColumn(selectedStat);
     setSortDirection(prev => prev === "ascending" ? "descending" : "ascending");
   };
 
@@ -354,12 +200,6 @@ function Stats() {
       }
     }
   };
-
-  // Convert options to dropdown format
-  const conferenceOptions = conferenceList.map(conf => ({
-    value: conf,
-    label: conf
-  }));
 
   const currentStatLabel = statOptions.find(s => s.value === selectedStat)?.label || "Stat";
 
@@ -442,27 +282,49 @@ function Stats() {
               />
             </div>
 
-            <div className="flex-1">
-              <CustomDropdown
+            <div className="flex-1 relative">
+              <Filter size={16} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-white/60 pointer-events-none z-10" />
+              <select
                 value={activeConference}
-                onChange={setActiveConference}
-                options={conferenceOptions}
-                icon={Filter}
-                placeholder="Filter by conference..."
-              />
+                onChange={(e) => setActiveConference(e.target.value)}
+                className="w-full h-12 pl-12 pr-4 bg-white/10 backdrop-blur-sm border-2 border-white/30 rounded-xl text-white transition-all duration-300 hover:border-blue-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 focus:outline-none appearance-none cursor-pointer"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.6)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 1rem center',
+                  backgroundSize: '1rem'
+                }}
+              >
+                {conferenceList.map(conf => (
+                  <option key={conf} value={conf} className="bg-slate-800 text-white">
+                    {conf}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
           {/* Second Row: Stat Selector and Sort */}
           <div className="flex flex-col sm:flex-row gap-4 items-center">
-            <div className="flex-1 w-full">
-              <CustomDropdown
+            <div className="flex-1 w-full relative">
+              <BarChart3 size={16} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-white/60 pointer-events-none z-10" />
+              <select
                 value={selectedStat}
-                onChange={setSelectedStat}
-                options={statOptions}
-                icon={BarChart3}
-                placeholder="Select stat to display..."
-              />
+                onChange={(e) => setSelectedStat(e.target.value)}
+                className="w-full h-12 pl-12 pr-4 bg-white/10 backdrop-blur-sm border-2 border-white/30 rounded-xl text-white transition-all duration-300 hover:border-blue-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 focus:outline-none appearance-none cursor-pointer"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.6)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 1rem center',
+                  backgroundSize: '1rem'
+                }}
+              >
+                {statOptions.map(stat => (
+                  <option key={stat.value} value={stat.value} className="bg-slate-800 text-white">
+                    {stat.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <button
