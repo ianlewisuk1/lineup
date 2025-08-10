@@ -8,6 +8,7 @@ import {
 import { auth, db } from "./firebase/firebase";
 import { signOut, setPersistence, browserLocalPersistence } from "firebase/auth"; // Import setPersistence
 import { doc, getDoc } from "firebase/firestore"; // Add these two lines
+
 import SignUp from "./pages/SignUp";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -48,7 +49,7 @@ function App() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Set Firebase Auth persistence to local
+    // Set Firebase Auth persistence to local right before checking the auth state
     setPersistence(auth, browserLocalPersistence)
       .catch((error) => {
         console.error("Error setting persistence:", error);

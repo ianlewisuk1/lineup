@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth"; // Import setPersistence
 import { getFirestore } from "firebase/firestore";
 
 export const firebaseConfig = {
@@ -13,5 +13,13 @@ export const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
+// Initialize auth and Firestore
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Set persistence to local to ensure session is maintained even after app is closed
+setPersistence(auth, browserLocalPersistence)
+  .catch((error) => {
+    console.error("Error setting persistence:", error);
+  });
