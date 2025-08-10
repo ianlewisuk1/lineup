@@ -1,4 +1,3 @@
-// src/App.js
 import React, { useEffect, useState } from "react";
 import {
   BrowserRouter as Router,
@@ -7,9 +6,8 @@ import {
   useNavigate
 } from "react-router-dom";
 import { auth, db } from "./firebase/firebase";
-import { signOut } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-
+import { signOut, setPersistence, browserLocalPersistence } from "firebase/auth"; // Import setPersistence
+import { doc, getDoc } from "firebase/firestore"; // Add these two lines
 import SignUp from "./pages/SignUp";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -50,6 +48,12 @@ function App() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Set Firebase Auth persistence to local
+    setPersistence(auth, browserLocalPersistence)
+      .catch((error) => {
+        console.error("Error setting persistence:", error);
+      });
+
     const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {

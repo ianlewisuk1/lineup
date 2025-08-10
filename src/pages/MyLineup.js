@@ -1030,12 +1030,6 @@ function MyLineup() {
               💬 Smack Talk
             </h3>
             <div className="flex gap-2">
-              <button
-                onClick={() => setShowScoringModal(true)}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
-              >
-                📊 Scoring
-              </button>
               {!isEditingSmackTalk && (
                 <button
                   onClick={() => setIsEditingSmackTalk(true)}
@@ -1393,44 +1387,63 @@ function MyLineup() {
           </div>
         </div>
 
-        {/* Free Agent Instructions */}
-        <div className="bg-blue-500/20 backdrop-blur-sm border border-blue-400/30 rounded-xl p-4 mb-6">
-          <div className="flex items-center gap-3 text-blue-300">
-            <div className="text-2xl">💡</div>
-            <div>
-              <div className="font-semibold text-blue-200">Want to add new teams?</div>
-              <div className="text-sm text-blue-300 mt-1">
-                Cut a team to make room, or visit the{" "}
-                <Link 
-                  to={`/${leagueId}/free-agents`}
-                  className="font-semibold text-blue-100 hover:text-white underline transition-colors duration-200"
-                >
-                  Free Agents page
-                </Link>
-                {" "}to browse and add available teams directly.
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+{/* Free Agent Instructions */}
+       <div className="bg-blue-500/20 backdrop-blur-sm border border-blue-400/30 rounded-xl p-4 mb-6">
+         <div className="flex items-center gap-3 text-blue-300">
+           <div className="text-2xl">💡</div>
+           <div>
+             <div className="font-semibold text-blue-200">Want to add new teams?</div>
+             <div className="text-sm text-blue-300 mt-1">
+               Cut a team to make room, or visit the{" "}
+               <Link 
+                 to={`/${leagueId}/free-agents`}
+                 className="font-semibold text-blue-100 hover:text-white underline transition-colors duration-200"
+               >
+                 Free Agents page
+               </Link>
+               {" "}to browse and add available teams directly.
+             </div>
+           </div>
+         </div>
+       </div>
 
-      {/* Scoring System Modal */}
-      {showScoringModal && (
-        <ScoringSystemModal 
-          onClose={() => setShowScoringModal(false)}
-        />
-      )}
+       {/* How Does Scoring Work Section */}
+       <div className="bg-purple-500/20 backdrop-blur-sm border border-purple-400/30 rounded-xl p-4 mb-6">
+         <div className="flex items-center gap-3 text-purple-300">
+           <div className="text-2xl">📊</div>
+           <div className="flex-1">
+             <div className="font-semibold text-purple-200">How does scoring work?</div>
+             <div className="text-sm text-purple-300 mt-1">
+               Curious about how your teams earn points? Learn about the scoring system and strategy tips.
+             </div>
+           </div>
+           <button
+             onClick={() => setShowScoringModal(true)}
+             className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex-shrink-0"
+           >
+             View Scoring
+           </button>
+         </div>
+       </div>
+     </div>
 
-      {/* Success Modal */}
-      <SuccessModal />
+     {/* Scoring System Modal */}
+     {showScoringModal && (
+       <ScoringSystemModal 
+         onClose={() => setShowScoringModal(false)}
+       />
+     )}
 
-      {/* Cut Modal */}
-      <CutModal />
-      
-      {/* Move Modal */}
-      <MoveModal />
-    </div>
-  );
+     {/* Success Modal */}
+     <SuccessModal />
+
+     {/* Cut Modal */}
+     <CutModal />
+     
+     {/* Move Modal */}
+     <MoveModal />
+   </div>
+ );
 }
 
 export default MyLineup;
