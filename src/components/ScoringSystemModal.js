@@ -48,13 +48,13 @@ const ScoringSystemModal = ({ onClose }) => {
                       </div>
                       <h4 className="text-lg font-semibold text-green-300">Team Wins</h4>
                     </div>
-                    <p className="text-2xl font-bold text-green-400 mb-3">+3 Points</p>
+                    <p className="text-2xl font-bold text-green-400 mb-3">+5 Points</p>
                     <div className="p-3 bg-green-600/20 rounded-lg border border-green-500/40">
                       <p className="text-green-200 text-sm mb-2">
                         <strong>Underdog Bonus:</strong> +3 additional points
                       </p>
                       <p className="text-green-300 text-xs">
-                        Total: 6 points for underdog wins!
+                        Total: 8 points for underdog wins!
                       </p>
                     </div>
                   </div>
@@ -217,10 +217,10 @@ const ScoringSystemModal = ({ onClose }) => {
                     Georgia Bulldogs (+3.5) beat Alabama Crimson Tide 27-24 | Your captain team
                   </p>
                   <div className="text-xs text-white/70 space-y-1">
-                    <p>• Win: +3 points</p>
+                    <p>• Win: +5 points</p>
                     <p>• Underdog bonus (were +3.5): +3 points</p>
                     <p>• Cover by 6.5 points: +1 bonus points</p>
-                    <p>• Captain multiplier: (3 + 3 + 1) × 2 = <strong className="text-green-400">+14 total points</strong></p>
+                    <p>• Captain multiplier: (5 + 3 + 1) × 2 = <strong className="text-green-400">+18 total points</strong></p>
                   </div>
                 </div>
 
@@ -230,10 +230,10 @@ const ScoringSystemModal = ({ onClose }) => {
                     Michigan Wolverines (-6.5) beat Ohio State Buckeyes 42-27 | Regular lineup spot
                   </p>
                   <div className="text-xs text-white/70 space-y-1">
-                    <p>• Win: +3 points</p>
+                    <p>• Win: +5 points</p>
                     <p>• No underdog bonus (were favored)</p>
                     <p>• Cover by 8.5 points: +2 bonus points</p>
-                    <p>• Total: <strong className="text-purple-400">+5 points</strong></p>
+                    <p>• Total: <strong className="text-purple-400">+7 points</strong></p>
                   </div>
                 </div>
 
@@ -268,11 +268,11 @@ const ScoringSystemModal = ({ onClose }) => {
                     TCU Horned Frogs (+10) beat Oklahoma Sooners 38-17 | Captain + 3x Play Chip
                   </p>
                   <div className="text-xs text-white/70 space-y-1">
-                    <p>• Win: +3 points</p>
+                    <p>• Win: +5 points</p>
                     <p>• Underdog bonus (were +10): +3 points</p>
                     <p>• Cover by 31 points: +5 bonus points</p>
                     <p>• Captain (2x) + 3x Chip = 5x multiplier!</p>
-                    <p>• Total: (3 + 3 + 5) × 5 = <strong className="text-emerald-400">+55 total points</strong></p>
+                    <p>• Total: (5 + 3 + 5) × 5 = <strong className="text-emerald-400">+65 total points</strong></p>
                     <p className="text-emerald-200 italic">This is what dreams are made of!</p>
                   </div>
                 </div>
@@ -283,10 +283,10 @@ const ScoringSystemModal = ({ onClose }) => {
                     Oregon Ducks (-4) leading Penn State 28-14 at halftime
                   </p>
                   <div className="text-xs text-white/70 space-y-1">
-                    <p>• Currently winning by 14: +3 win + 2 spread bonus = +5 points</p>
+                    <p>• Currently winning by 14: +5 win + 2 spread bonus = +7 points</p>
                     <p>• You use Freeze Play to lock in this score</p>
                     <p>• Even if Oregon blows the lead and loses 28-35...</p>
-                    <p>• Your score stays: <strong className="text-slate-400">+5 points (frozen)</strong></p>
+                    <p>• Your score stays: <strong className="text-slate-400">+7 points (frozen)</strong></p>
                     <p className="text-slate-200 italic">Smart move - you avoided a potential -6 points!</p>
                   </div>
                 </div>
