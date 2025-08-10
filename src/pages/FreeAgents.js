@@ -283,7 +283,7 @@ function FreeAgents() {
       const normalizedNewTeam = pendingAddTeam
         .toLowerCase()
         .replace(/\s+/g, "-")
-        .replace(/&/g, "")
+        .replace(/&/g, "-")
         .replace(/[^a-z0-9\-]/g, "");
       
       const starterIndex = starters.findIndex(t => t === selectedDropTeam);

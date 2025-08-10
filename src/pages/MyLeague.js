@@ -49,7 +49,7 @@ function MyLeague() {
                   name
                     ?.toLowerCase()
                     .replace(/\s+/g, "-")
-                    .replace(/&/g, "")
+                    .replace(/&/g, "-")
                     .replace(/[^a-z0-9\-]/g, "");
 
                 console.log("Normalized key for Texas A&M:", normalize("Texas A&M"));
@@ -121,7 +121,7 @@ function MyLeague() {
       name
         ?.toLowerCase()
         .replace(/\s+/g, "-")
-        .replace(/&/g, "")
+        .replace(/&/g, "-")
         .replace(/[^a-z0-9\-]/g, "");
 
     const team = allTeams[normalize(teamName)];
