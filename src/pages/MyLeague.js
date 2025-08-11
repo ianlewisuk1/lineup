@@ -363,13 +363,6 @@ function MyLeague() {
             {rank}
           </div>
         )}
-        
-        {/* Icon overlay for top 3 positions */}
-        {rankStyle.icon && (
-          <div className="absolute -top-1 -right-1 bg-white rounded-full p-1 shadow-sm">
-            {rankStyle.icon}
-          </div>
-        )}
       </div>
     );
   };

@@ -43,6 +43,7 @@ function MyLineup() {
   const [scheduleData, setScheduleData] = useState({});
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [weekNumbers, setWeekNumbers] = useState([]);
+  const [userData, setUserData] = useState(null);
 
   const openCutModal = (team, index, section) => {
     setTeamToCut({ team, index, section });
@@ -195,6 +196,62 @@ function MyLineup() {
   const getGameInfo = (teamName, weekNum) => {
     if (!scheduleData[weekNum] || !teamName) return null;
     return scheduleData[weekNum][teamName] || null;
+  };
+
+  // User Avatar Component for MyLineup
+  const UserAvatar = ({ member, size = 80 }) => {
+    const avatarUrl = member?.teamAvatar;
+    
+    // Handle custom uploaded images (URLs or base64) vs preset avatars
+    const isCustomUpload = avatarUrl && (avatarUrl.startsWith('http') || avatarUrl.startsWith('data:'));
+    
+    return (
+      <div className="relative">
+        <div 
+          className="rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 shadow-lg overflow-hidden border-4 border-white/30"
+          style={{
+            width: size,
+            height: size,
+            backgroundColor: "rgba(255, 255, 255, 0.2)",
+            color: "white"
+          }}
+        >
+          {avatarUrl ? (
+            isCustomUpload ? (
+              // Custom uploaded image (URL or base64)
+              <img 
+                src={avatarUrl} 
+                alt="Team avatar"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  // Fallback to initials if image fails to load
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'flex';
+                }}
+              />
+            ) : (
+              // Preset numbered avatar
+              <div className="w-full h-full bg-gradient-to-r from-purple-500 to-blue-500 text-white text-xl font-bold flex items-center justify-center">
+                {['avatar1.png', 'avatar2.png', 'avatar3.png', 'avatar4.png', 'avatar5.png', 'avatar6.png', 'avatar7.png', 'avatar8.png'].indexOf(avatarUrl) + 1}
+              </div>
+            )
+          ) : (
+            // Fallback to team initials
+            <div className="w-full h-full flex items-center justify-center text-xl font-bold">
+              {teamName ? teamName.charAt(0).toUpperCase() : '?'}
+            </div>
+          )}
+          
+          {/* Fallback initials (hidden by default, shown if image fails) */}
+          <div 
+            className="w-full h-full flex items-center justify-center text-xl font-bold"
+            style={{ display: 'none' }}
+          >
+            {teamName ? teamName.charAt(0).toUpperCase() : '?'}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // Format game display
@@ -637,6 +694,9 @@ function MyLineup() {
       const memberSnap = await getDoc(memberRef);
       const memberData = memberSnap.data();
 
+      // Add this line to store the user data for the avatar
+      setUserData(memberData);
+
       const starterList = memberData?.lineup?.starters || [];
       const benchList = memberData?.lineup?.bench || [];
 
@@ -1019,20 +1079,24 @@ function MyLineup() {
 
       {/* Header */}
       <div className="relative z-10 text-center mb-8 px-4 sm:px-6">
-        <div className="mb-4">
-          <span className="inline-block text-4xl sm:text-5xl mb-2">🏈</span>
+        {/* Team Avatar and Info */}
+        <div className="flex flex-col items-center gap-4 mb-4">
+          <UserAvatar member={userData} size={120} />
+          
+          <div>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black leading-tight mb-2">
+              <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+                {teamName}
+              </span>
+            </h1>
+            <div className="text-2xl font-bold text-blue-400 mb-2">
+              {squadPoints.toLocaleString()} Season Pts
+            </div>
+            <p className="text-lg sm:text-xl text-white/80">
+              Current Week: {currentWeek}
+            </p>
+          </div>
         </div>
-        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black leading-tight mb-2">
-          <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-            {teamName}
-          </span>
-        </h1>
-        <div className="text-2xl font-bold text-blue-400 mb-2">
-          {squadPoints.toLocaleString()} Season Pts
-        </div>
-        <p className="text-lg sm:text-xl text-white/80">
-          Current Week: {currentWeek}
-        </p>
       </div>
 
       {/* Roster Lock Info */}

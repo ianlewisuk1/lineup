@@ -442,29 +442,6 @@ async function uploadAvatar(fileOrDataUrl) {
                          />
                        </label>
                      </div>
-
-                     {/* Preset Avatars */}
-                     <div className="mb-2">
-                       <div className="text-sm text-white/60 mb-2">Or choose a preset:</div>
-                       <div className="grid grid-cols-4 gap-2">
-                         {avatarOptions.map((avatar, index) => (
-                           <button
-                             key={avatar}
-                             type="button"
-                             onClick={() => setTeamAvatar(avatar)}
-                             className={`w-12 h-12 rounded-full border-2 transition-all ${
-                               teamAvatar === avatar && !teamAvatar.startsWith('http')
-                                 ? 'border-purple-400 ring-2 ring-purple-400/50'
-                                 : 'border-white/30 hover:border-purple-400/50'
-                             }`}
-                           >
-                             <div className="w-full h-full rounded-full bg-gradient-to-r from-purple-500 to-blue-500 text-white text-xs font-bold flex items-center justify-center">
-                               {index + 1}
-                             </div>
-                           </button>
-                         ))}
-                       </div>
-                     </div>
                    </div>
                  </div>
                </div>
