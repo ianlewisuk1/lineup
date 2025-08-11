@@ -300,7 +300,7 @@ exports.cfbIngestLines = onRequest(async (req, res) => {
 /* -------------------------------------------------------------------------- */
 
 exports.cfbIngestLinesScheduled = onSchedule(
-  { schedule: '0 0,12 * * *', timeZone: 'Etc/UTC' },
+  { schedule: '5 7,19 * * *', timeZone: 'America/New_York' },
   async () => {
     try {
       const key = CFB_KEY.value();
