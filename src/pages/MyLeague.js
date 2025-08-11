@@ -66,6 +66,7 @@ function MyLeague() {
                 state: teamData.state || "",
                 currentWeekPoints: teamData.currentSeason?.currentWeekPoints || null,
                 gameComplete: teamData.currentSeason?.gameComplete || false,
+                nextOpponentSpread: teamData.currentSeason?.nextOpponentSpread || null,
                 name: teamData.school,  // ADD THIS LINE
                 school: teamData.school // ADD THIS LINE
               };
@@ -157,15 +158,20 @@ function MyLeague() {
       backdropFilter: "blur(10px)"
     };
 
+    const weeklyPointsDisplay = team?.gameComplete 
+      ? (team?.currentWeekPoints || 0)
+      : "?";
+
     if (logoUrl) {
       return (
         <div style={{ position: "relative", display: "inline-block" }}>
-          {/* Weekly Points Badge */}
+          {/* Weekly Points Badge - Moved above logo */}
           {clickable && (
             <div style={{
               position: "absolute",
-              top: "-6px",
-              right: "-6px",
+              top: "-8px",
+              left: "50%",
+              transform: "translateX(-50%)",
               backgroundColor: team?.gameComplete 
                 ? (team?.currentWeekPoints > 0 ? "#10b981" : "#6b7280")
                 : "#f59e0b",
@@ -182,7 +188,7 @@ function MyLeague() {
               border: "2px solid rgba(255, 255, 255, 0.3)",
               boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)"
             }}>
-              {team?.gameComplete ? (team?.currentWeekPoints || 0) : "?"}
+              {weeklyPointsDisplay}
             </div>
           )}
           
@@ -243,12 +249,13 @@ function MyLeague() {
     // Fallback placeholder with team initials and gradient
     return (
       <div style={{ position: "relative", display: "inline-block" }}>
-        {/* Weekly Points Badge */}
+        {/* Weekly Points Badge - Moved above logo */}
         {clickable && (
           <div style={{
             position: "absolute",
-            top: "-6px",
-            right: "-6px",
+            top: "-8px",
+            left: "50%",
+            transform: "translateX(-50%)",
             backgroundColor: team?.gameComplete 
               ? (team?.currentWeekPoints > 0 ? "#10b981" : "#6b7280")
               : "#f59e0b",
@@ -265,7 +272,7 @@ function MyLeague() {
             border: "2px solid rgba(255, 255, 255, 0.3)",
             boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)"
           }}>
-            {team?.gameComplete ? (team?.currentWeekPoints || 0) : "?"}
+            {weeklyPointsDisplay}
           </div>
         )}
         
@@ -299,7 +306,7 @@ function MyLeague() {
   };
 
 // User Avatar Component for Rankings
-  const UserAvatar = ({ member, size = 48, rankStyle, rank }) => {
+  const UserAvatar = ({ member, size = 56, rankStyle, rank }) => {
     const avatarUrl = member.teamAvatar;
     
     // Handle custom uploaded images (URLs or base64) vs preset avatars
@@ -455,17 +462,18 @@ function MyLeague() {
       });
     };
 
-    const getSpreadText = (game, teamName) => {
-      if (!game.homeSpread && !game.awaySpread) return "Pick 'em";
+    const getSpreadText = () => {
+      const spread = team?.nextOpponentSpread;
       
-      const isHome = game.homeTeam === teamName;
-      const teamSpread = isHome ? game.homeSpread : game.awaySpread;
+      if (!spread || spread === "TBD") {
+        return "Line not yet available";
+      }
       
-      if (!teamSpread) return "Pick 'em";
+      const spreadNum = parseFloat(spread);
+      if (isNaN(spreadNum)) return "Line not yet available";
       
-      const spread = parseFloat(teamSpread);
-      if (spread > 0) return `+${spread}`;
-      if (spread < 0) return `${spread}`;
+      if (spreadNum > 0) return `+${spreadNum}`;
+      if (spreadNum < 0) return `${spreadNum}`;
       return "Pick 'em";
     };
 
@@ -492,7 +500,7 @@ function MyLeague() {
           style={{
             perspective: "1000px",
             width: "320px",
-            height: "400px",
+            height: "350px",
             margin: "0 auto",
             position: "relative"
           }}
@@ -526,21 +534,21 @@ function MyLeague() {
                 border: "1px solid rgba(255, 255, 255, 0.2)",
                 display: "flex",
                 flexDirection: "column",
-                padding: "24px",
+                padding: "20px",
                 background: team.colors?.primary 
                   ? `linear-gradient(135deg, ${team.colors.primary}aa 0%, ${team.colors.secondary || team.colors.primary}aa 100%)`
                   : "linear-gradient(135deg, rgba(59, 130, 246, 0.8) 0%, rgba(139, 92, 246, 0.8) 100%)"
               }}
             >
               {/* Team Header */}
-              <div style={{ textAlign: "center", marginBottom: "20px" }}>
+              <div style={{ textAlign: "center", marginBottom: "16px" }}>
                 <div style={{
-                  width: "60px",
-                  height: "60px",
+                  width: "50px",
+                  height: "50px",
                   borderRadius: "50%",
                   overflow: "hidden",
                   border: "3px solid rgba(255, 255, 255, 0.3)",
-                  margin: "0 auto 12px",
+                  margin: "0 auto 10px",
                   backgroundColor: "rgba(255, 255, 255, 0.1)",
                   backdropFilter: "blur(10px)"
                 }}>
@@ -561,7 +569,7 @@ function MyLeague() {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontSize: "18px",
+                      fontSize: "16px",
                       fontWeight: "700",
                       color: "white"
                     }}>
@@ -570,7 +578,7 @@ function MyLeague() {
                   )}
                 </div>
                 <h2 style={{
-                  fontSize: "20px",
+                  fontSize: "18px",
                   fontWeight: "700",
                   color: "white",
                   margin: "0 0 4px 0",
@@ -579,7 +587,7 @@ function MyLeague() {
                   {team.name}
                 </h2>
                 <p style={{
-                  fontSize: "14px",
+                  fontSize: "12px",
                   color: "rgba(255, 255, 255, 0.9)",
                   margin: 0,
                   textShadow: "0 1px 2px rgba(0, 0, 0, 0.3)"
@@ -592,16 +600,16 @@ function MyLeague() {
               <div style={{
                 backgroundColor: "rgba(255, 255, 255, 0.95)",
                 borderRadius: "12px",
-                padding: "16px",
+                padding: "8px",
                 flex: 1,
                 display: "flex",
                 flexDirection: "column"
               }}>
                 <h3 style={{
-                  fontSize: "16px",
+                  fontSize: "14px",
                   fontWeight: "700",
                   color: "#1e293b",
-                  margin: "0 0 12px 0",
+                  margin: "0 0 6px 0",
                   textAlign: "center"
                 }}>
                   Next Game
@@ -612,18 +620,18 @@ function MyLeague() {
                     Loading schedule...
                   </div>
                 ) : nextGame ? (
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
                     <div style={{ textAlign: "center" }}>
                       <div style={{
-                        fontSize: "18px",
+                        fontSize: "16px",
                         fontWeight: "700",
                         color: "#1e293b",
-                        marginBottom: "4px"
+                        marginBottom: "2px"
                       }}>
                         {formatOpponent(nextGame, team.name)}
                       </div>
                       <div style={{
-                        fontSize: "12px",
+                        fontSize: "10px",
                         color: "#64748b",
                         textTransform: "uppercase",
                         fontWeight: "600",
@@ -634,13 +642,14 @@ function MyLeague() {
                     </div>
 
                     <div style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: "12px",
-                      fontSize: "14px"
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "8px",
+                      fontSize: "11px"
                     }}>
-                      <div>
-                        <div style={{ fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: "9px", fontWeight: "600", color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>
                           Date
                         </div>
                         <div style={{ color: "#1e293b", fontWeight: "500" }}>
@@ -648,34 +657,16 @@ function MyLeague() {
                         </div>
                       </div>
 
-                      <div>
-                        <div style={{ fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>
-                          Venue
-                        </div>
-                        <div style={{ color: "#1e293b", fontWeight: "500" }}>
-                          {nextGame.venue || "TBD"}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div style={{ fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>
-                          Location
-                        </div>
-                        <div style={{ color: "#1e293b", fontWeight: "500" }}>
-                          {nextGame.homeTeam === team.name ? "Home" : "Away"}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div style={{ fontSize: "11px", fontWeight: "600", color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: "9px", fontWeight: "600", color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>
                           Spread
                         </div>
                         <div style={{ 
                           color: "#1e293b", 
                           fontWeight: "600",
-                          fontSize: "16px"
+                          fontSize: "13px"
                         }}>
-                          {getSpreadText(nextGame, team.name)}
+                          {getSpreadText()}
                         </div>
                       </div>
                     </div>
@@ -684,12 +675,12 @@ function MyLeague() {
                       <div style={{
                         backgroundColor: "#fef3c7",
                         color: "#92400e",
-                        padding: "6px 12px",
+                        padding: "3px 6px",
                         borderRadius: "6px",
-                        fontSize: "12px",
+                        fontSize: "9px",
                         fontWeight: "600",
                         textAlign: "center",
-                        marginTop: "8px"
+                        marginTop: "4px"
                       }}>
                         Conference Game
                       </div>
@@ -703,7 +694,7 @@ function MyLeague() {
                     display: "flex", 
                     alignItems: "center", 
                     justifyContent: "center",
-                    fontSize: "14px"
+                    fontSize: "12px"
                   }}>
                     No upcoming games scheduled
                   </div>
@@ -713,9 +704,9 @@ function MyLeague() {
               {/* Flip Indicator */}
               <div style={{
                 textAlign: "center",
-                fontSize: "11px",
+                fontSize: "10px",
                 color: "rgba(255, 255, 255, 0.8)",
-                marginTop: "12px",
+                marginTop: "10px",
                 textShadow: "0 1px 2px rgba(0, 0, 0, 0.3)"
               }}>
                 Click to view full schedule ↻
@@ -735,20 +726,20 @@ function MyLeague() {
                 borderRadius: "20px",
                 boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)",
                 border: "1px solid rgba(255, 255, 255, 0.2)",
-                padding: "20px",
+                padding: "16px",
                 display: "flex",
                 flexDirection: "column",
                 overflow: "hidden"
               }}
             >
               <h3 style={{
-                fontSize: "18px",
+                fontSize: "16px",
                 fontWeight: "700",
                 color: "#1e293b",
-                margin: "0 0 16px 0",
+                margin: "0 0 12px 0",
                 textAlign: "center",
                 borderBottom: "2px solid #e2e8f0",
-                paddingBottom: "8px"
+                paddingBottom: "6px"
               }}>
                 {team.name} Schedule
               </h3>
@@ -756,33 +747,33 @@ function MyLeague() {
               <div style={{
                 flex: 1,
                 overflowY: "auto",
-                marginBottom: "12px"
+                marginBottom: "10px"
               }}>
                 {loadingSchedule ? (
-                  <div style={{ textAlign: "center", color: "#64748b", padding: "20px" }}>
+                  <div style={{ textAlign: "center", color: "#64748b", padding: "16px" }}>
                     Loading schedule...
                   </div>
                 ) : teamSchedule.length === 0 ? (
-                  <div style={{ textAlign: "center", color: "#64748b", padding: "20px" }}>
+                  <div style={{ textAlign: "center", color: "#64748b", padding: "16px" }}>
                     No schedule available
                   </div>
                 ) : (
-                  <div style={{ fontSize: "12px" }}>
+                  <div style={{ fontSize: "11px" }}>
                     {teamSchedule.map((game, index) => (
                       <div key={index} style={{
-                        padding: "8px 0",
+                        padding: "6px 0",
                         borderBottom: index < teamSchedule.length - 1 ? "1px solid #f1f5f9" : "none",
                         display: "grid",
                         gridTemplateColumns: "auto 1fr auto",
-                        gap: "8px",
+                        gap: "6px",
                         alignItems: "center"
                       }}>
                         <div style={{
-                          fontSize: "10px",
+                          fontSize: "9px",
                           fontWeight: "600",
                           color: "#64748b",
                           textAlign: "center",
-                          minWidth: "20px"
+                          minWidth: "18px"
                         }}>
                           {game.week}
                         </div>
@@ -791,26 +782,26 @@ function MyLeague() {
                           <div style={{
                             fontWeight: "600",
                             color: "#1e293b",
-                            fontSize: "13px",
-                            marginBottom: "2px"
+                            fontSize: "12px",
+                            marginBottom: "1px"
                           }}>
                             {formatOpponent(game, team.name)}
                           </div>
                           <div style={{
-                            fontSize: "10px",
+                            fontSize: "9px",
                             color: "#64748b"
                           }}>
-                            {formatDate(game.date)} • {game.venue || "TBD"}
+                            {formatDate(game.date)}
                           </div>
                         </div>
 
                         <div style={{
                           textAlign: "right",
-                          minWidth: "50px"
+                          minWidth: "40px"
                         }}>
                           {game.gameComplete ? (
                             <div style={{
-                              fontSize: "11px",
+                              fontSize: "10px",
                               fontWeight: "700",
                               color: formatGameResult(game, team.name).startsWith('W') ? "#059669" : "#dc2626"
                             }}>
@@ -818,11 +809,11 @@ function MyLeague() {
                             </div>
                           ) : (
                             <div style={{
-                              fontSize: "10px",
+                              fontSize: "9px",
                               color: "#64748b",
                               fontWeight: "500"
                             }}>
-                              {getSpreadText(game, team.name)}
+                              TBD
                             </div>
                           )}
                         </div>
@@ -833,7 +824,7 @@ function MyLeague() {
               </div>
 
               <div style={{
-                fontSize: "11px",
+                fontSize: "10px",
                 color: "#64748b",
                 textAlign: "center"
               }}>
@@ -1075,11 +1066,11 @@ function MyLeague() {
                   {/* Header: Rank, Team Name, Points */}
                   <div className="flex items-center mb-4">
                     {/* User Avatar with Rank */}
-                    <UserAvatar member={member} size={48} rankStyle={rankStyle} rank={idx + 1} />
+                    <UserAvatar member={member} size={56} rankStyle={rankStyle} rank={idx + 1} />
 
                     {/* Team Info */}
-                    <div className="flex-1 min-w-0 ml-4">  {/* Added ml-4 here */}
-                      <h3 className="text-xl font-bold text-white mb-1 truncate">
+                    <div className="flex-1 min-w-0 ml-4">
+                      <h3 className="text-base font-bold text-white mb-1 truncate">
                         {member.teamName || "Unnamed Team"}
                       </h3>
                       <p className="text-white/70">
@@ -1101,58 +1092,61 @@ function MyLeague() {
                     </div>
                   </div>
 
-                  {/* Team Roster with Starters/Bench Separation */}
-                  <div className="flex gap-2 items-start">
-                    {/* Starters Section */}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold text-green-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                  {/* Team Roster - Single Line with Proper Header Spacing */}
+                  <div className="mt-6">
+                    {/* Headers Row */}
+                    <div className="flex gap-1 mb-3 relative">
+                      {/* Starters Header */}
+                      <div className="text-xs font-semibold text-green-400 uppercase tracking-wider flex items-center gap-1">
                         <Users size={12} />
                         Starters
                       </div>
-                      <div className="flex gap-2 justify-start">
-                        {/* Starters */}
-                        {starters.slice(0, 5).map((teamName, teamIdx) => (
-                          <TeamLogo 
-                            key={`starter-${teamIdx}`}
-                            teamName={teamName} 
-                            size={34} 
-                            clickable={true} 
-                          />
-                        ))}
-                        
-                        {/* Empty starter slots */}
-                        {Array.from({ length: Math.max(0, 5 - starters.length) }).map((_, emptyIdx) => (
-                          <div key={`empty-starter-${emptyIdx}`} className="w-[34px] h-[34px] rounded-full border-2 border-dashed border-green-400/50 flex items-center justify-center bg-green-400/10 backdrop-blur-sm flex-shrink-0">
-                            <div className="w-1.5 h-1.5 rounded-full bg-green-400/50" />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    {/* Bench Section */}
-                    <div className="flex-none">
-                      <div className="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                      
+                      {/* Spacer to align bench header with 6th position */}
+                      <div style={{ width: `${5 * 36 - 80}px` }}></div>
+                      
+                      {/* Bench Header - aligned with 6th team position */}
+                      <div className="text-xs font-semibold text-orange-400 uppercase tracking-wider flex items-center gap-1">
                         <Star size={12} />
                         Bench
                       </div>
-                      <div className="flex gap-2">
-                        {/* Bench */}
-                        {bench.slice(0, 2).map((teamName, teamIdx) => (
-                          <TeamLogo 
-                            key={`bench-${teamIdx}`}
-                            teamName={teamName} 
-                            size={34} 
-                            clickable={true} 
-                          />
-                        ))}
-                        
-                        {/* Empty bench slots */}
-                        {Array.from({ length: Math.max(0, 2 - bench.length) }).map((_, emptyIdx) => (
-                          <div key={`empty-bench-${emptyIdx}`} className="w-[34px] h-[34px] rounded-full border-2 border-dashed border-orange-400/50 flex items-center justify-center bg-orange-400/10 backdrop-blur-sm flex-shrink-0">
-                            <div className="w-1.5 h-1.5 rounded-full bg-orange-400/50" />
-                          </div>
-                        ))}
-                      </div>
+                    </div>
+                    
+                    {/* Teams Row */}
+                    <div className="flex gap-1 justify-start flex-wrap">
+                      {/* Starters */}
+                      {starters.slice(0, 5).map((teamName, teamIdx) => (
+                        <TeamLogo 
+                          key={`starter-${teamIdx}`}
+                          teamName={teamName} 
+                          size={34} 
+                          clickable={true} 
+                        />
+                      ))}
+                      
+                      {/* Empty starter slots */}
+                      {Array.from({ length: Math.max(0, 5 - starters.length) }).map((_, emptyIdx) => (
+                        <div key={`empty-starter-${emptyIdx}`} className="w-[34px] h-[34px] rounded-full border-2 border-dashed border-green-400/50 flex items-center justify-center bg-green-400/10 backdrop-blur-sm flex-shrink-0">
+                          <div className="w-1.5 h-1.5 rounded-full bg-green-400/50" />
+                        </div>
+                      ))}
+
+                      {/* Bench */}
+                      {bench.slice(0, 2).map((teamName, teamIdx) => (
+                        <TeamLogo 
+                          key={`bench-${teamIdx}`}
+                          teamName={teamName} 
+                          size={34} 
+                          clickable={true} 
+                        />
+                      ))}
+                      
+                      {/* Empty bench slots */}
+                      {Array.from({ length: Math.max(0, 2 - bench.length) }).map((_, emptyIdx) => (
+                        <div key={`empty-bench-${emptyIdx}`} className="w-[34px] h-[34px] rounded-full border-2 border-dashed border-orange-400/50 flex items-center justify-center bg-orange-400/10 backdrop-blur-sm flex-shrink-0">
+                          <div className="w-1.5 h-1.5 rounded-full bg-orange-400/50" />
+                        </div>
+                      ))}
                     </div>
                   </div>
 
