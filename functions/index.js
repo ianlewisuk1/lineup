@@ -144,7 +144,6 @@ function normalizeLine(game, providerLine) {
   };
 }
 
-/** UPDATE-ONLY: patch team doc iff it already exists. Log misses. */
 async function patchTeamsForGameIfExists(bw, db, game, linesByProvider) {
   const line =
     linesByProvider['consensus'] ||
@@ -163,8 +162,14 @@ async function patchTeamsForGameIfExists(bw, db, game, linesByProvider) {
     if (!snap.exists) {
       try {
         await db.collection('cfb').doc('misses').collection('teams').add({
-          raw: teamName, slugTried: slug, role: isHome ? 'home' : 'away',
-          game: { homeTeam: game.homeTeam || null, awayTeam: game.awayTeam || null, startDate: game.startDate || null },
+          raw: teamName,
+          slugTried: slug,
+          role: isHome ? 'home' : 'away',
+          game: {
+            homeTeam: game.homeTeam || null,
+            awayTeam: game.awayTeam || null,
+            startDate: game.startDate || null
+          },
           when: admin.firestore.FieldValue.serverTimestamp(),
         });
       } catch (e) {
@@ -173,14 +178,30 @@ async function patchTeamsForGameIfExists(bw, db, game, linesByProvider) {
       return; // update-only: skip creating new docs
     }
 
-    const spreadNum = (typeof line.spread === 'number') ? (isHome ? line.spread : -line.spread) : null;
+    // Keep numeric (home-perspective from CFBD; flip for away)
+    const spreadNum = (typeof line.spread === 'number')
+      ? (isHome ? line.spread : -line.spread)
+      : null;
+
+    // Human-friendly display string: "+X" for underdog, "-X" for favorite, "PICK" for 0
+    let spreadDisplay = null;
+    if (typeof spreadNum === 'number') {
+      if (spreadNum === 0) {
+        spreadDisplay = 'PICK';
+      } else if (spreadNum > 0) {
+        spreadDisplay = `+${spreadNum}`;
+      } else {
+        spreadDisplay = String(spreadNum);
+      }
+    }
 
     bw.set(ref, {
       currentSeason: {
         nextOpponent: oppName ?? null,
         nextGameDate: dateOnly,
         nextGameIsHome: !!isHome,
-        nextOpponentSpread: spreadNum,
+        nextOpponentSpread: spreadNum,                 // number (safe for math)
+        nextOpponentSpreadDisplay: spreadDisplay,      // string (for UI)
         nextOverUnder: (typeof line.overUnder === 'number') ? line.overUnder : null,
         nextOpponentProvider: line.provider ?? null,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
