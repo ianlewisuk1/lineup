@@ -636,8 +636,11 @@ function TeamPage() {
                 <div className="text-xs text-white/60 font-medium mb-2">Next Game</div>
                 <div className="text-lg font-bold text-white">
                   {teamInfo.currentSeason.nextGameIsHome === false ? "@" : "vs"} {teamInfo.currentSeason.nextOpponent}
-                  {teamInfo.currentSeason.nextOpponentSpread && teamInfo.currentSeason.nextOpponentSpread !== "TBD" && (
-                    <span className="text-white/60 font-normal"> ({teamInfo.currentSeason.nextOpponentSpread})</span>
+                  {(teamInfo.currentSeason.nextOpponentSpreadDisplay || teamInfo.currentSeason.nextOpponentSpread) && 
+                  (teamInfo.currentSeason.nextOpponentSpreadDisplay || teamInfo.currentSeason.nextOpponentSpread) !== "TBD" && (
+                    <span className="text-white/60 font-normal"> 
+                      ({teamInfo.currentSeason.nextOpponentSpreadDisplay || teamInfo.currentSeason.nextOpponentSpread})
+                    </span>
                   )}
                 </div>
                 {teamInfo.currentSeason.nextGameDate && (

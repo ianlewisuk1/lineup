@@ -138,8 +138,8 @@ function Stats() {
     const cs = team.currentSeason;
     if (!cs || !cs.nextOpponent) return "—";
 
-    const spread = cs.nextOpponentSpread ?? "TBD";
-
+    const spread = cs.nextOpponentSpreadDisplay ?? cs.nextOpponentSpread ?? "TBD";
+    
     let prefix = "?";
     if (cs.nextGameIsHome === true) prefix = "vs";
     else if (cs.nextGameIsHome === false) prefix = "@";

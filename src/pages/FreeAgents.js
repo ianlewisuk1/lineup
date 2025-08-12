@@ -445,7 +445,7 @@ function FreeAgents() {
     if (!season?.nextOpponent) return "—";
     
     const isHome = season.nextGameIsHome;
-    const spread = season.nextOpponentSpread ?? "TBD";
+    const spread = season.nextOpponentSpreadDisplay ?? season.nextOpponentSpread ?? "TBD";
     const prefix = isHome === false ? "@" : isHome === true ? "vs" : "?";
     
     // Format the date if available

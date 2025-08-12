@@ -463,7 +463,7 @@ function MyLeague() {
     };
 
     const getSpreadText = () => {
-      const spread = team?.nextOpponentSpread;
+      const spread = team?.nextOpponentSpreadDisplay ?? team?.nextOpponentSpread ?? "TBD";
       
       if (!spread || spread === "TBD") {
         return "Line not yet available";
