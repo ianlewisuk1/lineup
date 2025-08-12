@@ -143,6 +143,27 @@ function AdminLeaguePanel() {
     fetchLeagues();
   };
 
+  const generateSmackTalk = () => {
+    const smackTalkOptions = [
+      "Prepare to get destroyed!",
+      "This is my year!",
+      "You're all going down!",
+      "Championship bound!",
+      "Ready to dominate!",
+      "Time to show who's boss!",
+      "Victory is mine!",
+      "Bring on the competition!",
+      "Let's gooooo!",
+      "No mercy this season!",
+      "Draft day champion!",
+      "Fantasy football legend in the making!",
+      "",
+      "",
+      "" // Some empty ones for variety
+    ];
+    return smackTalkOptions[Math.floor(Math.random() * smackTalkOptions.length)];
+  };
+
   const seedLeagues = async () => {
     const confirm = window.confirm("Seed 10 test leagues into Firestore using real users as admins?");
     if (!confirm) return;
@@ -203,24 +224,27 @@ function AdminLeaguePanel() {
         leagueIds: arrayUnion(leagueRef.id)
       });
 
-      // ✅ Create member document without displayName field
+      // Create member document matching the Firebase screenshot structure
       await setDoc(doc(db, "leagues", leagueRef.id, "members", userId), {
-        teamName: `${userData.lastName || 'Test'} FC`,
+        customAvatar: Math.random() > 0.7, // 30% chance of custom avatar
         email: userData.email || "",
+        freeAgentMoves: Math.floor(Math.random() * 3), // 0-2 moves
+        joinedAt: new Date(),
         lineup: {
-          starters: [],
-          bench: [],
-          drafted: []
+          bench: [], // Empty array for now
+          starters: [], // Empty array for now  
+          drafted: [] // Empty array for now
         },
-        points: 0,                    // ✅ Total season points
-        weeklyPoints: 0,              // ✅ Current week's points (number)
-        weeklyPointsHistory: {},      // ✅ Historical weekly points (object)
-        freeAgentMoves: 0,            // ✅ Number of FA moves made
-        joinedAt: new Date()
+        points: 0, // Season total points
+        smackTalk: generateSmackTalk(),
+        teamAvatar: "", // Empty string - no custom avatar URL for seeded users
+        teamName: `${userData.firstName || 'Test'}'s ${['Warriors', 'Dragons', 'Eagles', 'Lions', 'Tigers', 'Sharks', 'Thunder', 'Lightning', 'Storm', 'Blaze'][Math.floor(Math.random() * 10)]}`,
+        weeklyPoints: 0, // Current week points
+        weeklyPointsHistory: [] // Empty array for now
       });
     }
 
-    alert("✅ 10 leagues seeded with real users as admins, matching manual creation process.");
+    alert("✅ 10 leagues seeded with real users as admins, with proper member document structure.");
     fetchLeagues();
   };
 
