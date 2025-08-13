@@ -12,6 +12,8 @@ import BottomNavBar from "../components/BottomNavBar";
 import ScoringSystemModal from "../components/ScoringSystemModal";
 import { logFreeAgentMove } from '../components/LogFreeAgentMove';
 import { Settings, Trophy, Users, Star, TrendingUp, Calendar, ChevronDown, ChevronUp } from "lucide-react";
+import { weeklyLineupUtils, adminUtils } from '../utils/weeklyLineupUtils';
+import WeeklyLineupManager from "../components/WeeklyLineupManager";
 
 function MyLineup() {
   const { leagueId } = useParams();
@@ -685,6 +687,13 @@ function MyLineup() {
     );
   };
 
+  // Add this inside the component (temporarily for testing)
+  useEffect(() => {
+    // Make functions available globally for testing
+    window.weeklyLineupUtils = weeklyLineupUtils;
+    window.adminUtils = adminUtils;
+  }, []);
+
   useEffect(() => {
     const fetchLineup = async () => {
       const currentUser = auth.currentUser;
@@ -1197,283 +1206,17 @@ function MyLineup() {
         {/* Schedule Grid */}
         <ScheduleGrid />
 
-        {/* Starters Section */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
-          <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-            <Users className="text-green-400" size={20} />
-            🏈 Starters (5)
-          </h3>
-          
-          <div className="space-y-4">
-            {Array.from({ length: 5 }).map((_, idx) => {
-              const team = starters[idx];
-              return (
-                <div
-                  key={idx}
-                  className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:bg-white/10 transition-all duration-300 overflow-hidden"
-                >
-                  {team ? (
-                    <>
-                      {/* Compact Team Info Card - Always Visible */}
-                      <div className="p-4 flex gap-3">
-                        {/* Left Side - Logo and Expand Button */}
-                        <div className="flex-shrink-0 flex flex-col items-center gap-1">
-                          <TeamLogo teamName={team.school} size={42} clickable={false} />
-                          <div className="mt-2">
-                            <button
-                              onClick={() => {
-                                const newExpanded = [...expandedTeams];
-                                newExpanded[idx] = !newExpanded[idx];
-                                setExpandedTeams(newExpanded);
-                              }}
-                              className="w-6 h-6 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-all duration-200 text-xs font-bold"
-                              title={expandedTeams[idx] ? "Collapse details" : "Expand details"}
-                            >
-                              {expandedTeams[idx] ? '▲' : '▼'}
-                            </button>
-                          </div>
-                        </div>
-                        
-                        {/* Team Info - Ultra Compact */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between mb-1">
-                            <div className="flex-1 min-w-0">
-                              <h4 className="text-base font-bold text-white truncate">
-                                {team.school}
-                              </h4>
-                              <div className="text-xs text-white/60 leading-tight">
-                                {team.conference}
-                              </div>
-                            </div>
-                            <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
-                              <span className="text-green-400 font-bold text-xs bg-green-400/20 px-2 py-1 rounded-full">
-                                {team.currentSeason?.gamePoints || 0} Overall Pts
-                              </span>
-                              <span className="text-orange-400 font-bold text-xs bg-orange-400/20 px-2 py-1 rounded-full">
-                                {team.currentWeekPoints || 0} Weekly Pts
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <div className="text-xs text-white/80 leading-tight pr-2">
-                            <div className="truncate">
-                              {formatNextGame(team.currentSeason)}
-                            </div>
-                            {team.currentSeason?.nextGameDate && (
-                              <div className="text-white/60 text-xs leading-none">
-                                {new Date(team.currentSeason.nextGameDate).toLocaleDateString('en-US', { 
-                                  month: 'short', 
-                                  day: 'numeric' 
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+        {/* WEEKLY LINEUP MANAGER - Replaces old starters/bench sections */}
+        <WeeklyLineupManager
+          leagueId={leagueId}
+          userId={auth.currentUser?.uid}
+          allTeams={allTeams}
+          currentWeek={parseInt(currentWeek)}
+          onTeamClick={handleTeamClick}
+          TeamLogo={TeamLogo}
+        />
 
-                      {/* Expandable Section - Only when expanded */}
-                      {expandedTeams[idx] && (
-                        <div className="border-t border-white/10 bg-white/5">
-                          {/* Additional Stats */}
-                          <div className="px-4 py-3">
-                            <div className="flex gap-4 text-xs text-white/60 mb-3">
-                              <span>Record: {team.currentSeason?.record || "0-0"}</span>
-                              <span>ATS: {team.currentSeason?.atsRecord || "0-0"}</span>
-                              <span 
-                                onClick={() => handleTeamClick(team.school)}
-                                className="text-blue-400 hover:text-blue-300 cursor-pointer underline"
-                              >
-                                View Details →
-                              </span>
-                            </div>
 
-                            {/* Action Buttons */}
-                            <div className="flex gap-2">
-                              {/* Drop to Bench Button */}
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMoveTeam(team, 'starters', idx, 'bench');
-                                }}
-                                className="flex-1 px-3 py-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white text-xs rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-purple-500/25 transform hover:scale-105"
-                                title="Move this team to your bench"
-                              >
-                                📋 Drop to Bench
-                              </button>
-                              
-                              {/* Cut Button */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openCutModal(team, idx, 'starters');
-                                }}
-                                className="flex-1 px-3 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white text-xs rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-red-500/25 transform hover:scale-105"
-                                title="Remove this team from your lineup completely"
-                              >
-                                ✂️ Cut
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="flex items-center justify-center py-6 border-2 border-dashed border-green-400/50 rounded-xl m-4 min-h-[80px]">
-                      <Link
-                        to={`/${leagueId}/free-agents`}
-                        className="flex flex-col items-center gap-2 text-green-400 hover:text-green-300 transition-colors duration-200 no-underline"
-                      >
-                        <div className="w-8 h-8 bg-green-600 hover:bg-green-700 rounded-full flex items-center justify-center text-lg text-white transition-colors duration-200">
-                          +
-                        </div>
-                        <span className="font-semibold text-sm">Add Team from Free Agents</span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Bench Section */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
-          <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-            <Star className="text-orange-400" size={20} />
-            🪑 Bench (2)
-          </h3>
-          
-          <div className="space-y-4">
-            {Array.from({ length: 2 }).map((_, idx) => {
-              const team = bench[idx];
-              return (
-                <div
-                  key={idx}
-                  className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:bg-white/10 transition-all duration-300 overflow-hidden"
-                >
-                  {team ? (
-                    <>
-                      {/* Compact Team Info Card - Always Visible */}
-                      <div className="p-4 flex gap-3">
-                        {/* Left Side - Logo and Expand Button */}
-                        <div className="flex-shrink-0 flex flex-col items-center gap-1">
-                          <TeamLogo teamName={team.school} size={42} clickable={false} />
-                          <div className="mt-2">
-                            <button
-                              onClick={() => {
-                                const newExpanded = [...expandedTeams];
-                                newExpanded[idx + 5] = !newExpanded[idx + 5]; // +5 for bench offset
-                                setExpandedTeams(newExpanded);
-                              }}
-                              className="w-6 h-6 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white/80 hover:text-white transition-all duration-200 text-xs font-bold"
-                              title={expandedTeams[idx + 5] ? "Collapse details" : "Expand details"}
-                            >
-                              {expandedTeams[idx + 5] ? '▲' : '▼'}
-                            </button>
-                          </div>
-                        </div>
-                        
-                        {/* Team Info - Ultra Compact */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between mb-1">
-                            <div className="flex-1 min-w-0">
-                              <h4 className="text-base font-bold text-white truncate">
-                                {team.school}
-                              </h4>
-                              <div className="text-xs text-white/60 leading-tight">
-                                {team.conference}
-                              </div>
-                            </div>
-                            <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
-                              <span className="text-green-400 font-bold text-xs bg-green-400/20 px-2 py-1 rounded-full">
-                                {team.currentSeason?.gamePoints || 0} Overall Pts
-                              </span>
-                              <span className="text-orange-400 font-bold text-xs bg-orange-400/20 px-2 py-1 rounded-full">
-                                {team.currentWeekPoints || 0} Weekly Pts
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <div className="text-xs text-white/80 leading-tight pr-2">
-                            <div className="truncate">
-                              {formatNextGame(team.currentSeason)}
-                            </div>
-                            {team.currentSeason?.nextGameDate && (
-                              <div className="text-white/60 text-xs leading-none">
-                                {new Date(team.currentSeason.nextGameDate).toLocaleDateString('en-US', { 
-                                  month: 'short', 
-                                  day: 'numeric' 
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Expandable Section - Only when expanded */}
-                      {expandedTeams[idx + 5] && (
-                        <div className="border-t border-white/10 bg-white/5">
-                          {/* Additional Stats */}
-                          <div className="px-4 py-3">
-                            <div className="flex gap-4 text-xs text-white/60 mb-3">
-                              <span>Record: {team.currentSeason?.record || "0-0"}</span>
-                              <span>ATS: {team.currentSeason?.atsRecord || "0-0"}</span>
-                              <span 
-                                onClick={() => handleTeamClick(team.school)}
-                                className="text-blue-400 hover:text-blue-300 cursor-pointer underline"
-                              >
-                                View Details →
-                              </span>
-                            </div>
-
-                            {/* Action Buttons */}
-                            <div className="flex gap-2">
-                              {/* Make Starter Button */}
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMoveTeam(team, 'bench', idx, 'starters');
-                                }}
-                                className="flex-1 px-3 py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white text-xs rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-green-500/25 transform hover:scale-105"
-                                title="Move this team to your starters"
-                              >
-                                🚀 Make Starter
-                              </button>
-                              
-                              {/* Cut Button */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openCutModal(team, idx, 'bench');
-                                }}
-                                className="flex-1 px-3 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white text-xs rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-red-500/25 transform hover:scale-105"
-                                title="Remove this team from your lineup completely"
-                              >
-                                ✂️ Cut
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="flex items-center justify-center py-6 border-2 border-dashed border-orange-400/50 rounded-xl m-4 min-h-[80px]">
-                      <Link
-                        to={`/${leagueId}/free-agents`}
-                        className="flex flex-col items-center gap-2 text-orange-400 hover:text-orange-300 transition-colors duration-200 no-underline"
-                      >
-                        <div className="w-8 h-8 bg-orange-600 hover:bg-orange-700 rounded-full flex items-center justify-center text-lg text-white transition-colors duration-200">
-                          +
-                        </div>
-                        <span className="font-semibold text-sm">Add Team from Free Agents</span>
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
 
 {/* Free Agent Instructions */}
        <div className="bg-blue-500/20 backdrop-blur-sm border border-blue-400/30 rounded-xl p-4 mb-6">

@@ -214,7 +214,7 @@ async function patchTeamsForGameIfExists(bw, db, game, linesByProvider) {
 }
 
 /** Core ingestion routine (shared by HTTP + Scheduler). */
-async function ingestLines({ year, week, seasonType = 'regular', book = 'consensus', updateTeams = true, key }) {
+async function ingestLines({ year, week, seasonType = 'regular', book = 'consensus', updateTeams = true, updateSchedule = true, key }) {
   const KEY = (key || '').trim();
   if (!KEY) throw new Error('Missing CFB key');
 
@@ -236,13 +236,14 @@ async function ingestLines({ year, week, seasonType = 'regular', book = 'consens
     .collection(String(week)).doc(book);
 
   let wrote = 0;
+  let scheduleUpdated = 0;
 
   for (const g of games) {
     const gameId = g.id
       ? String(g.id)
       : `${(g.startDate || '').slice(0, 10)}_${(g.awayTeam || 'AWAY').replace(/\s+/g, '-')}_at_${(g.homeTeam || 'HOME').replace(/\s+/g, '-')}`.toLowerCase();
 
-    // Now the subcollection 'games' lives under that document
+    // Lines collection update (existing code)
     const docRef = bookDoc.collection('games').doc(gameId);
 
     const linesByProvider = {};
@@ -264,6 +265,28 @@ async function ingestLines({ year, week, seasonType = 'regular', book = 'consens
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
 
+    // NEW: Update schedule collection with proper kickoff times
+    if (updateSchedule && g.startDate) {
+      const scheduleRef = db
+        .collection('schedule').doc(String(year))
+        .collection('weeks').doc(String(week))
+        .collection('games').doc(gameId);
+
+      bw.set(scheduleRef, {
+        gameId,
+        homeTeam: g.homeTeam ?? null,
+        awayTeam: g.awayTeam ?? null,
+        date: g.startDate,  // ← Full timestamp with actual kickoff time!
+        week: week,
+        season: year,
+        venue: g.venue ?? null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        // Keep existing fields like homePoints, awayPoints, gameComplete
+      }, { merge: true });
+
+      scheduleUpdated++;
+    }
+
     if (updateTeams) {
       await patchTeamsForGameIfExists(bw, db, g, linesByProvider);
     }
@@ -272,7 +295,14 @@ async function ingestLines({ year, week, seasonType = 'regular', book = 'consens
   }
 
   await bw.commit();
-  return { year, week, book, wrote, games: games.length };
+  return { 
+    year, 
+    week, 
+    book, 
+    wrote, 
+    scheduleUpdated, 
+    games: games.length 
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -286,8 +316,17 @@ exports.cfbIngestLines = onRequest(async (req, res) => {
     const week = Number(req.query.week) || 1;
     const seasonType = String(req.query.seasonType || 'regular');
     const book = String(req.query.book || 'consensus');
+    const updateSchedule = req.query.updateSchedule !== 'false'; // Default true
 
-    const result = await ingestLines({ year, week, seasonType, book, updateTeams: true, key });
+    const result = await ingestLines({ 
+      year, 
+      week, 
+      seasonType, 
+      book, 
+      updateTeams: true, 
+      updateSchedule,
+      key 
+    });
     return res.json(result);
   } catch (e) {
     console.error('cfbIngestLines error:', e);
@@ -311,7 +350,15 @@ exports.cfbIngestLinesScheduled = onSchedule(
       const seasonType = 'regular';
       const book = 'consensus';
 
-      const result = await ingestLines({ year, week, seasonType, book, updateTeams: true, key });
+      const result = await ingestLines({ 
+        year, 
+        week, 
+        seasonType, 
+        book, 
+        updateTeams: true, 
+        updateSchedule: true,  // Enable schedule syncing
+        key 
+      });
       console.log('Scheduled ingest result:', result);
       return null;
     } catch (e) {
@@ -319,4 +366,4 @@ exports.cfbIngestLinesScheduled = onSchedule(
       return null;
     }
   }
-  );
+);
