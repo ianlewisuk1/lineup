@@ -682,14 +682,16 @@ function MyLineup() {
         <ScheduleGrid />
 
         {/* WEEKLY LINEUP MANAGER */}
-        <WeeklyLineupManager
-          leagueId={leagueId}
-          userId={auth.currentUser?.uid}
-          allTeams={allTeams}
-          currentWeek={currentWeek}
-          onTeamClick={handleTeamClick}
-          TeamLogo={TeamLogo}
-        />
+        <div className="mb-6">
+          <WeeklyLineupManager
+            leagueId={leagueId}
+            userId={auth.currentUser?.uid}
+            allTeams={allTeams}
+            currentWeek={currentWeek}
+            onTeamClick={handleTeamClick}
+            TeamLogo={TeamLogo}
+          />
+        </div>
 
         {/* Free Agent Instructions */}
         <div className="bg-blue-500/20 backdrop-blur-sm border border-blue-400/30 rounded-xl p-4 mb-6">
