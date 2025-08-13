@@ -213,6 +213,43 @@ async function patchTeamsForGameIfExists(bw, db, game, linesByProvider) {
   await patchOne(game.awayTeam, false, game.homeTeam);
 }
 
+/** Update schedule for existing games (using team matchup like teams function) */
+async function patchScheduleForGameIfExists(bw, db, game, year, week) {
+  if (!game.startDate || !game.homeTeam || !game.awayTeam) return;
+
+  try {
+    // Find existing game by team matchup (same strategy as teams function)
+    const existingGamesSnap = await db
+      .collection('schedule').doc(String(year))
+      .collection('weeks').doc(String(week))
+      .collection('games')
+      .where('homeTeam', '==', game.homeTeam)
+      .where('awayTeam', '==', game.awayTeam)
+      .get();
+
+    if (!existingGamesSnap.empty) {
+      // Update existing document (like teams function)
+      const existingDoc = existingGamesSnap.docs[0];
+      console.log(`Updating existing schedule game: ${game.homeTeam} vs ${game.awayTeam}`);
+      
+      bw.update(existingDoc.ref, {
+        date: game.startDate,  // Add full timestamp
+        cfbdGameId: String(game.id || ''),  // Store CFBD ID for reference
+        venue: game.venue ?? null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      
+      return true; // Successfully updated existing game
+    } else {
+      console.log(`No existing game found for: ${game.homeTeam} vs ${game.awayTeam}`);
+      return false; // No existing game found
+    }
+  } catch (error) {
+    console.error(`Error updating schedule for ${game.homeTeam} vs ${game.awayTeam}:`, error);
+    return false;
+  }
+}
+
 /** Core ingestion routine (shared by HTTP + Scheduler). */
 async function ingestLines({ year, week, seasonType = 'regular', book = 'consensus', updateTeams = true, updateSchedule = true, key }) {
   const KEY = (key || '').trim();
@@ -265,26 +302,12 @@ async function ingestLines({ year, week, seasonType = 'regular', book = 'consens
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    // NEW: Update schedule collection with proper kickoff times
-    if (updateSchedule && g.startDate) {
-      const scheduleRef = db
-        .collection('schedule').doc(String(year))
-        .collection('weeks').doc(String(week))
-        .collection('games').doc(gameId);
-
-      bw.set(scheduleRef, {
-        gameId,
-        homeTeam: g.homeTeam ?? null,
-        awayTeam: g.awayTeam ?? null,
-        date: g.startDate,  // ← Full timestamp with actual kickoff time!
-        week: week,
-        season: year,
-        venue: g.venue ?? null,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        // Keep existing fields like homePoints, awayPoints, gameComplete
-      }, { merge: true });
-
-      scheduleUpdated++;
+    // NEW: Update existing schedule games with proper kickoff times (using teams strategy)
+    if (updateSchedule) {
+      const updated = await patchScheduleForGameIfExists(bw, db, g, year, week);
+      if (updated) {
+        scheduleUpdated++;
+      }
     }
 
     if (updateTeams) {
