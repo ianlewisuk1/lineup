@@ -124,30 +124,6 @@ function MyLineup() {
     if (logoUrl) {
       return (
         <div style={{ position: "relative", display: "inline-block" }}>
-          {clickable && (
-            <div style={{
-              position: "absolute",
-              top: "-8px",
-              right: "-8px",
-              backgroundColor: team?.gameComplete 
-                ? (team?.currentWeekPoints > 0 ? "#10b981" : "#6b7280")
-                : "#f59e0b",
-              color: "white",
-              borderRadius: "50%",
-              width: "28px",
-              height: "28px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "12px",
-              fontWeight: "700",
-              zIndex: 10,
-              border: "2px solid rgba(255, 255, 255, 0.3)",
-              boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)"
-            }}>
-              {team?.gameComplete ? (team?.currentWeekPoints || 0) : "?"}
-            </div>
-          )}
           
           <div 
             style={logoStyle}
@@ -206,30 +182,6 @@ function MyLineup() {
     // Fallback placeholder
     return (
       <div style={{ position: "relative", display: "inline-block" }}>
-        {clickable && (
-          <div style={{
-            position: "absolute",
-            top: "-8px",
-            right: "-8px",
-            backgroundColor: team?.gameComplete 
-              ? (team?.currentWeekPoints > 0 ? "#10b981" : "#6b7280")
-              : "#f59e0b",
-            color: "white",
-            borderRadius: "50%",
-            width: "28px",
-            height: "28px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "12px",
-            fontWeight: "700",
-            zIndex: 10,
-            border: "2px solid rgba(255, 255, 255, 0.3)",
-            boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)"
-          }}>
-            {team?.gameComplete ? (team?.currentWeekPoints || 0) : "?"}
-          </div>
-        )}
         
         <div 
           style={{
@@ -287,17 +239,227 @@ function MyLineup() {
     );
   };
 
-  // Simplified Schedule Grid (just a message since weekly schedules are in each week view)
+// Replace the ScheduleGrid component in MyLineup.js with this
+
+// Replace the ScheduleGrid component in MyLineup.js with this
+
   const ScheduleGrid = () => {
+    const [scheduleData, setScheduleData] = useState({});
+    const [scheduleLoading, setScheduleLoading] = useState(false);
+
+    // Load full season schedule data - hooks must be called unconditionally
+    useEffect(() => {
+      const loadFullSchedule = async () => {
+        // Move the showScheduleGrid check inside the effect
+        if (!showScheduleGrid || Object.keys(scheduleData).length > 0) return;
+        
+        setScheduleLoading(true);
+        try {
+          const allScheduleData = {};
+          const weeks = Array.from({ length: 14 }, (_, i) => i + 1);
+          
+          // Load schedule for each week
+          for (const week of weeks) {
+            const gamesSnap = await getDocs(
+              collection(db, "schedule", "2025", "weeks", week.toString(), "games")
+            );
+            
+            const weekGames = [];
+            gamesSnap.forEach(gameDoc => {
+              const gameData = gameDoc.data();
+              weekGames.push({
+                homeTeam: gameData.homeTeam,
+                awayTeam: gameData.awayTeam,
+                date: gameData.date,
+                gameComplete: gameData.gameComplete || false
+              });
+            });
+            
+            allScheduleData[week] = weekGames;
+          }
+          
+          setScheduleData(allScheduleData);
+        } catch (error) {
+          console.error("Error loading schedule:", error);
+        } finally {
+          setScheduleLoading(false);
+        }
+      };
+
+      loadFullSchedule();
+    }, [showScheduleGrid]); // Remove scheduleData from dependencies to avoid infinite loop
+
+    // Early return AFTER all hooks have been called
     if (!showScheduleGrid) return null;
+
+    // Get current roster from member.lineup
+    const currentLineup = userData?.lineup;
+    const allRosterTeams = [
+      ...(currentLineup?.starters || []),
+      ...(currentLineup?.bench || [])
+    ].filter(teamName => teamName !== null);
+
+    // Resolve team names to team objects
+    const rosterTeams = allRosterTeams.map(teamName => {
+      const normalize = (name) =>
+        name?.toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/&/g, "")
+          .replace(/[^a-z0-9\-]/g, "");
+      
+      return allTeams[normalize(teamName)];
+    }).filter(team => team !== null);
+
+    // Helper function to find team's game for a specific week
+    const findTeamGame = (teamName, week) => {
+      const weekGames = scheduleData[week] || [];
+      return weekGames.find(game => 
+        game.homeTeam === teamName || game.awayTeam === teamName
+      );
+    };
+
+    // Helper function to get opponent info
+    const getOpponentInfo = (teamName, week) => {
+      const game = findTeamGame(teamName, week);
+      if (!game) return null;
+      
+      const isHome = game.homeTeam === teamName;
+      const opponent = isHome ? game.awayTeam : game.homeTeam;
+      
+      return {
+        opponent: opponent,
+        isHome: isHome,
+        date: game.date,
+        gameComplete: game.gameComplete
+      };
+    };
+
+    const weeks = Array.from({ length: 14 }, (_, i) => i + 1);
+
+    if (scheduleLoading) {
+      return (
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
+          <div className="text-center">
+            <div className="text-2xl mb-2 animate-spin">📅</div>
+            <p className="text-white/80">Loading schedule data...</p>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
-        <p className="text-white/60 text-center py-8">
-          📅 Schedule grid now shows within each week's lineup view. 
-          <br />
-          Use the week selector below to see specific schedules for each week.
-        </p>
+        <h3 className="text-xl font-bold text-white mb-4 text-center">
+          📅 Your Roster's Season Schedule
+        </h3>
+        
+        {rosterTeams.length === 0 ? (
+          <p className="text-white/60 text-center py-8">
+            Add some teams to your lineup to see their schedule here!
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <div className="min-w-max">
+              {/* Header Row */}
+              <div className="flex gap-1 mb-2">
+                <div className="w-32 text-white font-bold text-sm p-2 bg-white/20 rounded">
+                  Team
+                </div>
+                {weeks.map(week => (
+                  <div 
+                    key={week} 
+                    className={`w-20 text-white font-bold text-xs p-2 rounded text-center ${
+                      week === currentWeek 
+                        ? 'bg-blue-500' 
+                        : 'bg-white/10'
+                    }`}
+                  >
+                    W{week}
+                  </div>
+                ))}
+              </div>
+              
+              {/* Team Rows */}
+              {rosterTeams.map((team, teamIndex) => (
+                <div key={team.school} className="flex gap-1 mb-1">
+                  {/* Team Name Column */}
+                  <div className="w-32 bg-white/5 rounded p-2 flex items-center">
+                    <div className="flex items-center gap-2">
+                      <TeamLogo teamName={team.school} size={20} clickable={false} />
+                      <div>
+                        <div className="text-white font-medium text-xs truncate">
+                          {team.school.split(' ')[0]}
+                        </div>
+                        <div className="text-white/60 text-xs">
+                          {team.currentSeason?.record || '0-0'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Week Columns */}
+                  {weeks.map(week => {
+                    const opponentInfo = getOpponentInfo(team.school, week);
+                    
+                    return (
+                      <div 
+                        key={week}
+                        className={`w-20 rounded p-1 text-center min-h-[60px] flex flex-col justify-center ${
+                          week === currentWeek ? 'ring-1 ring-blue-400' : ''
+                        } ${
+                          opponentInfo ? 'bg-white/5' : 'bg-gray-600/30'
+                        }`}
+                      >
+                        {opponentInfo ? (
+                          <div className="text-xs">
+                            <div className="text-white font-medium mb-1">
+                              {opponentInfo.isHome ? 'vs' : '@'}
+                            </div>
+                            <div className="text-white/80 truncate text-xs leading-tight">
+                              {opponentInfo.opponent.split(' ').slice(0, 2).join(' ')}
+                            </div>
+                            {week === currentWeek && team.currentSeason?.nextOpponentSpreadDisplay && (
+                              <div className="text-yellow-400 font-bold text-xs mt-1">
+                                {team.currentSeason.nextOpponentSpreadDisplay}
+                              </div>
+                            )}
+                            {opponentInfo.gameComplete && (
+                              <div className="text-green-400 text-xs mt-1">✓</div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-gray-300 text-xs font-medium">
+                            BYE
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+            
+            {/* Legend */}
+            <div className="mt-4 flex items-center justify-center gap-4 text-xs">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-blue-500 rounded"></div>
+                <span className="text-white/80">Current Week</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-white/10 rounded"></div>
+                <span className="text-white/80">Has Game</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-gray-600 rounded"></div>
+                <span className="text-white/80">BYE Week</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-green-400 rounded"></div>
+                <span className="text-white/80">Completed</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -681,17 +843,18 @@ function MyLineup() {
         {/* Schedule Grid */}
         <ScheduleGrid />
 
-        {/* WEEKLY LINEUP MANAGER */}
-        <div className="mb-6">
-          <WeeklyLineupManager
-            leagueId={leagueId}
-            userId={auth.currentUser?.uid}
-            allTeams={allTeams}
-            currentWeek={currentWeek}
-            onTeamClick={handleTeamClick}
-            TeamLogo={TeamLogo}
-          />
-        </div>
+    {/* WEEKLY LINEUP MANAGER */}
+    <div className="mb-6">
+      <WeeklyLineupManager
+        leagueId={leagueId}
+        userId={auth.currentUser?.uid}
+        allTeams={allTeams}
+        currentWeek={currentWeek}
+        onTeamClick={handleTeamClick}
+        TeamLogo={TeamLogo}
+        userDisplayName={userData?.firstName || "Unknown"}
+      />
+    </div>
 
         {/* Free Agent Instructions */}
         <div className="bg-blue-500/20 backdrop-blur-sm border border-blue-400/30 rounded-xl p-4 mb-6">

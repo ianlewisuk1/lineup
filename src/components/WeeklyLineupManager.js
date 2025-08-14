@@ -1,18 +1,19 @@
-// WeeklyLineupManager.js - Main component to replace the current lineup section
+// WeeklyLineupManager.js - Updated with information-rich team cards and enhanced functionality
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, addDoc, increment } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 import { weeklyLineupUtils } from '../utils/weeklyLineupUtils';
-import { ChevronLeft, ChevronRight, Lock, Clock, CheckCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock, Clock, CheckCircle, Settings, ChevronDown, ChevronUp } from 'lucide-react';
 
 const WeeklyLineupManager = ({ 
-  leagueId, 
-  userId, 
-  allTeams, 
-  currentWeek, 
+  leagueId,
+  userId,
+  allTeams,
+  currentWeek,
   onTeamClick,
-  TeamLogo 
+  TeamLogo,
+  userDisplayName
 }) => {
   const [selectedWeek, setSelectedWeek] = useState(currentWeek);
   const [weeklyLineups, setWeeklyLineups] = useState({});
@@ -36,31 +37,51 @@ const WeeklyLineupManager = ({
       const weeks = Array.from({ length: 14 }, (_, i) => i + 1);
       setAvailableWeeks(weeks);
       
-      // Load existing weekly lineups
-      const lineupsRef = doc(db, "leagues", leagueId, "weeklyLineups", userId);
-      const lineupsSnap = await getDoc(lineupsRef);
+      // Load data from different sources based on week status
+      const lineupData = {};
       
-      if (lineupsSnap.exists()) {
-        setWeeklyLineups(lineupsSnap.data());
-      } else {
-        // Initialize with empty lineups
-        const initialLineups = {};
-        weeks.forEach(week => {
-          initialLineups[`week${week}`] = {
+      // 1. Load historical weeks from weeklyLineups collection
+      const weeklyLineupsRef = doc(db, "leagues", leagueId, "weeklyLineups", userId);
+      const weeklyLineupsSnap = await getDoc(weeklyLineupsRef);
+      const existingWeeklyData = weeklyLineupsSnap.exists() ? weeklyLineupsSnap.data() : {};
+      
+      // 2. Load current week from member.lineup
+      const memberRef = doc(db, "leagues", leagueId, "members", userId);
+      const memberSnap = await getDoc(memberRef);
+      const memberData = memberSnap.data();
+      const currentLineup = memberData?.lineup;
+      
+      // 3. Initialize lineup data for each week
+      weeks.forEach(week => {
+        const weekKey = `week${week}`;
+        
+        if (week === currentWeek && currentLineup) {
+          // Current week: use member.lineup
+          lineupData[weekKey] = {
+            starters: currentLineup.starters || Array(5).fill(null),
+            bench: currentLineup.bench || Array(2).fill(null),
+            lockedAt: null // Current week is never locked in this data
+          };
+        } else if (existingWeeklyData[weekKey]) {
+          // Historical week: use weeklyLineups collection
+          lineupData[weekKey] = existingWeeklyData[weekKey];
+        } else {
+          // Future/empty week: initialize empty
+          lineupData[weekKey] = {
             starters: Array(5).fill(null),
             bench: Array(2).fill(null),
             lockedAt: null
           };
-        });
-        
-        await setDoc(lineupsRef, initialLineups);
-        setWeeklyLineups(initialLineups);
-      }
+        }
+      });
+      
+      setWeeklyLineups(lineupData);
       
       // Calculate week statuses
       await calculateWeekStatuses(weeks);
       
       setLoading(false);
+      console.log(`✅ Loaded lineups: current week ${currentWeek} from member.lineup, others from weeklyLineups collection`);
     } catch (error) {
       console.error("Error initializing weekly lineups:", error);
       setLoading(false);
@@ -150,25 +171,40 @@ const WeeklyLineupManager = ({
   };
 
   const saveLineup = async (week, starters, bench) => {
-    const weekKey = `week${week}`;
-    const now = new Date();
-    
     try {
-      const updatedLineups = {
-        ...weeklyLineups,
+      const normalizedStarters = starters.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null);
+      const normalizedBench = bench.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null);
+      
+      // For current week, save to member.lineup (existing system)
+      if (week === currentWeek) {
+        const memberRef = doc(db, "leagues", leagueId, "members", userId);
+        await updateDoc(memberRef, {
+          lineup: {
+            starters: normalizedStarters,
+            bench: normalizedBench
+          }
+        });
+        console.log(`✅ Saved week ${week} to member.lineup`);
+      } else {
+        // For future weeks, this shouldn't happen in current design
+        // but if it does, could save to weekly collection
+        console.warn(`Attempted to save non-current week ${week}. Current week is ${currentWeek}`);
+      }
+      
+      // Update local state to reflect the change
+      const weekKey = `week${week}`;
+      setWeeklyLineups(prev => ({
+        ...prev,
         [weekKey]: {
-          starters: starters.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null),
-          bench: bench.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null),
-          lockedAt: weekStatuses[week]?.status === 'editable' ? null : now.toISOString()
+          starters: normalizedStarters,
+          bench: normalizedBench,
+          lockedAt: null
         }
-      };
+      }));
       
-      const lineupsRef = doc(db, "leagues", leagueId, "weeklyLineups", userId);
-      await updateDoc(lineupsRef, { [weekKey]: updatedLineups[weekKey] });
-      
-      setWeeklyLineups(updatedLineups);
     } catch (error) {
       console.error("Error saving lineup:", error);
+      throw error;
     }
   };
 
@@ -296,26 +332,35 @@ const WeeklyLineupManager = ({
           onTeamClick={onTeamClick}
           TeamLogo={TeamLogo}
           leagueId={leagueId}
+          userId={userId}                 // ✅
+          userDisplayName={userDisplayName} // ✅
+          currentWeek={currentWeek}       // ✅
         />
       </div>
     </div>
   );
 };
 
-// WeeklyLineupContent - The actual lineup display/editor
+// WeeklyLineupContent - The actual lineup display/editor with rich team information
 const WeeklyLineupContent = ({ 
-  week, 
-  lineup, 
-  allTeams, 
-  isEditable, 
-  onSave, 
-  onTeamClick, 
+  week,
+  lineup,
+  allTeams,
+  isEditable,
+  onSave,
+  onTeamClick,
   TeamLogo,
-  leagueId 
+  leagueId,
+  userId,           // ✅
+  userDisplayName,  // ✅
+  currentWeek      // ✅
 }) => {
   const [starters, setStarters] = useState(Array(5).fill(null));
   const [bench, setBench] = useState(Array(2).fill(null));
   const [hasChanges, setHasChanges] = useState(false);
+  const [showConfirmCut, setShowConfirmCut] = useState(null);
+  const [showReplaceModal, setShowReplaceModal] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (lineup) {
@@ -343,21 +388,31 @@ const WeeklyLineupContent = ({
     });
   };
 
-  const handleTeamMove = (team, fromSection, fromIndex, toSection, toIndex = null) => {
-    if (!isEditable) return;
+  const handleTeamMove = async (team, fromSection, fromIndex, toSection, toIndex = null) => {
+    if (!isEditable || isSaving) return;
     
     const newStarters = [...starters];
     const newBench = [...bench];
     
+    // If no specific index, find empty slot
     if (toIndex === null) {
-      // Find empty slot
       if (toSection === 'starters') {
         toIndex = newStarters.findIndex(t => t === null);
-        if (toIndex === -1) return; // No empty slots
       } else {
         toIndex = newBench.findIndex(t => t === null);
-        if (toIndex === -1) return; // No empty slots
       }
+    }
+    
+    // If no empty slot, show replacement modal
+    if (toIndex === -1) {
+      setShowReplaceModal({
+        movingTeam: team,
+        fromSection,
+        fromIndex,
+        toSection,
+        targetTeams: toSection === 'starters' ? newStarters.filter(t => t !== null) : newBench.filter(t => t !== null)
+      });
+      return;
     }
     
     // Remove from original position
@@ -367,44 +422,146 @@ const WeeklyLineupContent = ({
       newBench[fromIndex] = null;
     }
     
-    // Add to new position (swap if occupied)
+    // Handle displacement if slot is occupied
+    const displaced = (toSection === 'starters') ? newStarters[toIndex] : newBench[toIndex];
+    
+    // Add to new position
     if (toSection === 'starters') {
-      const displaced = newStarters[toIndex];
       newStarters[toIndex] = team;
-      if (displaced && fromSection === 'starters') {
-        newStarters[fromIndex] = displaced;
-      } else if (displaced) {
-        const emptyBenchIndex = newBench.findIndex(t => t === null);
-        if (emptyBenchIndex !== -1) {
-          newBench[emptyBenchIndex] = displaced;
-        }
-      }
     } else {
-      const displaced = newBench[toIndex];
       newBench[toIndex] = team;
-      if (displaced && fromSection === 'bench') {
-        newBench[fromIndex] = displaced;
-      } else if (displaced) {
-        const emptyStarterIndex = newStarters.findIndex(t => t === null);
-        if (emptyStarterIndex !== -1) {
-          newStarters[emptyStarterIndex] = displaced;
+    }
+    
+    // Handle displaced team
+    if (displaced) {
+      const targetSection = (toSection === 'starters') ? 'bench' : 'starters';
+      const targetArray = (toSection === 'starters') ? newBench : newStarters;
+      const emptyIndex = targetArray.findIndex(t => t === null);
+      
+      if (emptyIndex !== -1) {
+        if (targetSection === 'starters') {
+          newStarters[emptyIndex] = displaced;
+        } else {
+          newBench[emptyIndex] = displaced;
+        }
+      } else {
+        // Both sections full - put displaced back in original position
+        if (fromSection === 'starters') {
+          newStarters[fromIndex] = displaced;
+        } else {
+          newBench[fromIndex] = displaced;
         }
       }
     }
     
-    setStarters(newStarters);
-    setBench(newBench);
-    setHasChanges(true);
+    // Save immediately
+    await saveLineupChanges(newStarters, newBench);
   };
 
-  const handleSave = () => {
-    if (hasChanges && isEditable) {
-      onSave(starters, bench);
+  const handleTeamCut = (team, section, index) => {
+    setShowConfirmCut({ team, section, index });
+  };
+
+  const confirmCut = async () => {
+    if (!showConfirmCut || isSaving) return;
+
+    const { team, section, index } = showConfirmCut;
+    const newStarters = [...starters];
+    const newBench = [...bench];
+
+    if (section === 'starters') newStarters[index] = null;
+    else newBench[index] = null;
+
+    try {
+      setIsSaving(true);
+
+      // Save lineup first
+      await saveLineupChanges(newStarters, newBench);
+
+      // Record move
+      const moveHistoryRef = collection(db, "leagues", leagueId, "moveHistory");
+      await addDoc(moveHistoryRef, {
+        userId,
+        teamName: userDisplayName,   // NOTE: this is the user's display name
+        moveType: "drop",
+        dropped: team.school || team.name,
+        pickedUp: null,
+        timestamp: new Date(),
+        week: currentWeek || "Preseason",
+      });
+
+      // Increment FA move count
+      const memberRef = doc(db, "leagues", leagueId, "members", userId);
+      await updateDoc(memberRef, { freeAgentMoves: increment(1) });
+
+      console.log(`✅ Team ${team.school || team.name} cut successfully and move recorded`);
+    } catch (e) {
+      console.error("Error cutting team and recording move:", e);
+    } finally {
+      setIsSaving(false);
+      setShowConfirmCut(null);
+    }
+  };
+
+  const handleReplaceTeam = async (targetIndex) => {
+    if (!showReplaceModal || isSaving) return;
+    
+    const { movingTeam, fromSection, fromIndex, toSection } = showReplaceModal;
+    const newStarters = [...starters];
+    const newBench = [...bench];
+    
+    // Get the team being replaced
+    const replacedTeam = (toSection === 'starters') ? newStarters[targetIndex] : newBench[targetIndex];
+    
+    // Remove moving team from original position
+    if (fromSection === 'starters') {
+      newStarters[fromIndex] = null;
+    } else {
+      newBench[fromIndex] = null;
+    }
+    
+    // Place moving team in target position
+    if (toSection === 'starters') {
+      newStarters[targetIndex] = movingTeam;
+    } else {
+      newBench[targetIndex] = movingTeam;
+    }
+    
+    // Try to place replaced team in original position
+    if (fromSection === 'starters') {
+      newStarters[fromIndex] = replacedTeam;
+    } else {
+      newBench[fromIndex] = replacedTeam;
+    }
+    
+    await saveLineupChanges(newStarters, newBench);
+    setShowReplaceModal(null);
+  };
+
+  const saveLineupChanges = async (newStarters, newBench) => {
+    try {
+      setIsSaving(true);
+      await onSave(newStarters, newBench);
+      setStarters(newStarters);
+      setBench(newBench);
       setHasChanges(false);
+    } catch (error) {
+      console.error("Error saving lineup:", error);
+      // Revert changes on error - you might want to show an error message to user here
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (hasChanges && isEditable && !isSaving) {
+      await saveLineupChanges(starters, bench);
     }
   };
 
   const TeamSlot = ({ team, section, index, size = 42 }) => {
+    const [showActions, setShowActions] = useState(false);
+
     if (!team) {
       return (
         <div className="flex items-center justify-center py-6 border-2 border-dashed border-gray-400/50 rounded-xl min-h-[80px]">
@@ -425,51 +582,259 @@ const WeeklyLineupContent = ({
       );
     }
 
+    // Format game date/time
+    const formatGameTime = (dateString) => {
+      if (!dateString) return null;
+      
+      try {
+        const date = new Date(dateString);
+        const now = new Date();
+        const isToday = date.toDateString() === now.toDateString();
+        const isTomorrow = date.toDateString() === new Date(now.getTime() + 24 * 60 * 60 * 1000).toDateString();
+        
+        if (isToday) {
+          return `Today ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+        } else if (isTomorrow) {
+          return `Tomorrow ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+        } else {
+          return date.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric',
+            hour: 'numeric', 
+            minute: '2-digit' 
+          });
+        }
+      } catch (e) {
+        return dateString.slice(0, 10); // Fallback to date only
+      }
+    };
+
+    const gameTime = formatGameTime(team.currentSeason?.nextGameDate);
+    const opponent = team.currentSeason?.nextOpponent;
+    const spread = team.currentSeason?.nextOpponentSpreadDisplay;
+    const isHome = team.currentSeason?.nextGameIsHome;
+    const record = team.currentSeason?.record || '0-0';
+    const gamePoints = team.currentSeason?.gamePoints || 0;
+
     return (
-      <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 p-4">
-        <div className="flex gap-3 items-center">
-          <TeamLogo teamName={team.school} size={size} clickable={true} />
-          <div className="flex-1 min-w-0">
-            <h4 className="text-base font-bold text-white truncate">
-              {team.school}
-            </h4>
-            <div className="text-xs text-white/60">{team.conference}</div>
-            <div className="flex gap-2 mt-1">
-              <span className="text-green-400 font-bold text-xs bg-green-400/20 px-2 py-1 rounded-full">
-                {team.currentSeason?.gamePoints || 0} Pts
-              </span>
+      <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden">
+        {/* Main Team Info */}
+        <div className="p-4">
+          <div className="flex gap-3 items-start">
+            {/* LEFT: Logo + Chevron (stacked) */}
+            <div
+              className="flex flex-col items-center gap-2"
+              style={{ width: size, minWidth: size }} // keep column width aligned with logo
+            >
+              <TeamLogo teamName={team.school} size={size} clickable={true} />
+
+              {isEditable && (
+                <button
+                  onClick={() => setShowActions(!showActions)}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors duration-200"
+                  title="Team actions"
+                  aria-expanded={showActions}
+                  disabled={isSaving}
+                >
+                  {showActions ? (
+                    <ChevronUp size={16} className="text-white/80" />
+                  ) : (
+                    <ChevronDown size={16} className="text-white/80" />
+                  )}
+                </button>
+              )}
+            </div>
+
+            {/* MIDDLE: Team text + game info */}
+            <div className="flex-1 min-w-0">
+              <h4 className="text-base font-bold text-white truncate">
+                {team.school}
+              </h4>
+              <div className="text-xs text-white/60 mb-3">{team.conference}</div>
+
+              {/* Game info */}
+              <div className="flex items-center gap-3">
+                {opponent && (
+                  <div className="bg-white/10 rounded-lg p-2 text-xs flex-1">
+                    <div className="text-white">
+                      {isHome ? 'vs' : '@'} {opponent}
+                    </div>
+                    {gameTime && <div className="text-white/70">{gameTime}</div>}
+                    <div className="text-yellow-400 font-medium">
+                      {spread ? `Spread: ${spread}` : 'Line not yet available'}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* RIGHT: Points */}
+            <div className="text-right">
+              <div className="text-green-400 font-bold text-sm mb-1">
+                {gamePoints} Season
+              </div>
+              <div className="text-orange-400 font-bold text-sm mb-1">
+                {(team.currentSeason?.weeklyPoints?.[`week${week}`] || 0)} Week
+              </div>
+              <div className="text-blue-400 font-bold text-sm">{record}</div>
             </div>
           </div>
-          
-          {isEditable && (
-            <div className="flex flex-col gap-1">
+        </div>
+        
+        {/* Expandable Actions Section */}
+        {isEditable && showActions && (
+          <div className="bg-white/5 border-t border-white/10 p-3">
+            <div className="flex gap-2">
               <button
-                onClick={() => handleTeamMove(team, section, index, section === 'starters' ? 'bench' : 'starters')}
-                className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition-colors"
-                title={section === 'starters' ? 'Move to bench' : 'Move to starters'}
+                onClick={() => {
+                  handleTeamMove(team, section, index, section === 'starters' ? 'bench' : 'starters');
+                  setShowActions(false);
+                }}
+                disabled={isSaving}
+                className="flex-1 px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-500 text-white text-xs rounded-lg transition-colors font-medium"
               >
-                {section === 'starters' ? '📋' : '🚀'}
+                {isSaving ? '...' : (section === 'starters' ? '📋 To Bench' : '🚀 To Starters')}
               </button>
               <button
                 onClick={() => {
-                  if (section === 'starters') {
-                    const newStarters = [...starters];
-                    newStarters[index] = null;
-                    setStarters(newStarters);
-                  } else {
-                    const newBench = [...bench];
-                    newBench[index] = null;
-                    setBench(newBench);
-                  }
-                  setHasChanges(true);
+                  handleTeamCut(team, section, index);
+                  setShowActions(false);
                 }}
-                className="px-2 py-1 bg-red-500 hover:bg-red-600 text-white text-xs rounded transition-colors"
-                title="Remove team"
+                disabled={isSaving}
+                className="px-3 py-2 bg-red-500 hover:bg-red-600 disabled:bg-gray-500 text-white text-xs rounded-lg transition-colors font-medium"
               >
-                ✂️
+                🗑️ Cut
               </button>
             </div>
-          )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Confirmation Modal for Cutting Teams
+  const ConfirmCutModal = () => {
+    if (!showConfirmCut) return null;
+
+    const { team } = showConfirmCut;
+    const gamePoints = team.currentSeason?.gamePoints || 0;
+    const record = team.currentSeason?.record || '0-0';
+
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white/95 backdrop-blur-lg rounded-2xl p-6 max-w-md w-full border border-white/20 shadow-2xl">
+          <div className="text-center">
+            <div className="text-4xl mb-4">⚠️</div>
+            <h3 className="text-xl font-bold text-gray-900 mb-4">
+              Cut {team.school}?
+            </h3>
+            <div className="text-gray-600 mb-4">
+              <p>Are you sure you want to remove this team from your lineup?</p>
+              <div className="bg-gray-100 rounded-lg p-3 mt-3">
+                <div className="font-medium text-gray-800">{team.school}</div>
+                <div className="text-sm text-gray-600">{team.conference}</div>
+                <div className="text-sm text-gray-600 mt-1">
+                  {gamePoints} Season Points • {record}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowConfirmCut(null)}
+                className="flex-1 py-3 px-4 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmCut}
+                disabled={isSaving}
+                className="flex-1 py-3 px-4 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors duration-200"
+              >
+                {isSaving ? 'Cutting...' : 'Cut Team'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Team Replacement Modal
+  const ReplaceTeamModal = () => {
+    if (!showReplaceModal) return null;
+
+    const { movingTeam, toSection, targetTeams } = showReplaceModal;
+
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white/95 backdrop-blur-lg rounded-2xl p-6 max-w-lg w-full border border-white/20 shadow-2xl">
+          <div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2 text-center">
+              Choose Team to Replace
+            </h3>
+            <p className="text-gray-600 mb-6 text-center">
+              {toSection === 'starters' ? 'Starters' : 'Bench'} is full. Which team should <span className="font-semibold text-gray-800">{movingTeam.school}</span> replace?
+            </p>
+            
+            <div className="space-y-3 mb-6">
+              {targetTeams.map((targetTeam, index) => {
+                const actualIndex = (toSection === 'starters' ? starters : bench).findIndex(t => t?.school === targetTeam.school);
+                const gamePoints = targetTeam.currentSeason?.gamePoints || 0;
+                const record = targetTeam.currentSeason?.record || '0-0';
+                const opponent = targetTeam.currentSeason?.nextOpponent;
+                const spread = targetTeam.currentSeason?.nextOpponentSpreadDisplay;
+                const isHome = targetTeam.currentSeason?.nextGameIsHome;
+                
+                return (
+                  <button
+                    key={targetTeam.school}
+                    onClick={() => handleReplaceTeam(actualIndex)}
+                    disabled={isSaving}
+                    className="w-full p-4 bg-gray-50 hover:bg-gray-100 disabled:bg-gray-30 rounded-xl text-left transition-all duration-200 border border-gray-200 hover:border-gray-300 hover:shadow-md"
+                  >
+                    <div className="flex justify-between items-start">
+                      {/* Left: Team Info */}
+                      <div className="flex-1">
+                        <div className="font-bold text-gray-900 text-lg mb-1">{targetTeam.school}</div>
+                        <div className="text-sm text-gray-600 mb-2">{targetTeam.conference}</div>
+                        
+                        {/* Next Game Info */}
+                        {opponent && (
+                          <div className="bg-white rounded-lg p-2 text-xs border border-gray-200">
+                            <div className="text-gray-700 font-medium">
+                              {isHome ? 'vs' : '@'} {opponent}
+                            </div>
+                            {spread && (
+                              <div className="text-orange-600 font-bold">
+                                {spread}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Right: Stats */}
+                      <div className="text-right ml-4">
+                        <div className="text-green-600 font-bold text-sm">
+                          {gamePoints} pts
+                        </div>
+                        <div className="text-blue-600 font-semibold text-sm">
+                          {record}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            
+            <button
+              onClick={() => setShowReplaceModal(null)}
+              className="w-full py-3 px-4 bg-gray-600 hover:bg-gray-700 text-white rounded-xl font-medium transition-colors duration-200"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -529,13 +894,18 @@ const WeeklyLineupContent = ({
             <span className="text-green-200 font-medium">You have unsaved changes</span>
             <button
               onClick={handleSave}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              disabled={isSaving}
+              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-medium transition-colors"
             >
-              Save Lineup
+              {isSaving ? 'Saving...' : 'Save Lineup'}
             </button>
           </div>
         </div>
       )}
+
+      {/* Modals */}
+      <ConfirmCutModal />
+      <ReplaceTeamModal />
     </div>
   );
 };
