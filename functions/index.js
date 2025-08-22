@@ -50,6 +50,30 @@ const TEAM_ALIASES = {
   "texas-am": "texas-a-m",
 };
 
+/**
+ * Normalize team names from CFBD to match our app's expected format
+ * @param {string} teamName - Raw team name from CFBD
+ * @returns {string} Normalized team name for our app
+ */
+function normalizeTeamNameForApp(teamName) {
+  if (!teamName) return teamName;
+  
+  // Handle Hawaii/Hawai'i - normalize to "Hawaii" (without apostrophe)
+  if (teamName === "Hawai'i") {
+    return "Hawaii";
+  }
+  
+  // Add other normalizations as needed:
+  const normalizations = {
+    "Hawai'i": "Hawaii",
+    // Add more as you discover them:
+    // "Miami (FL)": "Miami",
+    // "Texas A&M-College Station": "Texas A&M",
+  };
+  
+  return normalizations[teamName] || teamName;
+}
+
 function slugify(name) {
   return String(name || '')
     .toLowerCase()
@@ -286,13 +310,18 @@ async function manageScheduleFromCFBD(bw, db, games, year, week) {
         .get();
 
       if (!existingGamesSnap.empty) {
-        // Update existing CFBD entry
+        // Update existing CFBD entry with normalized team names
         const existingDoc = existingGamesSnap.docs[0];
         console.log(`Updating existing schedule game: ${game.homeTeam} vs ${game.awayTeam} [${cfbdGameId}]`);
         
+        const normalizedHomeTeamUpdate = normalizeTeamNameForApp(game.homeTeam);
+        const normalizedAwayTeamUpdate = normalizeTeamNameForApp(game.awayTeam);
+
+        console.log(`📝 Normalizing update: ${game.homeTeam} → ${normalizedHomeTeamUpdate}, ${game.awayTeam} → ${normalizedAwayTeamUpdate}`);
+
         bw.update(existingDoc.ref, {
-          homeTeam: game.homeTeam,
-          awayTeam: game.awayTeam,
+          homeTeam: normalizedHomeTeamUpdate,
+          awayTeam: normalizedAwayTeamUpdate,
           date: game.startDate,
           venue: game.venue ?? null,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -300,8 +329,13 @@ async function manageScheduleFromCFBD(bw, db, games, year, week) {
         
         scheduleUpdated++;
       } else {
-        // Check for conflicting entries (same matchup, no CFBD ID)
-        const teams = [game.homeTeam, game.awayTeam].sort();
+        // Check for conflicting entries using normalized team names for conflict detection
+        const gameHomeNormalized = normalizeTeamNameForApp(game.homeTeam);
+        const gameAwayNormalized = normalizeTeamNameForApp(game.awayTeam);
+        const conflictCheckHome = slugTeam(gameHomeNormalized);
+        const conflictCheckAway = slugTeam(gameAwayNormalized);
+        const normalizedTeams = [conflictCheckHome, conflictCheckAway].sort();
+        
         const conflictingGamesSnap = await weekRef.collection('games').get();
         
         let hasConflict = false;
@@ -310,9 +344,15 @@ async function manageScheduleFromCFBD(bw, db, games, year, week) {
         conflictingGamesSnap.forEach(doc => {
           const existingGame = doc.data();
           if (!existingGame.cfbdGameId && existingGame.homeTeam && existingGame.awayTeam) {
-            const existingTeams = [existingGame.homeTeam, existingGame.awayTeam].sort();
-            if (teams[0] === existingTeams[0] && teams[1] === existingTeams[1]) {
-              console.log(`Found conflicting manual entry for ${game.homeTeam} vs ${game.awayTeam}, will delete`);
+            // Normalize existing game team names for comparison
+            const existingNormalizedHome = slugTeam(existingGame.homeTeam);
+            const existingNormalizedAway = slugTeam(existingGame.awayTeam);
+            const existingNormalizedTeams = [existingNormalizedHome, existingNormalizedAway].sort();
+            
+            // Compare normalized team names
+            if (normalizedTeams[0] === existingNormalizedTeams[0] && 
+                normalizedTeams[1] === existingNormalizedTeams[1]) {
+              console.log(`Found conflicting manual entry: ${existingGame.homeTeam} vs ${existingGame.awayTeam} conflicts with CFBD ${game.homeTeam} vs ${game.awayTeam}`);
               conflictsToDelete.push(doc.ref);
               hasConflict = true;
             }
@@ -321,16 +361,22 @@ async function manageScheduleFromCFBD(bw, db, games, year, week) {
 
         // Delete conflicting manual entries
         conflictsToDelete.forEach(ref => {
+          console.log(`🗑️ Deleting conflicting manual entry: ${ref.id}`);
           bw.delete(ref);
         });
 
-        // Create new CFBD entry
+        // Create new CFBD entry with normalized team names
         console.log(`Creating new schedule game: ${game.homeTeam} vs ${game.awayTeam} [${cfbdGameId}]`);
         
         const newGameRef = weekRef.collection('games').doc(cfbdGameId);
+        const normalizedHomeTeam = normalizeTeamNameForApp(game.homeTeam);
+        const normalizedAwayTeam = normalizeTeamNameForApp(game.awayTeam);
+
+        console.log(`📝 Normalizing teams: ${game.homeTeam} → ${normalizedHomeTeam}, ${game.awayTeam} → ${normalizedAwayTeam}`);
+
         bw.set(newGameRef, {
-          homeTeam: game.homeTeam,
-          awayTeam: game.awayTeam,
+          homeTeam: normalizedHomeTeam,  // Now uses "Hawaii" instead of "Hawai'i"
+          awayTeam: normalizedAwayTeam,  // Now uses "Hawaii" instead of "Hawai'i"
           date: game.startDate,
           venue: game.venue ?? null,
           cfbdGameId: cfbdGameId,

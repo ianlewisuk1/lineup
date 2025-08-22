@@ -7,7 +7,223 @@ import { db } from '../firebase/firebase';
 import { weeklyLineupUtils } from '../utils/weeklyLineupUtils';
 import { ChevronLeft, ChevronRight, Lock, Clock, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
+/* ---------- NEW: Team Lock Detection Utilities (Step 1.1a) ---------- */
 
+/**
+ * Get game information for a specific team in a specific week
+ * @param {string} teamName - The team name to look up
+ * @param {number} week - The week number
+ * @returns {Promise<Object|null>} Game info object or null if no game found
+ */
+const getTeamGameInfo = async (teamName, week) => {
+  try {
+    const gamesSnap = await getDocs(
+      collection(db, "schedule", "2025", "weeks", week.toString(), "games")
+    );
+
+    const teamGames = [];
+    gamesSnap.forEach(gameDoc => {
+      const gameData = gameDoc.data();
+      if (gameData.homeTeam === teamName || gameData.awayTeam === teamName) {
+        teamGames.push({
+          id: gameDoc.id,
+          date: toJSDate(gameData.date),
+          homeTeam: gameData.homeTeam,
+          awayTeam: gameData.awayTeam,
+          gameComplete: gameData.gameComplete || false,
+          venue: gameData.venue || null,
+          ...gameData
+        });
+      }
+    });
+
+    if (teamGames.length === 0) return null;
+
+    // Sort by date and return first game (for teams with multiple games in Week 1)
+    teamGames.sort((a, b) => a.date - b.date);
+    return teamGames[0];
+  } catch (error) {
+    console.error(`Error getting game info for ${teamName}, week ${week}:`, error);
+    return null;
+  }
+};
+
+/**
+ * Check if a specific team is locked (game started or completed)
+ * @param {string} teamName - The team name to check
+ * @param {number} week - The week number
+ * @param {Date} currentTime - Current time (defaults to now)
+ * @returns {Promise<Object>} Lock status object
+ */
+const isTeamLocked = async (teamName, week, currentTime = new Date()) => {
+  try {
+    const gameInfo = await getTeamGameInfo(teamName, week);
+    
+    if (!gameInfo || !gameInfo.date) {
+      return { 
+        locked: false, 
+        reason: null,
+        message: null,
+        gameInfo: null
+      };
+    }
+
+    // Check if game is completed
+    if (gameInfo.gameComplete) {
+      return {
+        locked: true,
+        reason: 'game_completed',
+        message: `${teamName} is locked - game completed`,
+        gameInfo
+      };
+    }
+
+    // FIX: Ensure date is a proper Date object
+    const gameDate = gameInfo.date instanceof Date ? gameInfo.date : new Date(gameInfo.date);
+    
+    // Check if date conversion worked
+    if (isNaN(gameDate.getTime())) {
+      console.error(`Invalid date for ${teamName}:`, gameInfo.date);
+      return {
+        locked: true,
+        reason: 'invalid_date',
+        message: `${teamName} lock status unavailable - invalid date`,
+        gameInfo
+      };
+    }
+
+    // Check if game has started (1 hour buffer before kickoff)
+    const lockTime = new Date(gameDate.getTime() - (60 * 60 * 1000)); // 1 hour before
+    if (currentTime >= lockTime) {
+      return {
+        locked: true,
+        reason: gameDate <= currentTime ? 'game_started' : 'lock_time_reached',
+        message: `${teamName} is locked - ${gameDate <= currentTime ? 'game started' : 'lineup locked'}`,
+        gameInfo,
+        lockTime,
+        gameDate  // Add this for debugging
+      };
+    }
+
+    return {
+      locked: false,
+      reason: null,
+      message: null,
+      gameInfo,
+      lockTime,
+      gameDate  // Add this for debugging
+    };
+  } catch (error) {
+    console.error(`Error checking lock status for ${teamName}:`, error);
+    // Default to locked on error for safety
+    return {
+      locked: true,
+      reason: 'error',
+      message: `${teamName} lock status unavailable`,
+      gameInfo: null
+    };
+  }
+};
+
+/**
+ * Get all teams with multiple games in a specific week (primarily Week 1)
+ * @param {number} week - The week number to check
+ * @returns {Promise<Array>} Array of team names with multiple games
+ */
+const getTeamsWithMultipleGames = async (week) => {
+  try {
+    const gamesSnap = await getDocs(
+      collection(db, "schedule", "2025", "weeks", week.toString(), "games")
+    );
+
+    const teamGameCounts = {};
+    gamesSnap.forEach(gameDoc => {
+      const gameData = gameDoc.data();
+      if (gameData.homeTeam) {
+        teamGameCounts[gameData.homeTeam] = (teamGameCounts[gameData.homeTeam] || 0) + 1;
+      }
+      if (gameData.awayTeam) {
+        teamGameCounts[gameData.awayTeam] = (teamGameCounts[gameData.awayTeam] || 0) + 1;
+      }
+    });
+
+    return Object.entries(teamGameCounts)
+      .filter(([teamName, count]) => count > 1)
+      .map(([teamName]) => teamName);
+  } catch (error) {
+    console.error(`Error getting teams with multiple games for week ${week}:`, error);
+    return [];
+  }
+};
+
+/**
+ * Enhanced team data structure with live game data preparation
+ * This extends the existing team object with placeholders for live scoring
+ * @param {Object} team - The team object to enhance
+ * @returns {Object|null} Enhanced team object or null
+ */
+const enhanceTeamWithLiveData = (team) => {
+  if (!team) return null;
+
+  return {
+    ...team,
+    // Preserve existing data
+    currentSeason: {
+      ...team.currentSeason,
+      // Add live game data structure (initially empty, populated by future live score system)
+      liveGame: team.currentSeason?.liveGame || {
+        gameStatus: null,        // "scheduled", "in_progress", "final"
+        homeScore: null,         // Current home team score
+        awayScore: null,         // Current away team score
+        quarter: null,           // Current quarter/period
+        timeRemaining: null,     // Time remaining in current quarter
+        lastUpdated: null,       // When live data was last updated
+        possession: null         // Which team has possession (future)
+      }
+    },
+    // Add lock status (will be populated by lock detection functions)
+    lockStatus: {
+      locked: false,
+      reason: null,
+      message: null,
+      lockTime: null
+    }
+  };
+};
+
+/**
+ * Check if user has teams with multiple games in their starting lineup
+ * @param {Array} starters - Array of starting lineup teams
+ * @param {number} week - Week number to check
+ * @returns {Promise<Object>} Information about dual-game teams in starters
+ */
+const checkDualGameTeamsInStarters = async (starters, week) => {
+  try {
+    if (week !== 1) {
+      return { hasDualGameTeams: false, teams: [] };
+    }
+
+    const multiGameTeams = await getTeamsWithMultipleGames(week);
+    const starterTeamNames = starters
+      .filter(team => team !== null)
+      .map(team => team.school || team.name);
+
+    const dualGameStarterTeams = multiGameTeams.filter(teamName => 
+      starterTeamNames.includes(teamName)
+    );
+
+    return {
+      hasDualGameTeams: dualGameStarterTeams.length > 0,
+      teams: dualGameStarterTeams,
+      totalMultiGameTeams: multiGameTeams
+    };
+  } catch (error) {
+    console.error('Error checking dual game teams in starters:', error);
+    return { hasDualGameTeams: false, teams: [] };
+  }
+};
+
+/* ---------- END NEW UTILITIES ---------- */
 
 /* ---------- shared helpers (module scope) ---------- */
 const toJSDate = (v) => {
@@ -70,6 +286,7 @@ const WeeklyLineupManager = ({
 
   useEffect(() => {
     initializeWeeklyLineups();
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId, userId]);
 
