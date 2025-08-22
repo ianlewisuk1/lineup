@@ -71,6 +71,7 @@ class BatchWriter {
   }
   set(ref, data, opts) { this.batch.set(ref, data, opts); this.count++; this.totalWrites++; return this._maybeFlush(); }
   update(ref, data) { this.batch.update(ref, data); this.count++; this.totalWrites++; return this._maybeFlush(); }
+  delete(ref) { this.batch.delete(ref); this.count++; this.totalWrites++; return this._maybeFlush(); }
   async _maybeFlush() {
     if (this.count >= this.max) {
       await this.batch.commit();
@@ -144,112 +145,207 @@ function normalizeLine(game, providerLine) {
   };
 }
 
-async function patchTeamsForGameIfExists(bw, db, game, linesByProvider) {
-  const line =
-    linesByProvider['consensus'] ||
-    Object.values(linesByProvider).find(Boolean) || null;
-  if (!line) return;
-
-  // CHANGE: Keep full timestamp instead of just date
-  // const dateOnly = (game.startDate || '').slice(0, 10) || null;  // OLD - removes time
-  const gameDateTime = game.startDate || null;  // NEW - preserves full timestamp
-
-  const patchOne = async (teamName, isHome, oppName) => {
-    if (!teamName) return;
-
+/** Collect all games for teams, then update with chronologically next game */
+async function patchTeamsForAllGames(bw, db, games) {
+  // Group games by team
+  const teamGames = new Map();
+  
+  for (const game of games) {
+    if (!game.homeTeam || !game.awayTeam || !game.startDate) continue;
+    
+    const line = game.linesByProvider?.['consensus'] || 
+                 Object.values(game.linesByProvider || {}).find(Boolean) || null;
+    
+    if (!line) continue;
+    
+    // Add game to home team's list
+    if (!teamGames.has(game.homeTeam)) {
+      teamGames.set(game.homeTeam, []);
+    }
+    teamGames.get(game.homeTeam).push({
+      ...game,
+      isHome: true,
+      opponent: game.awayTeam,
+      line
+    });
+    
+    // Add game to away team's list
+    if (!teamGames.has(game.awayTeam)) {
+      teamGames.set(game.awayTeam, []);
+    }
+    teamGames.get(game.awayTeam).push({
+      ...game,
+      isHome: false,
+      opponent: game.homeTeam,
+      line
+    });
+  }
+  
+  // Now process each team's games to find the chronologically next game
+  const now = new Date();
+  
+  for (const [teamName, teamGamesList] of teamGames) {
+    // Sort games by start date
+    const sortedGames = teamGamesList
+      .filter(g => g.startDate)
+      .map(g => ({
+        ...g,
+        gameDate: new Date(g.startDate)
+      }))
+      .sort((a, b) => a.gameDate.getTime() - b.gameDate.getTime());
+    
+    // Find the next upcoming game (first future game, or if none, the most recent)
+    let nextGame = sortedGames.find(g => g.gameDate > now);
+    if (!nextGame && sortedGames.length > 0) {
+      // If no future games, take the most recent (last in sorted array)
+      nextGame = sortedGames[sortedGames.length - 1];
+    }
+    
+    if (!nextGame) continue;
+    
+    // Update the team document
     const slug = slugTeam(teamName);
     const ref = db.collection('teams').doc(slug);
-    const snap = await ref.get();
-
-    if (!snap.exists) {
-      try {
-        await db.collection('cfb').doc('misses').collection('teams').add({
-          raw: teamName,
-          slugTried: slug,
-          role: isHome ? 'home' : 'away',
-          game: {
-            homeTeam: game.homeTeam || null,
-            awayTeam: game.awayTeam || null,
-            startDate: game.startDate || null
-          },
-          when: admin.firestore.FieldValue.serverTimestamp(),
-        });
-      } catch (e) {
-        console.warn('[patchTeamsForGameIfExists] miss log failed', teamName, e);
+    
+    try {
+      const snap = await ref.get();
+      if (!snap.exists) {
+        // Log missing team but don't create new docs
+        try {
+          await db.collection('cfb').doc('misses').collection('teams').add({
+            raw: teamName,
+            slugTried: slug,
+            game: {
+              homeTeam: nextGame.homeTeam || null,
+              awayTeam: nextGame.awayTeam || null,
+              startDate: nextGame.startDate || null
+            },
+            when: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          console.warn('[patchTeamsForAllGames] miss log failed', teamName, e);
+        }
+        continue;
       }
-      return; // update-only: skip creating new docs
+      
+      // Calculate spread from team's perspective
+      const spreadNum = (typeof nextGame.line.spread === 'number')
+        ? (nextGame.isHome ? nextGame.line.spread : -nextGame.line.spread)
+        : null;
+      
+      // Human-friendly display string
+      let spreadDisplay = null;
+      if (typeof spreadNum === 'number') {
+        if (spreadNum === 0) {
+          spreadDisplay = 'PICK';
+        } else if (spreadNum > 0) {
+          spreadDisplay = `+${spreadNum}`;
+        } else {
+          spreadDisplay = String(spreadNum);
+        }
+      }
+      
+      console.log(`Updating ${teamName}: next game vs ${nextGame.opponent} on ${nextGame.startDate} (spread: ${spreadDisplay})`);
+      
+      bw.set(ref, {
+        currentSeason: {
+          nextOpponent: nextGame.opponent ?? null,
+          nextGameDate: nextGame.startDate,
+          nextGameIsHome: !!nextGame.isHome,
+          nextOpponentSpread: spreadNum,
+          nextOpponentSpreadDisplay: spreadDisplay,
+          nextOverUnder: (typeof nextGame.line.overUnder === 'number') ? nextGame.line.overUnder : null,
+          nextOpponentProvider: nextGame.line.provider ?? null,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }
+      }, { merge: true });
+      
+    } catch (error) {
+      console.error(`Error updating team ${teamName}:`, error);
     }
-
-    // Keep numeric (home-perspective from CFBD; flip for away)
-    const spreadNum = (typeof line.spread === 'number')
-      ? (isHome ? line.spread : -line.spread)
-      : null;
-
-    // Human-friendly display string: "+X" for underdog, "-X" for favorite, "PICK" for 0
-    let spreadDisplay = null;
-    if (typeof spreadNum === 'number') {
-      if (spreadNum === 0) {
-        spreadDisplay = 'PICK';
-      } else if (spreadNum > 0) {
-        spreadDisplay = `+${spreadNum}`;
-      } else {
-        spreadDisplay = String(spreadNum);
-      }
-    }
-
-    bw.set(ref, {
-      currentSeason: {
-        nextOpponent: oppName ?? null,
-        nextGameDate: gameDateTime,  // CHANGED: Now preserves full timestamp
-        nextGameIsHome: !!isHome,
-        nextOpponentSpread: spreadNum,                 // number (safe for math)
-        nextOpponentSpreadDisplay: spreadDisplay,      // string (for UI)
-        nextOverUnder: (typeof line.overUnder === 'number') ? line.overUnder : null,
-        nextOpponentProvider: line.provider ?? null,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }
-    }, { merge: true });
-  };
-
-  await patchOne(game.homeTeam, true, game.awayTeam);
-  await patchOne(game.awayTeam, false, game.homeTeam);
+  }
 }
 
-/** Update schedule for existing games (using team matchup like teams function) */
-async function patchScheduleForGameIfExists(bw, db, game, year, week) {
-  if (!game.startDate || !game.homeTeam || !game.awayTeam) return;
+/** NEW: Authoritative schedule management - CFBD is the single source of truth */
+async function manageScheduleFromCFBD(bw, db, games, year, week) {
+  if (!games || games.length === 0) return 0;
 
-  try {
-    // Find existing game by team matchup (same strategy as teams function)
-    const existingGamesSnap = await db
-      .collection('schedule').doc(String(year))
-      .collection('weeks').doc(String(week))
-      .collection('games')
-      .where('homeTeam', '==', game.homeTeam)
-      .where('awayTeam', '==', game.awayTeam)
-      .get();
+  let scheduleUpdated = 0;
+  const weekRef = db.collection('schedule').doc(String(year)).collection('weeks').doc(String(week));
 
-    if (!existingGamesSnap.empty) {
-      // Update existing document (like teams function)
-      const existingDoc = existingGamesSnap.docs[0];
-      console.log(`Updating existing schedule game: ${game.homeTeam} vs ${game.awayTeam}`);
-      
-      bw.update(existingDoc.ref, {
-        date: game.startDate,  // Add full timestamp
-        cfbdGameId: String(game.id || ''),  // Store CFBD ID for reference
-        venue: game.venue ?? null,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-      
-      return true; // Successfully updated existing game
-    } else {
-      console.log(`No existing game found for: ${game.homeTeam} vs ${game.awayTeam}`);
-      return false; // No existing game found
+  for (const game of games) {
+    if (!game.homeTeam || !game.awayTeam || !game.startDate) continue;
+
+    const cfbdGameId = String(game.id || '');
+    if (!cfbdGameId) continue;
+
+    try {
+      // Check if this CFBD game already exists in our schedule
+      const existingGamesSnap = await weekRef.collection('games')
+        .where('cfbdGameId', '==', cfbdGameId)
+        .get();
+
+      if (!existingGamesSnap.empty) {
+        // Update existing CFBD entry
+        const existingDoc = existingGamesSnap.docs[0];
+        console.log(`Updating existing schedule game: ${game.homeTeam} vs ${game.awayTeam} [${cfbdGameId}]`);
+        
+        bw.update(existingDoc.ref, {
+          homeTeam: game.homeTeam,
+          awayTeam: game.awayTeam,
+          date: game.startDate,
+          venue: game.venue ?? null,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        
+        scheduleUpdated++;
+      } else {
+        // Check for conflicting entries (same matchup, no CFBD ID)
+        const teams = [game.homeTeam, game.awayTeam].sort();
+        const conflictingGamesSnap = await weekRef.collection('games').get();
+        
+        let hasConflict = false;
+        const conflictsToDelete = [];
+        
+        conflictingGamesSnap.forEach(doc => {
+          const existingGame = doc.data();
+          if (!existingGame.cfbdGameId && existingGame.homeTeam && existingGame.awayTeam) {
+            const existingTeams = [existingGame.homeTeam, existingGame.awayTeam].sort();
+            if (teams[0] === existingTeams[0] && teams[1] === existingTeams[1]) {
+              console.log(`Found conflicting manual entry for ${game.homeTeam} vs ${game.awayTeam}, will delete`);
+              conflictsToDelete.push(doc.ref);
+              hasConflict = true;
+            }
+          }
+        });
+
+        // Delete conflicting manual entries
+        conflictsToDelete.forEach(ref => {
+          bw.delete(ref);
+        });
+
+        // Create new CFBD entry
+        console.log(`Creating new schedule game: ${game.homeTeam} vs ${game.awayTeam} [${cfbdGameId}]`);
+        
+        const newGameRef = weekRef.collection('games').doc(cfbdGameId);
+        bw.set(newGameRef, {
+          homeTeam: game.homeTeam,
+          awayTeam: game.awayTeam,
+          date: game.startDate,
+          venue: game.venue ?? null,
+          cfbdGameId: cfbdGameId,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        
+        scheduleUpdated++;
+      }
+    } catch (error) {
+      console.error(`Error managing schedule for ${game.homeTeam} vs ${game.awayTeam}:`, error);
     }
-  } catch (error) {
-    console.error(`Error updating schedule for ${game.homeTeam} vs ${game.awayTeam}:`, error);
-    return false;
   }
+
+  return scheduleUpdated;
 }
 
 /** Core ingestion routine (shared by HTTP + Scheduler). */
@@ -277,6 +373,9 @@ async function ingestLines({ year, week, seasonType = 'regular', book = 'consens
   let wrote = 0;
   let scheduleUpdated = 0;
 
+  // Process lines collection and collect games for other updates
+  const processedGames = [];
+
   for (const g of games) {
     const gameId = g.id
       ? String(g.id)
@@ -291,7 +390,7 @@ async function ingestLines({ year, week, seasonType = 'regular', book = 'consens
       linesByProvider[norm.provider] = norm;
     }
 
-    bw.set(docRef, {
+    const gameWithLines = {
       gameId,
       season: g.season ?? year,
       seasonType: g.seasonType ?? seasonType,
@@ -299,24 +398,33 @@ async function ingestLines({ year, week, seasonType = 'regular', book = 'consens
       homeTeam: g.homeTeam ?? null,
       awayTeam: g.awayTeam ?? null,
       startDate: g.startDate ?? null,
+      venue: g.venue ?? null,
       consensus: linesByProvider['consensus'] || null,
       linesByProvider,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
+    };
 
-    // NEW: Update existing schedule games with proper kickoff times (using teams strategy)
-    if (updateSchedule) {
-      const updated = await patchScheduleForGameIfExists(bw, db, g, year, week);
-      if (updated) {
-        scheduleUpdated++;
-      }
-    }
+    bw.set(docRef, gameWithLines, { merge: true });
 
-    if (updateTeams) {
-      await patchTeamsForGameIfExists(bw, db, g, linesByProvider);
-    }
+    // Collect for team and schedule processing
+    processedGames.push({
+      ...g,
+      linesByProvider
+    });
 
     wrote++;
+  }
+
+  // NEW: Authoritative schedule management
+  if (updateSchedule && processedGames.length > 0) {
+    console.log(`Managing schedule for ${processedGames.length} games in week ${week}...`);
+    scheduleUpdated = await manageScheduleFromCFBD(bw, db, processedGames, year, week);
+  }
+
+  // Process all games at once for teams to find chronologically next games
+  if (updateTeams && processedGames.length > 0) {
+    console.log(`Processing ${processedGames.length} games for team next-game updates...`);
+    await patchTeamsForAllGames(bw, db, processedGames);
   }
 
   await bw.commit();
@@ -381,7 +489,7 @@ exports.cfbIngestLinesScheduled = onSchedule(
         seasonType, 
         book, 
         updateTeams: true, 
-        updateSchedule: true,  // Enable schedule syncing
+        updateSchedule: true,  // Enable authoritative schedule management
         key 
       });
       console.log('Scheduled ingest result:', result);
@@ -392,6 +500,177 @@ exports.cfbIngestLinesScheduled = onSchedule(
     }
   }
 );
+
+/* -------------------------------------------------------------------------- */
+/*                            Debug/Admin Functions                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Debug function to see what's actually in the schedule for a specific team
+ */
+exports.debugSchedule = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    const year = req.query.year || '2025';
+    const teamName = req.query.team || 'Kansas State';
+    const week = req.query.week || null;
+    
+    console.log(`🔍 Debugging schedule for ${teamName} in ${year}${week ? ` week ${week}` : ''}`);
+    
+    const results = [];
+    
+    // Get weeks to check
+    const weeksToCheck = week ? [week] : ['1', '2', '3', '4', '5'];
+    
+    for (const weekNum of weeksToCheck) {
+      try {
+        const gamesSnap = await db
+          .collection('schedule').doc(year)
+          .collection('weeks').doc(weekNum)
+          .collection('games')
+          .get();
+        
+        const weekGames = [];
+        
+        gamesSnap.forEach(gameDoc => {
+          const game = gameDoc.data();
+          if (game.homeTeam === teamName || game.awayTeam === teamName) {
+            weekGames.push({
+              docId: gameDoc.id,
+              week: weekNum,
+              homeTeam: game.homeTeam,
+              awayTeam: game.awayTeam,
+              date: game.date,
+              venue: game.venue,
+              cfbdGameId: game.cfbdGameId,
+              updatedAt: game.updatedAt?.toDate?.() || game.updatedAt
+            });
+          }
+        });
+        
+        if (weekGames.length > 0) {
+          results.push({
+            week: weekNum,
+            games: weekGames
+          });
+        }
+      } catch (error) {
+        console.warn(`Error checking week ${weekNum}:`, error);
+      }
+    }
+    
+    // Format response
+    let output = `📋 Schedule Debug for ${teamName}\n\n`;
+    
+    results.forEach(weekData => {
+      output += `Week ${weekData.week}:\n`;
+      weekData.games.forEach((game, index) => {
+        const isHome = game.homeTeam === teamName;
+        const opponent = isHome ? game.awayTeam : game.homeTeam;
+        const homeAway = isHome ? 'vs' : '@';
+        
+        output += `  ${index + 1}. ${homeAway} ${opponent}\n`;
+        output += `     Date: ${game.date || 'TBD'}\n`;
+        output += `     Venue: ${game.venue || 'TBD'}\n`;
+        output += `     Doc ID: ${game.docId}\n`;
+        output += `     Home: ${game.homeTeam} | Away: ${game.awayTeam}\n`;
+        output += `     CFBD ID: ${game.cfbdGameId || 'none'}\n\n`;
+      });
+    });
+    
+    console.log(output);
+    
+    res.json({
+      success: true,
+      team: teamName,
+      year,
+      results,
+      formatted: output
+    });
+    
+  } catch (error) {
+    console.error('❌ Debug failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * One-time cleanup function to remove conflicting manual entries
+ * This can be run if you ever need to clean up manual vs CFBD conflicts again
+ */
+exports.cleanupManualEntries = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    const year = req.query.year || '2025';
+    
+    console.log(`🧹 Cleaning up manual schedule entries that conflict with CFBD data for ${year}...`);
+    
+    let totalRemoved = 0;
+    const bw = new BatchWriter(db);
+    
+    // Get all weeks
+    const weeksSnap = await db.collection('schedule').doc(year).collection('weeks').get();
+    
+    for (const weekDoc of weeksSnap.docs) {
+      const weekNum = weekDoc.id;
+      console.log(`🔍 Processing week ${weekNum}...`);
+      
+      const gamesSnap = await weekDoc.ref.collection('games').get();
+      
+      // Group games by team matchup (regardless of home/away order)
+      const matchupGroups = new Map();
+      
+      gamesSnap.forEach(gameDoc => {
+        const game = gameDoc.data();
+        if (!game.homeTeam || !game.awayTeam) return;
+        
+        // Create normalized matchup key (alphabetical order)
+        const teams = [game.homeTeam, game.awayTeam].sort();
+        const matchupKey = `${teams[0]}_vs_${teams[1]}`;
+        
+        if (!matchupGroups.has(matchupKey)) {
+          matchupGroups.set(matchupKey, []);
+        }
+        
+        matchupGroups.get(matchupKey).push({
+          docId: gameDoc.id,
+          ref: gameDoc.ref,
+          ...game
+        });
+      });
+      
+      // Find and remove manual entries that conflict with CFBD entries
+      for (const [matchup, games] of matchupGroups) {
+        if (games.length <= 1) continue;
+        
+        const cfbdEntries = games.filter(g => g.cfbdGameId);
+        const manualEntries = games.filter(g => !g.cfbdGameId);
+        
+        if (cfbdEntries.length > 0 && manualEntries.length > 0) {
+          console.log(`🗑️  Removing ${manualEntries.length} manual entries for ${matchup} (keeping ${cfbdEntries.length} CFBD entries)`);
+          
+          manualEntries.forEach(entry => {
+            bw.delete(entry.ref);
+            totalRemoved++;
+          });
+        }
+      }
+    }
+    
+    await bw.commit();
+    console.log(`✅ Cleanup complete! Removed ${totalRemoved} manual entries.`);
+    
+    res.json({
+      success: true,
+      message: `Removed ${totalRemoved} conflicting manual entries for ${year}`,
+      entriesRemoved: totalRemoved
+    });
+    
+  } catch (error) {
+    console.error('❌ Cleanup failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 /* -------------------------------------------------------------------------- */
 /*                    Auto-Migration: Member Lineups to Weekly                */
