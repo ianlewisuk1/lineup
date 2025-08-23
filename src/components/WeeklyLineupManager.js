@@ -1,4 +1,4 @@
-// WeeklyLineupManager.js — compact layout + iOS-safe modals + improved replace sheet
+// WeeklyLineupManager.js — compact layout + iOS-safe modals + improved replace sheet + Individual Team Locking
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
@@ -6,8 +6,6 @@ import { doc, getDoc, updateDoc, collection, getDocs, addDoc, increment } from '
 import { db } from '../firebase/firebase';
 import { weeklyLineupUtils } from '../utils/weeklyLineupUtils';
 import { ChevronLeft, ChevronRight, Lock, Clock, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
-
-/* ---------- NEW: Team Lock Detection Utilities (Step 1.1a) ---------- */
 
 /**
  * Get game information for a specific team in a specific week
@@ -55,7 +53,7 @@ const getTeamGameInfo = async (teamName, week) => {
  * @param {Date} currentTime - Current time (defaults to now)
  * @returns {Promise<Object>} Lock status object
  */
-const isTeamLocked = async (teamName, week, currentTime = new Date()) => {
+const isTeamLocked = async (teamName, week, currentTime = window.TEST_CURRENT_TIME || new Date()) => {
   try {
     const gameInfo = await getTeamGameInfo(teamName, week);
     
@@ -223,6 +221,99 @@ const checkDualGameTeamsInStarters = async (starters, week) => {
   }
 };
 
+/* ---------- NEW: Individual Team Locking Functions (Step 1.1c) ---------- */
+
+/**
+ * Enhanced lineup status calculation with individual team locking
+ * @param {Object} weeklyLineups - User's weekly lineups object
+ * @param {number} week - Week number
+ * @param {Date} currentTime - Current time (defaults to now)
+ * @returns {Promise<Object>} Lineup status with individual team details
+ */
+const getLineupStatus = async (weeklyLineups, week, currentTime = new Date()) => {
+  const weekKey = `week${week}`;
+  const lineup = weeklyLineups[weekKey];
+  
+  if (!lineup) {
+    return {
+      status: 'open',
+      message: 'Lineup not found',
+      lockedTeams: [],
+      unlockedTeams: [],
+      totalTeams: 0
+    };
+  }
+  
+  // Get all teams in the lineup (starters + bench)
+  const allTeams = [...lineup.starters, ...lineup.bench].filter(team => team !== null);
+  
+  if (allTeams.length === 0) {
+    return {
+      status: 'open',
+      message: 'No teams selected',
+      lockedTeams: [],
+      unlockedTeams: [],
+      totalTeams: 0
+    };
+  }
+  
+  // Check lock status for each team
+  const teamStatuses = await Promise.all(
+    allTeams.map(async (teamName) => {
+      const lockInfo = await isTeamLocked(teamName, week, currentTime);
+      return {
+        teamName,
+        locked: lockInfo.locked,
+        lockInfo
+      };
+    })
+  );
+  
+  const lockedTeams = teamStatuses.filter(t => t.locked).map(t => t.teamName);
+  const unlockedTeams = teamStatuses.filter(t => !t.locked).map(t => t.teamName);
+  
+  // Determine overall status
+  let status, message;
+  
+  if (lockedTeams.length === 0) {
+    status = 'open';
+    message = 'All teams available for changes';
+  } else if (lockedTeams.length === allTeams.length) {
+    status = 'locked';
+    message = 'All teams are locked';
+  } else {
+    status = 'partially_locked';
+    message = `${lockedTeams.length} of ${allTeams.length} teams are locked`;
+  }
+  
+  return {
+    status,
+    message,
+    lockedTeams,
+    unlockedTeams,
+    totalTeams: allTeams.length,
+    teamStatuses // Full details for each team
+  };
+};
+
+/**
+ * Check if a team can be moved/added to lineup
+ * @param {string} teamName - Team name to check
+ * @param {number} week - Week number
+ * @param {Date} currentTime - Current time (defaults to now)
+ * @returns {Promise<Object>} Move validation result
+ */
+const canMoveTeam = async (teamName, week, currentTime = new Date()) => {
+  const lockInfo = await isTeamLocked(teamName, week, currentTime);
+  
+  return {
+    canMove: !lockInfo.locked,
+    reason: lockInfo.locked ? lockInfo.reason : 'team_available',
+    message: lockInfo.message,
+    lockInfo
+  };
+};
+
 /* ---------- END NEW UTILITIES ---------- */
 
 /* ---------- shared helpers (module scope) ---------- */
@@ -290,6 +381,7 @@ const WeeklyLineupManager = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leagueId, userId]);
 
+  // NEW: Updated initializeWeeklyLineups with enhanced data structure
   const initializeWeeklyLineups = async () => {
     try {
       const weeks = Array.from({ length: 14 }, (_, i) => i + 1);
@@ -307,16 +399,42 @@ const WeeklyLineupManager = ({
 
       weeks.forEach(week => {
         const weekKey = `week${week}`;
+        
+        // Helper function to create enhanced lineup structure
+        const createEnhancedLineup = (existingLineup = null) => {
+          const baseLineup = existingLineup || {
+            starters: Array(5).fill(null),
+            bench: Array(2).fill(null),
+            lockedAt: null
+          };
+          
+          // Add new individual team lock tracking if not present
+          return {
+            starters: baseLineup.starters || Array(5).fill(null),
+            bench: baseLineup.bench || Array(2).fill(null),
+            
+            // NEW: Individual team lock tracking
+            lockedTeams: baseLineup.lockedTeams || [],        // Array of locked team names
+            teamLockTimes: baseLineup.teamLockTimes || {},    // Team name -> lock time mapping
+            
+            // Keep for backward compatibility
+            lockedAt: baseLineup.lockedAt || null
+          };
+        };
+        
         if (week === currentWeek && currentLineup) {
-          lineupData[weekKey] = {
+          // Current week - use member's current lineup with enhanced structure
+          lineupData[weekKey] = createEnhancedLineup({
             starters: currentLineup.starters || Array(5).fill(null),
             bench: currentLineup.bench || Array(2).fill(null),
             lockedAt: null
-          };
+          });
         } else if (existingWeeklyData[weekKey]) {
-          lineupData[weekKey] = existingWeeklyData[weekKey];
+          // Existing weekly data - enhance with new fields if missing
+          lineupData[weekKey] = createEnhancedLineup(existingWeeklyData[weekKey]);
         } else {
-          lineupData[weekKey] = { starters: Array(5).fill(null), bench: Array(2).fill(null), lockedAt: null };
+          // New week - create fresh enhanced lineup
+          lineupData[weekKey] = createEnhancedLineup();
         }
       });
 
@@ -377,6 +495,7 @@ const WeeklyLineupManager = ({
     setWeekStatuses(statuses);
   };
 
+  // NEW: Updated saveLineup with enhanced structure support
   const saveLineup = async (week, starters, bench) => {
     try {
       const normalizedStarters = starters.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null);
@@ -390,7 +509,20 @@ const WeeklyLineupManager = ({
       }
 
       const weekKey = `week${week}`;
-      setWeeklyLineups(prev => ({ ...prev, [weekKey]: { starters: normalizedStarters, bench: normalizedBench, lockedAt: null } }));
+      
+      // Create enhanced lineup structure for the update
+      const updatedLineup = {
+        starters: normalizedStarters,
+        bench: normalizedBench,
+        lockedTeams: weeklyLineups[weekKey]?.lockedTeams || [],
+        teamLockTimes: weeklyLineups[weekKey]?.teamLockTimes || {},
+        lockedAt: null
+      };
+      
+      setWeeklyLineups(prev => ({ 
+        ...prev, 
+        [weekKey]: updatedLineup
+      }));
     } catch (error) {
       console.error("Error saving lineup:", error);
       throw error;
@@ -408,15 +540,22 @@ const WeeklyLineupManager = ({
     }
   };
 
+  // NEW: Enhanced status message for individual team locking
   const getStatusMessage = (week) => {
     const status = weekStatuses[week];
     if (!status) return "Loading...";
+    
     switch (status.status) {
-      case 'editable':       return `Lineup locks ${status.lockTime ? formatDateTime(status.lockTime) : 'soon'}`;
-      case 'locked_playing': return "Games in progress - lineup locked";
-      case 'completed':      return "Week completed";
-      case 'future':         return "Future week - locked";
-      default:               return "Locked";
+      case 'editable':       
+        return `Teams lock 1 hour before their games start`;
+      case 'locked_playing': 
+        return "Games in progress";
+      case 'completed':      
+        return "Week completed";
+      case 'future':         
+        return "Future week";
+      default:               
+        return "Week locked";
     }
   };
 
@@ -558,8 +697,18 @@ const WeeklyLineupContent = ({
     }
   };
 
+  // NEW: Enhanced handleTeamMove with individual team lock validation
   const handleTeamMove = async (team, fromSection, fromIndex, toSection, toIndex = null) => {
     if (!isEditable || isSaving) return;
+
+    // NEW: Check if team can be moved (individual team locking)
+    const teamName = team.school || team.name;
+    const moveValidation = await canMoveTeam(teamName, week);
+    
+    if (!moveValidation.canMove) {
+      alert(`Cannot move ${teamName}: ${moveValidation.message}`);
+      return;
+    }
 
     const newStarters = [...starters];
     const newBench = [...bench];
@@ -578,6 +727,18 @@ const WeeklyLineupContent = ({
     if (fromSection === 'starters') newStarters[fromIndex] = null; else newBench[fromIndex] = null;
 
     const displaced = (toSection === 'starters') ? newStarters[toIndex] : newBench[toIndex];
+    
+    // NEW: Check if displaced team is locked
+    if (displaced) {
+      const displacedTeamName = displaced.school || displaced.name;
+      const displacedValidation = await canMoveTeam(displacedTeamName, week);
+      
+      if (!displacedValidation.canMove) {
+        alert(`Cannot displace ${displacedTeamName}: ${displacedValidation.message}`);
+        return;
+      }
+    }
+    
     if (toSection === 'starters') newStarters[toIndex] = team; else newBench[toIndex] = team;
 
     if (displaced) {
@@ -594,7 +755,19 @@ const WeeklyLineupContent = ({
     await saveLineupChanges(newStarters, newBench);
   };
 
-  const handleTeamCut = (team, section, index) => setShowConfirmCut({ team, section, index });
+  // NEW: Enhanced handleTeamCut with individual team lock validation
+  const handleTeamCut = async (team, section, index) => {
+    // NEW: Check if team can be cut (individual team locking)
+    const teamName = team.school || team.name;
+    const moveValidation = await canMoveTeam(teamName, week);
+    
+    if (!moveValidation.canMove) {
+      alert(`Cannot cut ${teamName}: ${moveValidation.message}`);
+      return;
+    }
+    
+    setShowConfirmCut({ team, section, index });
+  };
 
   const confirmCut = async () => {
     if (!showConfirmCut || isSaving) return;
@@ -630,13 +803,36 @@ const WeeklyLineupContent = ({
     }
   };
 
+  // NEW: Enhanced handleReplaceTeam with individual team lock validation
   const handleReplaceTeam = async (targetIndex) => {
     if (!showReplaceModal || isSaving) return;
     const { movingTeam, fromSection, fromIndex, toSection } = showReplaceModal;
+    
+    // NEW: Validate both teams can be moved
+    const movingTeamName = movingTeam.school || movingTeam.name;
+    const movingValidation = await canMoveTeam(movingTeamName, week);
+    
+    if (!movingValidation.canMove) {
+      alert(`Cannot move ${movingTeamName}: ${movingValidation.message}`);
+      setShowReplaceModal(null);
+      return;
+    }
+    
     const newStarters = [...starters];
     const newBench = [...bench];
-
     const replacedTeam = (toSection === 'starters') ? newStarters[targetIndex] : newBench[targetIndex];
+    
+    if (replacedTeam) {
+      const replacedTeamName = replacedTeam.school || replacedTeam.name;
+      const replacedValidation = await canMoveTeam(replacedTeamName, week);
+      
+      if (!replacedValidation.canMove) {
+        alert(`Cannot displace ${replacedTeamName}: ${replacedValidation.message}`);
+        setShowReplaceModal(null);
+        return;
+      }
+    }
+
     if (fromSection === 'starters') newStarters[fromIndex] = null; else newBench[fromIndex] = null;
     if (toSection === 'starters') newStarters[targetIndex] = movingTeam; else newBench[targetIndex] = movingTeam;
     if (fromSection === 'starters') newStarters[fromIndex] = replacedTeam || null; else newBench[fromIndex] = replacedTeam || null;
@@ -649,9 +845,30 @@ const WeeklyLineupContent = ({
     if (hasChanges && isEditable && !isSaving) await saveLineupChanges(starters, bench);
   };
 
-  /* ---------- Compact Team Card ---------- */
+  /* ---------- Compact Team Card with Individual Lock Detection ---------- */
   const TeamSlot = ({ team, section, index, size = 42 }) => {
     const [showActions, setShowActions] = useState(false);
+    const [lockStatus, setLockStatus] = useState({ locked: false, message: null });
+
+    // NEW: Check individual team lock status
+    useEffect(() => {
+      const checkTeamLock = async () => {
+        if (!team) {
+          setLockStatus({ locked: false, message: null });
+          return;
+        }
+        
+        const teamName = team.school || team.name;
+        const lockInfo = await isTeamLocked(teamName, week);
+        setLockStatus({
+          locked: lockInfo.locked,
+          message: lockInfo.message,
+          reason: lockInfo.reason
+        });
+      };
+
+      checkTeamLock();
+    }, [team, week]);
 
     if (!team) {
       return (
@@ -680,13 +897,23 @@ const WeeklyLineupContent = ({
     const weeklyPts = (team.currentSeason?.weeklyPoints?.[`week${week}`] || 0);
 
     return (
-      <div className="bg-white/6 rounded-xl border border-white/10 overflow-hidden">
+      <div className={`bg-white/6 rounded-xl border overflow-hidden ${
+        lockStatus.locked ? 'border-red-400/50 bg-red-500/10' : 'border-white/10'
+      }`}>
         <div className="p-3">
           <div className="grid grid-cols-[44px,1fr,auto] gap-3 items-center">
             {/* LEFT: Logo + quick action toggle */}
             <div className="flex flex-col items-center gap-1">
-              <TeamLogo teamName={team.school} size={size} clickable={true} />
-              {isEditable && (
+              <div className="relative">
+                <TeamLogo teamName={team.school} size={size} clickable={true} />
+                {/* NEW: Lock indicator overlay */}
+                {lockStatus.locked && (
+                  <div className="absolute -top-1 -right-1 bg-red-500 rounded-full p-1">
+                    <Lock size={12} className="text-white" />
+                  </div>
+                )}
+              </div>
+              {isEditable && !lockStatus.locked && (
                 <button
                   onClick={() => setShowActions(!showActions)}
                   className="p-1 hover:bg-white/10 rounded-md transition-colors duration-200"
@@ -701,7 +928,14 @@ const WeeklyLineupContent = ({
 
             {/* MIDDLE: Team + game row (compact) */}
             <div className="min-w-0">
-              <div className="font-semibold text-white text-[15px] leading-tight truncate">{team.school}</div>
+              <div className={`font-semibold text-[15px] leading-tight truncate ${
+                lockStatus.locked ? 'text-red-300' : 'text-white'
+              }`}>
+                {team.school}
+                {lockStatus.locked && (
+                  <span className="ml-2 text-xs text-red-400">LOCKED</span>
+                )}
+              </div>
               <div className="text-xs text-white/70 truncate">
                 {opponent ? `${isHome ? 'vs' : '@'} ${opponent}` : 'No next game set'}
               </div>
@@ -709,7 +943,9 @@ const WeeklyLineupContent = ({
               {/* chips row */}
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 {gameTime && (
-                  <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/10 text-white/80">
+                  <span className={`px-2 py-0.5 rounded-full text-[11px] ${
+                    lockStatus.locked ? 'bg-red-500/20 text-red-300' : 'bg-white/10 text-white/80'
+                  }`}>
                     {gameTime}
                   </span>
                 )}
@@ -732,8 +968,8 @@ const WeeklyLineupContent = ({
           </div>
         </div>
 
-        {/* Actions section */}
-        {isEditable && showActions && (
+        {/* Actions section - only show if team is not locked */}
+        {isEditable && showActions && !lockStatus.locked && (
           <div className="bg-white/6 border-t border-white/10 p-2.5">
             <div className="flex gap-2">
               <button
