@@ -83,7 +83,7 @@ const isTeamLocked = async (teamName, week, currentTime = window.TEST_CURRENT_TI
     if (isNaN(gameDate.getTime())) {
       console.error(`Invalid date for ${teamName}:`, gameInfo.date);
       return {
-        locked: true,
+        locked: false,  // FIXED: Don't lock on invalid date
         reason: 'invalid_date',
         message: `${teamName} lock status unavailable - invalid date`,
         gameInfo
@@ -113,11 +113,11 @@ const isTeamLocked = async (teamName, week, currentTime = window.TEST_CURRENT_TI
     };
   } catch (error) {
     console.error(`Error checking lock status for ${teamName}:`, error);
-    // Default to locked on error for safety
+    // FIXED: Default to unlocked on error instead of locked
     return {
-      locked: true,
+      locked: false,
       reason: 'error',
-      message: `${teamName} lock status unavailable`,
+      message: `${teamName} lock status check failed`,
       gameInfo: null
     };
   }
@@ -549,13 +549,13 @@ const WeeklyLineupManager = ({
       case 'editable':       
         return `Teams lock 1 hour before their games start`;
       case 'locked_playing': 
-        return "Games in progress";
+        return "Games in progress - individual teams may be locked";
       case 'completed':      
         return "Week completed";
       case 'future':         
         return "Future week";
       default:               
-        return "Week locked";
+        return "Individual teams lock based on game times";
     }
   };
 
@@ -632,7 +632,7 @@ const WeeklyLineupManager = ({
           week={selectedWeek}
           lineup={weeklyLineups[`week${selectedWeek}`]}
           allTeams={allTeams}
-          isEditable={weekStatuses[selectedWeek]?.status === 'editable'}
+          isEditable={true}  // FIXED: Always allow editing, individual teams will enforce locks
           onSave={(starters, bench) => saveLineup(selectedWeek, starters, bench)}
           onTeamClick={onTeamClick}
           TeamLogo={TeamLogo}
@@ -1123,12 +1123,13 @@ const WeeklyLineupContent = ({
 
   return (
     <div>
-      {!isEditable && (
-        <div className="bg-yellow-500/20 border border-yellow-400/30 rounded-xl p-3 mb-4">
-          <div className="flex items-center gap-2 text-yellow-200">
+      {/* UPDATED: More informative warning message */}
+      {week === currentWeek && (
+        <div className="bg-blue-500/20 border border-blue-400/30 rounded-xl p-3 mb-4">
+          <div className="flex items-center gap-2 text-blue-200">
             <Lock size={16} />
             <span className="text-sm font-medium">
-              This week's lineup is locked and cannot be edited
+              Individual teams lock 1 hour before their games start. Locked teams will show a red indicator.
             </span>
           </div>
         </div>
