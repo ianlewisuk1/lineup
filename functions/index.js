@@ -125,6 +125,52 @@ function buildESPNIndex(espnEvents) {
   return idx;
 }
 
+/**
+ * Process team locking for a position group (starters or bench)
+ */
+function processTeamLocking(currentTeams, existingTeamData, gameStartTimes, now, positionType) {
+  const processed = [];
+  
+  for (let i = 0; i < currentTeams.length; i++) {
+    const currentTeam = currentTeams[i];
+    const existingTeamEntry = existingTeamData[i] || {};
+    
+    if (!currentTeam) {
+      // Empty slot
+      processed.push({ team: null, lockedAt: null });
+      continue;
+    }
+    
+    // Check if this team is already locked
+    if (existingTeamEntry.lockedAt) {
+      // Keep existing locked team (can't change once locked)
+      processed.push(existingTeamEntry);
+      console.log(`🔒 ${currentTeam} already locked at ${existingTeamEntry.lockedAt}`);
+      continue;
+    }
+    
+    // Check if this team's game has started
+    const gameStartTime = gameStartTimes.get(currentTeam);
+    
+    if (gameStartTime && now >= gameStartTime) {
+      // Lock this team - their game has started
+      const lockedAt = gameStartTime.toISOString();
+      processed.push({ team: currentTeam, lockedAt });
+      console.log(`🔒 Locking ${currentTeam} - game started at ${lockedAt}`);
+    } else {
+      // Team is still unlocked - update to current roster choice
+      processed.push({ team: currentTeam, lockedAt: null });
+      
+      // Log if this is a roster change for an unlocked team
+      if (existingTeamEntry.team && existingTeamEntry.team !== currentTeam) {
+        console.log(`🔄 ${positionType}[${i}]: ${existingTeamEntry.team} → ${currentTeam} (unlocked)`);
+      }
+    }
+  }
+  
+  return processed;
+}
+
 /** Safer ESPN status parsing */
 function parseESPNEvent(espnEvent) {
   const comp = espnEvent?.competitions?.[0];
@@ -936,11 +982,11 @@ exports.cleanupManualEntries = onRequest(async (req, res) => {
  * Scheduled function to auto-migrate member lineups to weekly collection
  * when week lock times are reached
  */
-exports.autoMigrateLineups = onSchedule(
-  { schedule: '*/30 * * * *', timeZone: 'America/New_York' }, // Every 30 minutes
+exports.autoMigrateLineupsTeamLevel = onSchedule(
+  { schedule: '*/15 * * * *', timeZone: 'America/New_York' }, // Every 15 minutes for more granular checking
   async () => {
     try {
-      console.log('🔄 Starting auto-migration check...');
+      console.log('🔄 Starting team-level auto-migration check...');
       
       const db = admin.firestore();
       const now = new Date();
@@ -957,57 +1003,65 @@ exports.autoMigrateLineups = onSchedule(
       
       // Parse current week
       const currentWeek = seasonData.currentWeek || "Week 1";
-      const currentWeekString = String(currentWeek); // Force to string
+      const currentWeekString = String(currentWeek);
       const currentWeekMatch = currentWeekString.match(/\d+/);
       const currentWeekNum = currentWeekMatch ? parseInt(currentWeekMatch[0]) : 1;
       
       console.log(`📅 Current week: ${currentWeekNum}`);
       
-      // Check weeks for lock times (current week and any that might have been missed)
+      // Check current week and previous week
       const weeksToCheck = [];
       for (let week = Math.max(1, currentWeekNum - 1); week <= currentWeekNum; week++) {
         weeksToCheck.push(week);
       }
       
       for (const week of weeksToCheck) {
-        console.log(`🔍 Checking week ${week} for migration...`);
+        console.log(`🔍 Checking week ${week} for team-level migration...`);
         
-        // Get lock time for this week
-        const lockTime = await getWeekLockTime(week);
+        // Get all games for this week with their start times
+        const gamesSnap = await db
+          .collection('schedule').doc('2025')
+          .collection('weeks').doc(week.toString())
+          .collection('games')
+          .get();
         
-        if (!lockTime) {
-          console.log(`⏭️ Week ${week}: No lock time found, skipping`);
+        const gameStartTimes = new Map(); // team -> game start time
+        
+        gamesSnap.forEach(gameDoc => {
+          const game = gameDoc.data();
+          if (game.date && game.homeTeam && game.awayTeam) {
+            const gameStartTime = new Date(game.date);
+            gameStartTimes.set(game.homeTeam, gameStartTime);
+            gameStartTimes.set(game.awayTeam, gameStartTime);
+          }
+        });
+        
+        if (gameStartTimes.size === 0) {
+          console.log(`⏭️ Week ${week}: No games found, skipping`);
           continue;
         }
         
-        if (now < lockTime) {
-          console.log(`⏰ Week ${week}: Lock time not reached yet (${lockTime.toISOString()})`);
-          continue;
-        }
-        
-        console.log(`🔒 Week ${week}: Lock time passed, checking for migrations needed`);
-        
-        // Get all leagues
+        // Get all leagues and process team-level locks
         const leaguesSnap = await db.collection('leagues').get();
         
         for (const leagueDoc of leaguesSnap.docs) {
           const leagueId = leagueDoc.id;
-          await migrateLeagueWeek(db, leagueId, week, lockTime);
+          await migrateLeagueWeekTeamLevel(db, leagueId, week, gameStartTimes, now);
         }
       }
       
-      console.log('✅ Auto-migration check completed');
+      console.log('✅ Team-level auto-migration check completed');
       
     } catch (error) {
-      console.error('❌ Auto-migration failed:', error);
+      console.error('❌ Team-level auto-migration failed:', error);
     }
   }
 );
 
 /**
- * Manual trigger for testing migration (HTTP endpoint)
+ * Manual trigger for team-level migration testing
  */
-exports.triggerLineupMigration = onRequest(async (req, res) => {
+exports.triggerTeamLevelMigration = onRequest(async (req, res) => {
   try {
     const week = parseInt(req.query.week) || null;
     const leagueId = req.query.leagueId || null;
@@ -1016,32 +1070,50 @@ exports.triggerLineupMigration = onRequest(async (req, res) => {
       return res.status(400).json({ error: 'Week parameter required' });
     }
     
-    console.log(`🔧 Manual migration trigger: Week ${week}, League: ${leagueId || 'all'}`);
+    console.log(`🔧 Manual team-level migration trigger: Week ${week}, League: ${leagueId || 'all'}`);
     
     const db = admin.firestore();
-    const lockTime = await getWeekLockTime(week);
+    const now = new Date();
     
-    if (!lockTime) {
-      return res.status(400).json({ error: `No lock time found for week ${week}` });
+    // Get game start times for this week
+    const gamesSnap = await db
+      .collection('schedule').doc('2025')
+      .collection('weeks').doc(week.toString())
+      .collection('games')
+      .get();
+    
+    const gameStartTimes = new Map();
+    
+    gamesSnap.forEach(gameDoc => {
+      const game = gameDoc.data();
+      if (game.date && game.homeTeam && game.awayTeam) {
+        const gameStartTime = new Date(game.date);
+        gameStartTimes.set(game.homeTeam, gameStartTime);
+        gameStartTimes.set(game.awayTeam, gameStartTime);
+      }
+    });
+    
+    if (gameStartTimes.size === 0) {
+      return res.status(400).json({ error: `No games found for week ${week}` });
     }
     
     if (leagueId) {
       // Migrate specific league
-      await migrateLeagueWeek(db, leagueId, week, lockTime);
-      res.json({ success: true, message: `Migrated league ${leagueId}, week ${week}` });
+      await migrateLeagueWeekTeamLevel(db, leagueId, week, gameStartTimes, now);
+      res.json({ success: true, message: `Team-level migration completed for league ${leagueId}, week ${week}` });
     } else {
       // Migrate all leagues
       const leaguesSnap = await db.collection('leagues').get();
       
       for (const leagueDoc of leaguesSnap.docs) {
-        await migrateLeagueWeek(db, leagueDoc.id, week, lockTime);
+        await migrateLeagueWeekTeamLevel(db, leagueDoc.id, week, gameStartTimes, now);
       }
       
-      res.json({ success: true, message: `Migrated all leagues, week ${week}` });
+      res.json({ success: true, message: `Team-level migration completed for all leagues, week ${week}` });
     }
     
   } catch (error) {
-    console.error('❌ Manual migration failed:', error);
+    console.error('❌ Manual team-level migration failed:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1087,11 +1159,11 @@ async function getWeekLockTime(weekNum) {
 }
 
 /**
- * Migrate all members in a league for a specific week
+ * Team-level migration logic - locks individual teams when their games start
  */
-async function migrateLeagueWeek(db, leagueId, week, lockTime) {
+async function migrateLeagueWeekTeamLevel(db, leagueId, week, gameStartTimes, now) {
   try {
-    console.log(`📋 Migrating league ${leagueId}, week ${week}`);
+    console.log(`📋 Team-level migration for league ${leagueId}, week ${week}`);
     
     // Get all members in this league
     const membersSnap = await db
@@ -1099,62 +1171,85 @@ async function migrateLeagueWeek(db, leagueId, week, lockTime) {
       .collection('members')
       .get();
     
-    let migratedCount = 0;
     const batch = db.batch();
+    let updatedCount = 0;
     
     for (const memberDoc of membersSnap.docs) {
       const userId = memberDoc.id;
       const memberData = memberDoc.data();
       
-      // Check if this week already exists in weeklyLineups
-      const weeklyLineupsRef = db
-        .collection('leagues').doc(leagueId)
-        .collection('weeklyLineups').doc(userId);
-      
-      const weeklyLineupsSnap = await weeklyLineupsRef.get();
-      const existingWeeklyData = weeklyLineupsSnap.exists ? weeklyLineupsSnap.data() : {};      
-      const weekKey = `week${week}`;
-      
-      // Skip if this week already migrated
-      if (existingWeeklyData[weekKey] && existingWeeklyData[weekKey].lockedAt) {
-        console.log(`⏭️ User ${userId} week ${week} already migrated`);
-        continue;
-      }
-      
-      // Get lineup from member document
+      // Get current lineup
       const currentLineup = memberData.lineup || {
         starters: Array(5).fill(null),
         bench: Array(2).fill(null)
       };
       
-      // Prepare weekly lineup data
-      const weeklyLineupData = {
-        starters: currentLineup.starters || Array(5).fill(null),
-        bench: currentLineup.bench || Array(2).fill(null),
-        lockedAt: lockTime.toISOString(),
-        migratedAt: admin.firestore.FieldValue.serverTimestamp()
-      };
+      // Get existing weekly data
+      const weeklyLineupsRef = db
+        .collection('leagues').doc(leagueId)
+        .collection('weeklyLineups').doc(userId);
       
-      // Add to batch
-      batch.set(weeklyLineupsRef, {
-        ...existingWeeklyData,
-        [weekKey]: weeklyLineupData
-      });
+      const weeklyLineupsSnap = await weeklyLineupsRef.get();
+      const existingWeeklyData = weeklyLineupsSnap.exists ? weeklyLineupsSnap.data() : {};
+      const weekKey = `week${week}`;
+      const existingWeekData = existingWeeklyData[weekKey] || {};
       
-      migratedCount++;
-      console.log(`📦 Queued migration: User ${userId}, Week ${week}`);
+      // Process starters with team-level locking
+      const processedStarters = processTeamLocking(
+        currentLineup.starters || [], 
+        existingWeekData.starters || [], 
+        gameStartTimes, 
+        now,
+        'starters'
+      );
+      
+      // Process bench with team-level locking  
+      const processedBench = processTeamLocking(
+        currentLineup.bench || [], 
+        existingWeekData.bench || [], 
+        gameStartTimes, 
+        now,
+        'bench'
+      );
+      
+      // Check if any updates were made
+      const hasUpdates = JSON.stringify(processedStarters) !== JSON.stringify(existingWeekData.starters || []) ||
+                        JSON.stringify(processedBench) !== JSON.stringify(existingWeekData.bench || []);
+      
+      if (hasUpdates) {
+        // Prepare weekly lineup data with team-level locks
+        const weeklyLineupData = {
+          starters: processedStarters,
+          bench: processedBench,
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+        };
+        
+        // Add migration timestamp if this is the first time we're creating this week
+        if (!existingWeekData.migratedAt) {
+          weeklyLineupData.migratedAt = admin.firestore.FieldValue.serverTimestamp();
+        }
+        
+        // Update the weekly lineups document
+        batch.set(weeklyLineupsRef, {
+          ...existingWeeklyData,
+          [weekKey]: weeklyLineupData
+        });
+        
+        updatedCount++;
+        console.log(`📦 Updated team locks for user ${userId}, week ${week}`);
+      }
     }
     
     // Execute batch
-    if (migratedCount > 0) {
+    if (updatedCount > 0) {
       await batch.commit();
-      console.log(`✅ Migrated ${migratedCount} lineups for league ${leagueId}, week ${week}`);
+      console.log(`✅ Updated ${updatedCount} lineups with team-level locks for league ${leagueId}, week ${week}`);
     } else {
-      console.log(`📋 No migrations needed for league ${leagueId}, week ${week}`);
+      console.log(`📋 No team-level updates needed for league ${leagueId}, week ${week}`);
     }
     
   } catch (error) {
-    console.error(`❌ Error migrating league ${leagueId}, week ${week}:`, error);
+    console.error(`❌ Error in team-level migration for league ${leagueId}, week ${week}:`, error);
   }
 }
 
