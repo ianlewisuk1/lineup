@@ -135,11 +135,16 @@ function parseESPNEvent(espnEvent) {
   const homeScore = Number(home?.score ?? 0);
   const awayScore = Number(away?.score ?? 0);
 
-  // NEW: Extract team records
   const getTeamRecord = (competitor) => {
     const records = competitor?.records || [];
+    
     const overallRecord = records.find(r => r.name === 'overall' || r.type === 'total');
-    return overallRecord?.summary || overallRecord?.displayValue || null;
+    const conferenceRecord = records.find(r => r.name === 'conference' || r.type === 'conference' || r.name === 'vs. Conf.');    
+    
+    return {
+      overall: overallRecord?.summary || overallRecord?.displayValue || null,
+      conference: conferenceRecord?.summary || conferenceRecord?.displayValue || null
+    };
   };
 
   const homeRecord = getTeamRecord(home);
@@ -168,7 +173,6 @@ function parseESPNEvent(espnEvent) {
     period: st?.period ?? 1,
     clock: st?.displayClock ?? null,
     isComplete: gameStatus === 'final',
-    // NEW: Add team records
     homeRecord,
     awayRecord,
   };
@@ -342,7 +346,10 @@ async function patchTeamsForAllGames(bw, db, games) {
     const line = game.linesByProvider?.['consensus'] || 
                  Object.values(game.linesByProvider || {}).find(Boolean) || null;
     
-    if (!line) continue;
+    if (!line) {
+      // Still process for next opponent update, just with null spread data
+      line = { spread: null, provider: 'no-line-available' };
+    }
     
     // Add game to home team's list
     if (!teamGames.has(game.homeTeam)) {
@@ -1156,29 +1163,37 @@ async function migrateLeagueWeek(db, leagueId, week, lockTime) {
  * @param {BatchWriter} bw - Batch writer
  * @param {FirebaseFirestore} db - Firestore instance
  * @param {string} teamName - Team name
- * @param {string} record - Team record (e.g., "3-1")
+ * @param {Object} recordData - Record data with overall and conference
  */
-async function updateTeamRecord(bw, db, teamName, record) {
-  if (!record) return; // Skip if no record available
+async function updateTeamRecord(bw, db, teamName, recordData) {
+  if (!recordData) return;
 
   try {
     const slug = slugTeam(teamName);
     const teamRef = db.collection('teams').doc(slug);
     
-    // Check if team document exists
     const teamSnap = await teamRef.get();
     if (!teamSnap.exists) {
-      console.warn(`⚠️ Team document not found for record update: ${teamName} (${slug})`);
+      console.warn(`⚠️ Team document not found: ${teamName}`);
       return;
     }
 
-    // Update the team's record
-    bw.update(teamRef, {
-      'currentSeason.record': record,
+    const updateData = {
       'currentSeason.recordLastUpdated': admin.firestore.FieldValue.serverTimestamp(),
-    });
+    };
 
-    console.log(`📊 Updated ${teamName} record: ${record}`);
+    // Update overall record
+    if (recordData.overall) {
+      updateData['currentSeason.record'] = recordData.overall;
+    }
+
+    // Update conference record  
+    if (recordData.conference) {
+      updateData['currentSeason.confRecord'] = recordData.conference;
+    }
+
+    bw.update(teamRef, updateData);
+    console.log(`📊 Updated ${teamName} - Overall: ${recordData.overall}, Conference: ${recordData.conference}`);
 
   } catch (error) {
     console.error(`Error updating record for ${teamName}:`, error);
@@ -1360,13 +1375,7 @@ async function getAllGamesForWeek(db, week) {
 }
 
 /**
- * Main live scoring processor - handles everything from CFBD data to member points
- */
-/**
- * Updated live scoring processor using ESPN API instead of CFBD
- */
-/**
- * Live scoring processor using ESPN (hardened)
+ * Live scoring processor using ESPN (hardened with duplicate prevention)
  */
 async function processLiveScoring(db, activeGames, week, { espnParams = {} } = {}) {
   const bw = new BatchWriter(db);
@@ -1409,25 +1418,30 @@ async function processLiveScoring(db, activeGames, week, { espnParams = {} } = {
     const homeMargin = homeScore - awayScore;
     const awayMargin = awayScore - homeScore;
 
-    const homePoints = calculateTeamFantasyPoints(
+    const homeResult = calculateTeamFantasyPoints(
       homeScore > awayScore,
       homeMargin,
       homeSpread,
       game.homeTeam
     );
 
-    const awayPoints = calculateTeamFantasyPoints(
+    const awayResult = calculateTeamFantasyPoints(
       awayScore > homeScore,
       awayMargin,
       -homeSpread,
       game.awayTeam
     );
 
-    await updateTeamWeeklyPoints(bw, db, game.homeTeam, homePoints, week, isComplete);
-    await updateTeamWeeklyPoints(bw, db, game.awayTeam, awayPoints, week, isComplete);
+    // FIXED: Check if this is a newly completed game to prevent duplicate ATS/scoring updates
+    const isNewlyComplete = isComplete && !game.gameComplete;
+
+    await updateTeamWeeklyPoints(bw, db, game.homeTeam, homeResult.points, week, isNewlyComplete, 
+      homeResult.coverPoints, homeScore > awayScore, homeScore, awayScore);
+    await updateTeamWeeklyPoints(bw, db, game.awayTeam, awayResult.points, week, isNewlyComplete, 
+      awayResult.coverPoints, awayScore > homeScore, awayScore, homeScore);
     teamsUpdated += 2;
 
-    if (isComplete && !game.gameComplete) {
+    if (isNewlyComplete) {
       completedTeams.add(game.homeTeam);
       completedTeams.add(game.awayTeam);
       gameUpdates.gameComplete = true;
@@ -1435,15 +1449,15 @@ async function processLiveScoring(db, activeGames, week, { espnParams = {} } = {
       gamesCompleted++;
     }
 
-    // NEW: Update team records for any completed game (whether newly complete or already complete)
+    // Update team records for any completed game (whether newly complete or already complete)
     if (isComplete) {
       if (homeRecord) {
         await updateTeamRecord(bw, db, game.homeTeam, homeRecord);
-        console.log(`📊 ${game.homeTeam} final record: ${homeRecord}`);
+        console.log(`📊 ${game.homeTeam} records - Overall: ${homeRecord.overall}, Conference: ${homeRecord.conference}`);
       }
       if (awayRecord) {
         await updateTeamRecord(bw, db, game.awayTeam, awayRecord);
-        console.log(`📊 ${game.awayTeam} final record: ${awayRecord}`);
+        console.log(`📊 ${game.awayTeam} records - Overall: ${awayRecord.overall}, Conference: ${awayRecord.conference}`);
       }
     }
 
@@ -1469,7 +1483,6 @@ async function processLiveScoring(db, activeGames, week, { espnParams = {} } = {
 
 /**
  * Calculate fantasy points based on your scoring system
- * ✅ FIXED: Corrected spread calculation logic
  */
 function calculateTeamFantasyPoints(won, actualMargin, teamSpread, teamName) {
   // Base points: +5 for win, -3 for loss
@@ -1479,9 +1492,7 @@ function calculateTeamFantasyPoints(won, actualMargin, teamSpread, teamName) {
   const wasUnderdog = teamSpread > 0;
   const underdogBonus = won && wasUnderdog ? 3 : 0;
   
-  // ✅ FIXED: Cover calculation
-  // For favorites (negative spread): coverPoints = actualMargin - Math.abs(teamSpread)
-  // For underdogs (positive spread): coverPoints = actualMargin + teamSpread
+  // Cover calculation
   let coverPoints;
   if (teamSpread < 0) {
     // Team was favored - they need to win by more than the spread
@@ -1521,13 +1532,16 @@ function calculateTeamFantasyPoints(won, actualMargin, teamSpread, teamName) {
   
   console.log(`🧮 ${teamName}: Base ${basePoints} + Underdog ${underdogBonus} + Spread ${spreadPoints} = ${totalPoints} (cover: ${coverPoints}, spread: ${teamSpread})`);
   
-  return totalPoints;
+  return {
+    points: totalPoints,
+    coverPoints: coverPoints
+  };
 }
 
 /**
- * Update team document with weekly fantasy points
+ * Update team document with weekly fantasy points (FIXED: Duplicate prevention + proper data types)
  */
-async function updateTeamWeeklyPoints(bw, db, teamName, points, week, isGameComplete) {
+async function updateTeamWeeklyPoints(bw, db, teamName, points, week, isNewlyComplete, coverPoints, teamWon, teamScore, opponentScore) {
   try {
     const slug = slugTeam(teamName);
     const teamRef = db.collection('teams').doc(slug);
@@ -1571,9 +1585,39 @@ async function updateTeamWeeklyPoints(bw, db, teamName, points, week, isGameComp
       'currentSeason.lastPointsUpdate': admin.firestore.FieldValue.serverTimestamp(),
     };
     
-    // Only update gameComplete status when game actually completes
-    if (isGameComplete) {
-      updateData['currentSeason.gameComplete'] = true;
+    // FIXED: Update ATS record if it's missing (regardless of isNewlyComplete)
+    const currentAtsWins = teamData.currentSeason?.atsWins || 0;
+    const currentAtsLosses = teamData.currentSeason?.atsLosses || 0;
+    const hasATSStats = currentAtsWins > 0 || currentAtsLosses > 0;
+    
+    if (!hasATSStats && typeof coverPoints === 'number') {
+      // This team has no ATS stats yet - add them now
+      const covered = coverPoints >= 1;
+      
+      if (covered) {
+        updateData['currentSeason.atsWins'] = 1;
+        updateData['currentSeason.atsLosses'] = 0;
+        updateData['currentSeason.atsRecord'] = '1-0';
+      } else {
+        updateData['currentSeason.atsWins'] = 0;
+        updateData['currentSeason.atsLosses'] = 1;
+        updateData['currentSeason.atsRecord'] = '0-1';
+      }
+      
+      console.log(`📊 ATS Stats Added for ${teamName}: ${covered ? 'COVERED' : 'FAILED'} (${covered ? '1-0' : '0-1'})`);
+    }
+
+    // FIXED: Update actual scoring if it's missing (regardless of isNewlyComplete)
+    const currentPointsFor = Number(teamData.currentSeason?.totalPointsFor || 0);
+    const currentPointsAgainst = Number(teamData.currentSeason?.totalPointsAgainst || 0);
+    const hasScoringStats = currentPointsFor > 0 || currentPointsAgainst > 0;
+    
+    if (!hasScoringStats && typeof teamScore === 'number' && typeof opponentScore === 'number') {
+      // This team has no scoring stats yet - add them now
+      updateData['currentSeason.totalPointsFor'] = teamScore;
+      updateData['currentSeason.totalPointsAgainst'] = opponentScore;
+      
+      console.log(`📊 Scoring Stats Added for ${teamName}: ${teamScore} pts scored, ${opponentScore} pts allowed`);
     }
     
     bw.update(teamRef, updateData);
@@ -1611,7 +1655,7 @@ async function recalculateAllMemberPoints(db, currentWeek) {
         const memberData = memberDoc.data();
         const lineup = memberData.lineup || {};
         
-        // ✅ FIXED: Only get STARTERS, not bench players
+        // Only get STARTERS, not bench players
         const starterTeams = (lineup.starters || [])
           .filter(teamName => teamName && teamName.trim() !== '');
         
@@ -1626,7 +1670,6 @@ async function recalculateAllMemberPoints(db, currentWeek) {
         let memberSeasonTotal = 0;
         let memberCurrentWeekPoints = 0;
         
-        // ✅ FIXED: Loop through starterTeams, not allTeamsInRoster
         for (const teamName of starterTeams) {
           try {
             const slug = slugTeam(teamName);
@@ -1711,6 +1754,62 @@ exports.recalculateMemberPoints = onRequest(async (req, res) => {
     
   } catch (error) {
     console.error('❌ Member points recalculation failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * FIXED: Enhanced reset function to clear ALL stats properly
+ */
+exports.resetAllTeamStats = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    const week = parseInt(req.query.week) || 1;
+    
+    console.log(`🔄 Resetting ALL team stats for week ${week}...`);
+    
+    const teamsSnap = await db.collection('teams').get();
+    const bw = new BatchWriter(db);
+    let resetCount = 0;
+    
+    teamsSnap.forEach(teamDoc => {
+      const weekKey = `week${week}`;
+      bw.update(teamDoc.ref, {
+        // Reset fantasy points
+        [`currentSeason.weeklyPoints.${weekKey}`]: 0,
+        'currentSeason.gamePoints': 0,
+        
+        // Reset ATS tracking
+        'currentSeason.atsWins': 0,
+        'currentSeason.atsLosses': 0,
+        'currentSeason.atsRecord': '0-0',
+        
+        // Reset actual scoring
+        'currentSeason.totalPointsFor': 0,
+        'currentSeason.totalPointsAgainst': 0,
+        
+        // Reset averages (will be calculated on frontend)
+        'currentSeason.avgPointsFor': '0',
+        'currentSeason.avgPointsAgainst': '0',
+        
+        'currentSeason.lastPointsUpdate': admin.firestore.FieldValue.serverTimestamp()
+      });
+      resetCount++;
+    });
+    
+    await bw.commit();
+    
+    // Recalculate all member points
+    const membersUpdated = await recalculateAllMemberPoints(db, week);
+    
+    res.json({
+      success: true,
+      teamsReset: resetCount,
+      membersUpdated,
+      message: `Reset ${resetCount} teams (all stats) and ${membersUpdated} members for week ${week}`
+    });
+    
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
@@ -1802,44 +1901,6 @@ exports.debugESPN = onRequest(async (req, res) => {
       totalEvents: events.length,
       dateFilter: dates,
       games: gameDetails
-    });
-    
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-exports.resetAllTeamPoints = onRequest(async (req, res) => {
-  try {
-    const db = admin.firestore();
-    const week = parseInt(req.query.week) || 1;
-    
-    console.log(`🔄 Resetting all team points for week ${week}...`);
-    
-    const teamsSnap = await db.collection('teams').get();
-    const bw = new BatchWriter(db);
-    let resetCount = 0;
-    
-    teamsSnap.forEach(teamDoc => {
-      const weekKey = `week${week}`;
-      bw.update(teamDoc.ref, {
-        [`currentSeason.weeklyPoints.${weekKey}`]: 0,
-        'currentSeason.gamePoints': 0,
-        'currentSeason.lastPointsUpdate': admin.firestore.FieldValue.serverTimestamp()
-      });
-      resetCount++;
-    });
-    
-    await bw.commit();
-    
-    // Recalculate all member points
-    const membersUpdated = await recalculateAllMemberPoints(db, week);
-    
-    res.json({
-      success: true,
-      teamsReset: resetCount,
-      membersUpdated,
-      message: `Reset ${resetCount} teams and ${membersUpdated} members for week ${week}`
     });
     
   } catch (error) {
@@ -2202,6 +2263,236 @@ exports.debugESPNFull = onRequest(async (req, res) => {
     }
     
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+exports.updateAllTeamNextOpponents = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    const bw = new BatchWriter(db);
+    const now = new Date();
+    let teamsUpdated = 0;
+
+    // Get all teams
+    const teamsSnap = await db.collection('teams').get();
+    
+    for (const teamDoc of teamsSnap.docs) {
+      const teamName = teamDoc.data().school; // or however you get the display name
+      if (!teamName) continue;
+
+      // Find this team's next game from schedule
+      const weeksSnap = await db.collection('schedule').doc('2025').collection('weeks').get();
+      
+      let nextGame = null;
+      let earliestDate = null;
+
+      for (const weekDoc of weeksSnap.docs) {
+        const gamesSnap = await weekDoc.ref.collection('games').get();
+        
+        gamesSnap.forEach(gameDoc => {
+          const game = gameDoc.data();
+          if ((game.homeTeam === teamName || game.awayTeam === teamName) && !game.gameComplete) {
+            const gameDate = new Date(game.date);
+            if (gameDate > now && (!earliestDate || gameDate < earliestDate)) {
+              earliestDate = gameDate;
+              const isHome = game.homeTeam === teamName;
+              nextGame = {
+                opponent: isHome ? game.awayTeam : game.homeTeam,
+                date: game.date,
+                isHome: isHome,
+                spread: game.homeSpread ? (isHome ? game.homeSpread : -game.homeSpread) : null
+              };
+            }
+          }
+        });
+      }
+
+      if (nextGame) {
+        bw.update(teamDoc.ref, {
+          'currentSeason.nextOpponent': nextGame.opponent,
+          'currentSeason.nextGameDate': nextGame.date,
+          'currentSeason.nextGameIsHome': nextGame.isHome,
+          'currentSeason.nextOpponentSpread': nextGame.spread,
+          'currentSeason.nextOpponentSpreadDisplay': nextGame.spread ? (nextGame.spread > 0 ? `+${nextGame.spread}` : String(nextGame.spread)) : null,
+          'currentSeason.updatedAt': admin.firestore.FieldValue.serverTimestamp(),
+        });
+        teamsUpdated++;
+        console.log(`Updated ${teamName}: next vs ${nextGame.opponent}`);
+      }
+    }
+
+    await bw.commit();
+    res.json({ success: true, teamsUpdated });
+
+  } catch (error) {
+    console.error('Error updating team next opponents:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add this debug function to your functions/index.js
+
+exports.debugAllTeamsATS = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    const week = parseInt(req.query.week) || 1;
+    
+    console.log(`🔍 Debugging ALL teams ATS issue for week ${week}...`);
+    
+    // 1. Get all completed games from yesterday
+    const gamesSnap = await db
+      .collection('schedule').doc('2025')
+      .collection('weeks').doc(week.toString())
+      .collection('games')
+      .where('gameComplete', '==', true)
+      .get();
+    
+    const completedGames = [];
+    gamesSnap.forEach(doc => {
+      const game = doc.data();
+      if (typeof game.homeScore === 'number' && typeof game.awayScore === 'number') {
+        completedGames.push({
+          id: doc.id,
+          ...game
+        });
+      }
+    });
+    
+    console.log(`🏈 Found ${completedGames.length} completed games with scores`);
+    
+    // 2. Check team stats for all teams that played
+    const teamStats = {};
+    const allTeams = new Set();
+    
+    completedGames.forEach(game => {
+      allTeams.add(game.homeTeam);
+      allTeams.add(game.awayTeam);
+    });
+    
+    console.log(`👥 Teams that played: ${Array.from(allTeams).join(', ')}`);
+    
+    // 3. Get current stats for all teams
+    for (const teamName of allTeams) {
+      try {
+        const slug = slugTeam(teamName);
+        const teamRef = db.collection('teams').doc(slug);
+        const teamSnap = await teamRef.get();
+        
+        if (teamSnap.exists) {
+          const data = teamSnap.data();
+          teamStats[teamName] = {
+            slug,
+            gamePoints: data.currentSeason?.gamePoints || 0,
+            atsWins: data.currentSeason?.atsWins || 0,
+            atsLosses: data.currentSeason?.atsLosses || 0,
+            atsRecord: data.currentSeason?.atsRecord || '0-0',
+            totalPointsFor: data.currentSeason?.totalPointsFor || 0,
+            totalPointsAgainst: data.currentSeason?.totalPointsAgainst || 0,
+            weeklyPoints: data.currentSeason?.weeklyPoints || {},
+            confRecord: data.currentSeason?.confRecord || '0-0',
+            record: data.currentSeason?.record || '0-0'
+          };
+        } else {
+          teamStats[teamName] = { error: 'Team document not found', slug };
+        }
+      } catch (error) {
+        teamStats[teamName] = { error: error.message };
+      }
+    }
+    
+    // 4. Analyze the pattern
+    const workingTeams = [];
+    const brokenTeams = [];
+    
+    for (const [teamName, stats] of Object.entries(teamStats)) {
+      if (stats.error) {
+        brokenTeams.push({ team: teamName, issue: stats.error });
+      } else {
+        const hasFantasyPoints = stats.gamePoints > 0;
+        const hasATSStats = stats.atsWins > 0 || stats.atsLosses > 0;
+        const hasActualScoring = stats.totalPointsFor > 0 || stats.totalPointsAgainst > 0;
+        
+        if (hasFantasyPoints && !hasATSStats && !hasActualScoring) {
+          brokenTeams.push({ 
+            team: teamName, 
+            issue: 'Fantasy points work, but ATS and scoring broken',
+            stats 
+          });
+        } else if (hasFantasyPoints && hasATSStats && hasActualScoring) {
+          workingTeams.push({ team: teamName, stats });
+        } else {
+          brokenTeams.push({ 
+            team: teamName, 
+            issue: 'Mixed results', 
+            hasFantasyPoints,
+            hasATSStats,
+            hasActualScoring,
+            stats 
+          });
+        }
+      }
+    }
+    
+    // 5. Sample one game and trace through the logic
+    if (completedGames.length > 0) {
+      const sampleGame = completedGames[0];
+      console.log(`🔬 Sample game analysis: ${sampleGame.homeTeam} vs ${sampleGame.awayTeam}`);
+      
+      // Manual calculation for home team
+      const homeTeamWon = sampleGame.homeScore > sampleGame.awayScore;
+      const homeMargin = sampleGame.homeScore - sampleGame.awayScore;
+      const homeSpread = sampleGame.homeSpread || 0;
+      
+      try {
+        const homeResult = calculateTeamFantasyPoints(
+          homeTeamWon,
+          homeMargin,
+          homeSpread,
+          sampleGame.homeTeam
+        );
+        
+        console.log(`🧮 Home team (${sampleGame.homeTeam}) calculation:`, {
+          won: homeTeamWon,
+          margin: homeMargin,
+          spread: homeSpread,
+          result: homeResult
+        });
+        
+        // Check what type coverPoints is
+        console.log(`🔍 Cover points type check:`, {
+          coverPoints: homeResult.coverPoints,
+          type: typeof homeResult.coverPoints,
+          isNumber: typeof homeResult.coverPoints === 'number',
+          homeScore: sampleGame.homeScore,
+          homeScoreType: typeof sampleGame.homeScore
+        });
+        
+      } catch (calcError) {
+        console.log(`❌ Calculation error:`, calcError.message);
+      }
+    }
+    
+    console.log(`✅ Working teams: ${workingTeams.length}`);
+    console.log(`❌ Broken teams: ${brokenTeams.length}`);
+    
+    res.json({
+      success: true,
+      summary: {
+        totalGames: completedGames.length,
+        totalTeams: allTeams.size,
+        workingTeams: workingTeams.length,
+        brokenTeams: brokenTeams.length
+      },
+      games: completedGames,
+      teamStats,
+      workingTeams,
+      brokenTeams,
+      message: 'Check console logs for detailed analysis'
+    });
+    
+  } catch (error) {
+    console.error('❌ Debug failed:', error);
     res.status(500).json({ error: error.message });
   }
 });

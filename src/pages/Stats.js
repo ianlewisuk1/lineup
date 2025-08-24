@@ -17,12 +17,27 @@ function Stats() {
   const [sortColumn, setSortColumn] = useState("gamePoints");
   const [sortDirection, setSortDirection] = useState("descending");
 
+  // ADDED: Helper functions from TeamPage to calculate averages properly
+  const parseRecord = (record) => {
+    if (!record || record === "0-0") return 0;
+    const parts = record.split('-');
+    if (parts.length !== 2) return 0;
+    const wins = parseInt(parts[0]) || 0;
+    const losses = parseInt(parts[1]) || 0;
+    return wins + losses;
+  };
+
+  const calculateAverage = (total, gamesPlayed) => {
+    if (!gamesPlayed || gamesPlayed === 0) return "0.0";
+    return (total / gamesPlayed).toFixed(1);
+  };
+
   // All available stats with labels
   const statOptions = [
     { value: "gamePoints", label: "Fantasy Points", type: "number" },
     { value: "record", label: "Overall Record", type: "string" },
     { value: "confRecord", label: "Conference Record", type: "string" },
-    { value: "ats", label: "ATS Record", type: "string" },
+    { value: "atsRecord", label: "ATS Record", type: "string" }, // FIXED: Changed from "ats" to "atsRecord"
     { value: "avgPointsFor", label: "Avg Points For", type: "number" },
     { value: "avgPointsAgainst", label: "Avg Points Against", type: "number" },
     { value: "sosRank", label: "SOS Rank", type: "number" },
@@ -71,9 +86,15 @@ function Stats() {
         case "gamePoints":
           return Number(season.gamePoints) || 0;
         case "avgPointsFor":
-          return Number(season.avgPointsFor) || 0;
+          // FIXED: Calculate average properly using helper functions
+          const gamesPlayedFor = parseRecord(season.record);
+          const totalPointsFor = season.totalPointsFor || 0;
+          return Number(calculateAverage(totalPointsFor, gamesPlayedFor)) || 0;
         case "avgPointsAgainst":
-          return Number(season.avgPointsAgainst) || 0;
+          // FIXED: Calculate average properly using helper functions
+          const gamesPlayedAgainst = parseRecord(season.record);
+          const totalPointsAgainst = season.totalPointsAgainst || 0;
+          return Number(calculateAverage(totalPointsAgainst, gamesPlayedAgainst)) || 0;
         case "sosRank":
           return Number(team.sosRank) || 999;
         case "philMetrics":
@@ -84,8 +105,9 @@ function Stats() {
           return season.nextOpponent || "zzz";
         case "record":
         case "confRecord":
-        case "ats":
           return season[key] || "zzz";
+        case "atsRecord": // FIXED: Use correct field name
+          return season.atsRecord || "zzz";
         default:
           return season[key] || "";
       }
@@ -154,9 +176,15 @@ function Stats() {
       case "gamePoints":
         return season.gamePoints ?? 0;
       case "avgPointsFor":
-        return season.avgPointsFor ?? "—";
+        // FIXED: Calculate using helper functions
+        const gamesPlayedFor = parseRecord(season.record);
+        const totalPointsFor = season.totalPointsFor || 0;
+        return calculateAverage(totalPointsFor, gamesPlayedFor);
       case "avgPointsAgainst":
-        return season.avgPointsAgainst ?? "—";
+        // FIXED: Calculate using helper functions
+        const gamesPlayedAgainst = parseRecord(season.record);
+        const totalPointsAgainst = season.totalPointsAgainst || 0;
+        return calculateAverage(totalPointsAgainst, gamesPlayedAgainst);
       case "sosRank":
         return team.sosRank ?? "—";
       case "philMetrics":
@@ -167,8 +195,9 @@ function Stats() {
         return formatNextOpponent(team);
       case "record":
       case "confRecord":
-      case "ats":
         return season[statKey] || "—";
+      case "atsRecord": // FIXED: Use correct field name
+        return season.atsRecord || "—";
       default:
         return "—";
     }

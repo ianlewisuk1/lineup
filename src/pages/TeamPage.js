@@ -27,6 +27,22 @@ function TeamPage() {
   const [showDropdown, setShowDropdown] = useState(false); 
   const [modalTitle, setModalTitle] = useState("");
 
+  // FIXED: Helper function to parse record and calculate games played
+  const parseRecord = (record) => {
+    if (!record || record === "0-0") return 0;
+    const parts = record.split('-');
+    if (parts.length !== 2) return 0;
+    const wins = parseInt(parts[0]) || 0;
+    const losses = parseInt(parts[1]) || 0;
+    return wins + losses;
+  };
+
+  // FIXED: Helper function to calculate averages safely
+  const calculateAverage = (total, gamesPlayed) => {
+    if (!gamesPlayed || gamesPlayed === 0) return "0.0";
+    return (total / gamesPlayed).toFixed(1);
+  };
+
   // Custom modal helper functions
   const showSuccess = (title, message) => {
     setModalTitle(title);
@@ -379,10 +395,12 @@ function TeamPage() {
 
   const formatGameResult = (game, teamName) => {
     const isHome = game.homeTeam === teamName;
-    const teamScore = isHome ? game.homePoints : game.awayPoints;
-    const opponentScore = isHome ? game.awayPoints : game.homePoints;
+    // FIXED: Use homeScore/awayScore instead of homePoints/awayPoints
+    const teamScore = isHome ? game.homeScore : game.awayScore;
+    const opponentScore = isHome ? game.awayScore : game.homeScore;
     
-    if (game.gameComplete && teamScore !== null && opponentScore !== null) {
+    if (game.gameComplete && teamScore !== null && teamScore !== undefined && 
+        opponentScore !== null && opponentScore !== undefined) {
       const won = teamScore > opponentScore;
       return { result: won ? "W" : "L", score: `${teamScore}-${opponentScore}`, won };
     }
@@ -552,7 +570,7 @@ function TeamPage() {
         {/* Ownership Status */}
         {renderOwnershipStatus()}
         
-        {/* Team Stats */}
+        {/* Team Stats - FIXED TO USE NEW DATABASE FIELDS */}
         {teamInfo?.currentSeason && (
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
             <h3 className="flex items-center gap-2 text-xl font-bold text-white mb-6">
@@ -571,7 +589,7 @@ function TeamPage() {
               <div className="bg-white/5 rounded-xl p-3 text-center">
                 <div className="text-xs text-white/60 font-medium mb-1">ATS Record</div>
                 <div className="text-lg font-bold text-white">
-                  {teamInfo.currentSeason.ats === "PENDING SCHEDULE" ? "TBD" : (teamInfo.currentSeason.ats || "0-0")}
+                  {teamInfo.currentSeason.atsRecord || "0-0"}
                 </div>
               </div>
               
@@ -586,17 +604,9 @@ function TeamPage() {
                 <div className="text-xs text-white/60 font-medium mb-1">Avg Weekly Fantasy</div>
                 <div className="text-lg font-bold text-blue-300">
                   {(() => {
-                    const weeklyPoints = teamInfo.currentSeason.weeklyPoints || {};
-                    const gamesPlayed = parseInt(teamInfo.currentSeason.gamesPlayed) || 0;
-                    
-                    if (gamesPlayed === 0) return "0.0";
-                    
-                    const totalWeeklyPoints = Object.values(weeklyPoints).reduce((sum, points) => {
-                      return sum + (parseFloat(points) || 0);
-                    }, 0);
-                    
-                    const average = totalWeeklyPoints / gamesPlayed;
-                    return average.toFixed(1);
+                    const gamesPlayed = parseRecord(teamInfo.currentSeason.record);
+                    const gamePoints = teamInfo.currentSeason.gamePoints || 0;
+                    return calculateAverage(gamePoints, gamesPlayed);
                   })()}
                 </div>
               </div>
@@ -604,28 +614,36 @@ function TeamPage() {
               <div className="bg-white/5 rounded-xl p-3 text-center">
                 <div className="text-xs text-white/60 font-medium mb-1">Season Total Pts</div>
                 <div className="text-lg font-bold text-purple-300">
-                  {teamInfo.currentSeason.seasonTotalPoints || 0}
+                  {teamInfo.currentSeason.totalPointsFor || 0}
                 </div>
               </div>
               
               <div className="bg-white/5 rounded-xl p-3 text-center">
                 <div className="text-xs text-white/60 font-medium mb-1">Games Played</div>
                 <div className="text-lg font-bold text-white">
-                  {teamInfo.currentSeason.gamesPlayed || "0"}
+                  {parseRecord(teamInfo.currentSeason.record)}
                 </div>
               </div>
               
               <div className="bg-white/5 rounded-xl p-3 text-center">
                 <div className="text-xs text-white/60 font-medium mb-1">Avg Points For</div>
                 <div className="text-lg font-bold text-green-300">
-                  {teamInfo.currentSeason.avgPointsFor || "0"}
+                  {(() => {
+                    const gamesPlayed = parseRecord(teamInfo.currentSeason.record);
+                    const totalPointsFor = teamInfo.currentSeason.totalPointsFor || 0;
+                    return calculateAverage(totalPointsFor, gamesPlayed);
+                  })()}
                 </div>
               </div>
               
               <div className="bg-white/5 rounded-xl p-3 text-center">
                 <div className="text-xs text-white/60 font-medium mb-1">Avg Points Against</div>
                 <div className="text-lg font-bold text-red-300">
-                  {teamInfo.currentSeason.avgPointsAgainst || "0"}
+                  {(() => {
+                    const gamesPlayed = parseRecord(teamInfo.currentSeason.record);
+                    const totalPointsAgainst = teamInfo.currentSeason.totalPointsAgainst || 0;
+                    return calculateAverage(totalPointsAgainst, gamesPlayed);
+                  })()}
                 </div>
               </div>
             </div>
@@ -723,25 +741,36 @@ function TeamPage() {
                         </td>
                         <td className="px-4 py-3 text-center">
                           {gameResult ? (
-                            <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold ${
+                            <div className={`inline-flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold min-w-[80px] ${
                               gameResult.won 
-                                ? 'bg-green-500/20 text-green-300' 
-                                : 'bg-red-500/20 text-red-300'
+                                ? 'bg-green-500/20 text-green-300 border border-green-500/30' 
+                                : 'bg-red-500/20 text-red-300 border border-red-500/30'
                             }`}>
-                              {gameResult.result} {gameResult.score}
+                              <div className="text-center">
+                                <div className="text-xs font-bold mb-0.5">{gameResult.result}</div>
+                                <div className="text-xs opacity-90">{gameResult.score}</div>
+                              </div>
                             </div>
                           ) : (
                             <span className="text-white/40 text-sm">TBD</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {game.gameComplete && game.fantasyPoints !== undefined && game.fantasyPoints !== null ? (
-                            <span className="text-green-300 text-sm font-semibold">
-                              {game.fantasyPoints}
-                            </span>
-                          ) : (
-                            <span className="text-white/40 text-sm">—</span>
-                          )}
+                          {(() => {
+                            // FIXED: Get fantasy points from team's weekly points, not game document
+                            if (game.gameComplete && teamInfo?.currentSeason?.weeklyPoints) {
+                              const weekKey = `week${game.week}`;
+                              const weeklyPoints = teamInfo.currentSeason.weeklyPoints[weekKey];
+                              if (weeklyPoints !== undefined && weeklyPoints !== null) {
+                                return (
+                                  <span className="text-green-300 text-sm font-semibold">
+                                    {weeklyPoints}
+                                  </span>
+                                );
+                              }
+                            }
+                            return <span className="text-white/40 text-sm">—</span>;
+                          })()}
                         </td>
                       </tr>
                     );

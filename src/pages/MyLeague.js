@@ -224,15 +224,16 @@ function MyLeague() {
           )}
 
           {/* Spread Badge - Below logo */}
-          {clickable && spreadDisplay && (
+          {clickable && (
             <div style={{
               position: "absolute",
               bottom: "-8px",
               left: "50%",
               transform: "translateX(-50%)",
-              backgroundColor: spreadDisplay.includes('-') ? "#10b981" : // Favorite (green)
-                             spreadDisplay === "PK" ? "#6366f1" :        // Pick 'em (indigo) 
-                             "#ef4444",                                   // Underdog (red)
+              backgroundColor: !spreadDisplay ? "#6b7280" :                 // TBD (neutral gray)
+                             spreadDisplay.includes('-') ? "#10b981" :     // Favorite (green)
+                             spreadDisplay === "PK" ? "#6366f1" :          // Pick 'em (indigo) 
+                             "#ef4444",                                     // Underdog (red)
               color: "white",
               borderRadius: "8px",
               minWidth: "24px",
@@ -247,7 +248,7 @@ function MyLeague() {
               boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)",
               padding: "0 3px"
             }}>
-              {spreadDisplay}
+              {spreadDisplay || "TBD"}
             </div>
           )}
           
@@ -434,7 +435,7 @@ function MyLeague() {
     );
   };
 
-  // Enhanced Team Card Modal
+// Enhanced Team Card Modal
   const TeamCardModal = ({ team, onClose }) => {
     const [isFlipped, setIsFlipped] = useState(false);
     const [teamSchedule, setTeamSchedule] = useState([]);
@@ -487,19 +488,25 @@ function MyLeague() {
       fetchTeamSchedule();
     }, [team?.name]);
 
+    // ✅ FIXED: Use correct field names (homeScore/awayScore instead of homePoints/awayPoints)
     const formatGameResult = (game, teamName) => {
       const isHome = game.homeTeam === teamName;
       const opponent = isHome ? game.awayTeam : game.homeTeam;
-      const teamScore = isHome ? game.homePoints : game.awayPoints;
-      const opponentScore = isHome ? game.awayPoints : game.homePoints;
       
-      if (game.gameComplete && teamScore !== null && opponentScore !== null) {
+      // ✅ FIXED: Use homeScore and awayScore (not homePoints/awayPoints)
+      const teamScore = isHome ? game.homeScore : game.awayScore;
+      const opponentScore = isHome ? game.awayScore : game.homeScore;
+      
+      // Only show result if game is complete AND we have valid scores
+      if (game.gameComplete && 
+          typeof teamScore === 'number' && 
+          typeof opponentScore === 'number') {
         const won = teamScore > opponentScore;
         const result = won ? "W" : "L";
         return `${result} ${teamScore}-${opponentScore}`;
       }
       
-      return ""; // Future game, no result
+      return null; // Future/incomplete game, no result
     };
 
     const formatOpponent = (game, teamName) => {
@@ -819,66 +826,94 @@ function MyLeague() {
                   </div>
                 ) : (
                   <div style={{ fontSize: "11px" }}>
-                    {teamSchedule.map((game, index) => (
-                      <div key={index} style={{
-                        padding: "6px 0",
-                        borderBottom: index < teamSchedule.length - 1 ? "1px solid #f1f5f9" : "none",
-                        display: "grid",
-                        gridTemplateColumns: "auto 1fr auto",
-                        gap: "6px",
-                        alignItems: "center"
-                      }}>
-                        <div style={{
-                          fontSize: "9px",
-                          fontWeight: "600",
-                          color: "#64748b",
-                          textAlign: "center",
-                          minWidth: "18px"
-                        }}>
-                          {game.week}
-                        </div>
+                    {teamSchedule.map((game, index) => {
+                      // ✅ FIXED: Proper game result calculation
+                      const formatGameResult = (game, teamName) => {
+                        const isHome = game.homeTeam === teamName;
+                        const opponent = isHome ? game.awayTeam : game.homeTeam;
                         
-                        <div>
-                          <div style={{
-                            fontWeight: "600",
-                            color: "#1e293b",
-                            fontSize: "12px",
-                            marginBottom: "1px"
-                          }}>
-                            {formatOpponent(game, team.name)}
-                          </div>
+                        // ✅ FIXED: Use homeScore and awayScore (correct field names)
+                        const teamScore = isHome ? game.homeScore : game.awayScore;
+                        const opponentScore = isHome ? game.awayScore : game.homeScore;
+                        
+                        // Only show result if game is complete AND we have valid scores
+                        if (game.gameComplete && 
+                            typeof teamScore === 'number' && 
+                            typeof opponentScore === 'number') {
+                          const won = teamScore > opponentScore;
+                          const result = won ? "W" : "L";
+                          return {
+                            text: `${result} ${teamScore}-${opponentScore}`,
+                            won: won
+                          };
+                        }
+                        
+                        return null; // Future/incomplete game
+                      };
+
+                      const gameResult = formatGameResult(game, team.name);
+
+                      return (
+                        <div key={index} style={{
+                          padding: "6px 0",
+                          borderBottom: index < teamSchedule.length - 1 ? "1px solid #f1f5f9" : "none",
+                          display: "grid",
+                          gridTemplateColumns: "auto 1fr auto",
+                          gap: "6px",
+                          alignItems: "center"
+                        }}>
                           <div style={{
                             fontSize: "9px",
-                            color: "#64748b"
+                            fontWeight: "600",
+                            color: "#64748b",
+                            textAlign: "center",
+                            minWidth: "18px"
                           }}>
-                            {formatDate(game.date)}
+                            {game.week}
                           </div>
-                        </div>
-
-                        <div style={{
-                          textAlign: "right",
-                          minWidth: "40px"
-                        }}>
-                          {game.gameComplete ? (
+                          
+                          <div>
                             <div style={{
-                              fontSize: "10px",
-                              fontWeight: "700",
-                              color: formatGameResult(game, team.name).startsWith('W') ? "#059669" : "#dc2626"
+                              fontWeight: "600",
+                              color: "#1e293b",
+                              fontSize: "12px",
+                              marginBottom: "1px"
                             }}>
-                              {formatGameResult(game, team.name)}
+                              {formatOpponent(game, team.name)}
                             </div>
-                          ) : (
                             <div style={{
                               fontSize: "9px",
-                              color: "#64748b",
-                              fontWeight: "500"
+                              color: "#64748b"
                             }}>
-                              TBD
+                              {formatDate(game.date)}
                             </div>
-                          )}
+                          </div>
+
+                          <div style={{
+                            textAlign: "right",
+                            minWidth: "40px"
+                          }}>
+                            {gameResult ? (
+                              <div style={{
+                                fontSize: "10px",
+                                fontWeight: "700",
+                                color: gameResult.won ? "#059669" : "#dc2626"
+                              }}>
+                                {gameResult.text}
+                              </div>
+                            ) : (
+                              <div style={{
+                                fontSize: "9px",
+                                color: "#64748b",
+                                fontWeight: "500"
+                              }}>
+                                TBD
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1144,7 +1179,7 @@ function MyLeague() {
                         {member.points ?? 0}
                       </div>
                       <div className="text-xs text-white/60 mt-1">
-                        {member.weeklyPoints ?? 0} Points in Week {currentWeek}
+                        {member.weeklyPoints ?? 0} Pts in Wk {currentWeek}
                       </div>
                       <div className="text-xs text-white/60 mt-1">
                         {member.freeAgentMoves ?? 0} FA moves
