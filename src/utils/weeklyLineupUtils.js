@@ -241,7 +241,7 @@ export const weeklyLineupUtils = {
     return team.school
       .toLowerCase()
       .replace(/\s+/g, "-")
-      .replace(/&/g, "")
+      .replace(/&/g, "-")
       .replace(/[^a-z0-9\-]/g, "");
   },
   

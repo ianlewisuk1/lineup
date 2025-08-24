@@ -38,7 +38,7 @@ function MyLeague() {
           setCurrentWeek(configDoc.data().currentWeek || "Preseason");
         }
 
-        // Fetch all teams first to get team logos
+        // Fetch all teams first to get team logos and current season data
           const teamsRef = collection(db, "teams");
           const teamsSnapshot = await getDocs(teamsRef);
           const teamsMap = {};
@@ -64,7 +64,7 @@ function MyLeague() {
                 mascot: teamData.mascot || "",
                 city: teamData.city || "",
                 state: teamData.state || "",
-                currentWeekPoints: teamData.currentSeason?.currentWeekPoints || null,
+                currentSeason: teamData.currentSeason || {}, // ✅ Include full currentSeason object
                 gameComplete: teamData.currentSeason?.gameComplete || false,
                 nextOpponentSpread: teamData.currentSeason?.nextOpponentSpread || null,
                 name: teamData.school,  // ADD THIS LINE
@@ -115,7 +115,7 @@ function MyLeague() {
     fetchData();
   }, [leagueId]);
 
-  // Team logo component with flipping card functionality
+// Team logo component with spread display
   const TeamLogo = ({ teamName, size = 32, clickable = false }) => {
 
     const normalize = (name) =>
@@ -158,22 +158,53 @@ function MyLeague() {
       backdropFilter: "blur(10px)"
     };
 
-    const weeklyPointsDisplay = team?.gameComplete 
-      ? (team?.currentWeekPoints || 0)
+    // ✅ FIXED: Get current week number and use correct data structure for POINTS
+    const getCurrentWeekNumber = () => {
+      // Handle both number and string formats from Firebase
+      if (typeof currentWeek === 'number') return currentWeek;
+      if (!currentWeek || typeof currentWeek !== 'string') return 1;
+      const weekMatch = currentWeek.match(/\d+/);
+      return weekMatch ? parseInt(weekMatch[0]) : 1;
+    };
+    const currentWeekNum = getCurrentWeekNumber();
+    
+    const weeklyPointsDisplay = team?.currentSeason?.gameComplete
+      ? (team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`] || 0)
       : "?";
+
+    // Get the spread for display - use nextOpponentSpreadDisplay or calculate from nextOpponentSpread
+    const getSpreadDisplay = () => {
+      const spreadDisplay = team?.currentSeason?.nextOpponentSpreadDisplay;
+      const spreadNum = team?.currentSeason?.nextOpponentSpread;
+      
+      // If we have a formatted display string, use it
+      if (spreadDisplay && spreadDisplay !== "TBD") {
+        return spreadDisplay;
+      }
+      
+      // Otherwise format the number
+      if (typeof spreadNum === 'number' && !isNaN(spreadNum)) {
+        if (spreadNum === 0) return "PK";  // Pick 'em
+        return spreadNum > 0 ? `+${spreadNum}` : `${spreadNum}`;
+      }
+      
+      return null; // No spread available
+    };
+
+    const spreadDisplay = getSpreadDisplay();
 
     if (logoUrl) {
       return (
         <div style={{ position: "relative", display: "inline-block" }}>
-          {/* Weekly Points Badge - Moved above logo */}
+          {/* Weekly Points Badge - Above logo */}
           {clickable && (
             <div style={{
               position: "absolute",
               top: "-8px",
               left: "50%",
               transform: "translateX(-50%)",
-              backgroundColor: team?.gameComplete 
-                ? (team?.currentWeekPoints > 0 ? "#10b981" : "#6b7280")
+              backgroundColor: team?.currentSeason?.gameComplete 
+                ? (weeklyPointsDisplay > 0 ? "#10b981" : "#6b7280")
                 : "#f59e0b",
               color: "white",
               borderRadius: "50%",
@@ -189,6 +220,34 @@ function MyLeague() {
               boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)"
             }}>
               {weeklyPointsDisplay}
+            </div>
+          )}
+
+          {/* Spread Badge - Below logo */}
+          {clickable && spreadDisplay && (
+            <div style={{
+              position: "absolute",
+              bottom: "-8px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              backgroundColor: spreadDisplay.includes('-') ? "#10b981" : // Favorite (green)
+                             spreadDisplay === "PK" ? "#6366f1" :        // Pick 'em (indigo) 
+                             "#ef4444",                                   // Underdog (red)
+              color: "white",
+              borderRadius: "8px",
+              minWidth: "24px",
+              height: "14px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "8px",
+              fontWeight: "700",
+              zIndex: 10,
+              border: "1px solid rgba(255, 255, 255, 0.3)",
+              boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)",
+              padding: "0 3px"
+            }}>
+              {spreadDisplay}
             </div>
           )}
           
@@ -249,30 +308,31 @@ function MyLeague() {
     // Fallback placeholder with team initials and gradient
     return (
       <div style={{ position: "relative", display: "inline-block" }}>
-        {/* Weekly Points Badge - Moved above logo */}
-        {clickable && (
+        {/* Spread Badge - Positioned above logo */}
+        {clickable && spreadDisplay && (
           <div style={{
             position: "absolute",
             top: "-8px",
             left: "50%",
             transform: "translateX(-50%)",
-            backgroundColor: team?.gameComplete 
-              ? (team?.currentWeekPoints > 0 ? "#10b981" : "#6b7280")
-              : "#f59e0b",
+            backgroundColor: spreadDisplay.includes('+') ? "#10b981" : // Underdog (green)
+                           spreadDisplay === "PK" ? "#6366f1" :        // Pick 'em (indigo) 
+                           "#ef4444",                                   // Favorite (red)
             color: "white",
-            borderRadius: "50%",
-            width: "18px",
-            height: "18px",
+            borderRadius: "10px",
+            minWidth: "24px",
+            height: "16px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: "9px",
+            fontSize: "8px",
             fontWeight: "700",
             zIndex: 10,
-            border: "2px solid rgba(255, 255, 255, 0.3)",
-            boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)"
+            border: "1px solid rgba(255, 255, 255, 0.3)",
+            boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)",
+            padding: "0 4px"
           }}>
-            {weeklyPointsDisplay}
+            {spreadDisplay}
           </div>
         )}
         
@@ -1078,13 +1138,13 @@ function MyLeague() {
                       </p>
                     </div>
 
-                    {/* Points & Weekly Score */}
+                    {/* Points & Weekly Score - ✅ FIXED: Using correct member data */}
                     <div className="text-right">
                       <div className="text-2xl font-black text-blue-400 leading-none">
                         {member.points ?? 0}
                       </div>
                       <div className="text-xs text-white/60 mt-1">
-                        {member.weeklyPoints ?? 0} in {currentWeek}
+                        {member.weeklyPoints ?? 0} Points in Week {currentWeek}
                       </div>
                       <div className="text-xs text-white/60 mt-1">
                         {member.freeAgentMoves ?? 0} FA moves
