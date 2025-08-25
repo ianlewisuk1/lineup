@@ -54,6 +54,21 @@ function FreeAgents() {
   const [modalMessage, setModalMessage] = useState("");
   const [modalTitle, setModalTitle] = useState("");
 
+  // ADDED: Helper functions for proper data calculations
+  const parseRecord = (record) => {
+    if (!record || record === "0-0") return 0;
+    const parts = record.split('-');
+    if (parts.length !== 2) return 0;
+    const wins = parseInt(parts[0]) || 0;
+    const losses = parseInt(parts[1]) || 0;
+    return wins + losses;
+  };
+
+  const calculateAverage = (total, gamesPlayed) => {
+    if (!gamesPlayed || gamesPlayed === 0) return "0.0";
+    return (total / gamesPlayed).toFixed(1);
+  };
+
   // Custom modal helper functions
   const showSuccess = (title, message) => {
     setModalTitle(title);
@@ -111,7 +126,7 @@ function FreeAgents() {
         });
       });
 
-      // Build teams map
+      // Build teams map with enhanced data structure
       teamsSnap.forEach(doc => {
         const data = doc.data();
         if ((data.classification || "").toUpperCase() !== "FBS") return;
@@ -119,13 +134,30 @@ function FreeAgents() {
         const conf = data.conference || "Unknown";
         if (!teamsMap[conf]) teamsMap[conf] = [];
 
+        // ENHANCED: Add all the data fields that Stats page uses
         teamsMap[conf].push({
           id: doc.id,
           ...data,
           logo: data.logos1 || data.logos2 || null,
           currentWeekPoints: data.currentSeason?.currentWeekPoints || null,
           gameComplete: data.currentSeason?.gameComplete || false,
-          color: data.color || null
+          color: data.color || null,
+          // ADDED: Include all currentSeason data for proper display
+          currentSeason: {
+            ...data.currentSeason,
+            // Ensure all fields exist with defaults
+            gamePoints: data.currentSeason?.gamePoints || 0,
+            record: data.currentSeason?.record || "0-0",
+            confRecord: data.currentSeason?.confRecord || "0-0", // FIXED: Use confRecord
+            atsRecord: data.currentSeason?.atsRecord || "0-0", // FIXED: Use atsRecord instead of ats
+            totalPointsFor: data.currentSeason?.totalPointsFor || 0,
+            totalPointsAgainst: data.currentSeason?.totalPointsAgainst || 0,
+            nextOpponent: data.currentSeason?.nextOpponent || null,
+            nextGameIsHome: data.currentSeason?.nextGameIsHome || null,
+            nextOpponentSpreadDisplay: data.currentSeason?.nextOpponentSpreadDisplay || null,
+            nextOpponentSpread: data.currentSeason?.nextOpponentSpread || null,
+            nextGameDate: data.currentSeason?.nextGameDate || null
+          }
         });
       });
 
@@ -441,24 +473,31 @@ function FreeAgents() {
     }));
   };
 
+  // ENHANCED: Improved next game formatting that matches Stats page logic
   const formatNextGame = (season) => {
     if (!season?.nextOpponent) return "—";
     
     const isHome = season.nextGameIsHome;
     const spread = season.nextOpponentSpreadDisplay ?? season.nextOpponentSpread ?? "TBD";
-    const prefix = isHome === false ? "@" : isHome === true ? "vs" : "?";
-    
+    const prefix = isHome ? "vs" : "@";
+
     // Format the date if available
     let dateStr = "";
     if (season.nextGameDate) {
       try {
-        // Assuming date format is "2025-08-23"
-        const date = new Date(season.nextGameDate);
-        const month = date.getMonth() + 1;
-        const day = date.getDate();
-        dateStr = ` • ${month}/${day}`;
+        // Handle both string and object date formats
+        const date = typeof season.nextGameDate === 'string' 
+          ? new Date(season.nextGameDate)
+          : season.nextGameDate.toDate ? season.nextGameDate.toDate() : new Date(season.nextGameDate);
+        
+        if (!isNaN(date.getTime())) {
+          const month = date.getMonth() + 1;
+          const day = date.getDate();
+          dateStr = ` • ${month}/${day}`;
+        }
       } catch (error) {
         // If date parsing fails, just show without date
+        console.warn("Date parsing error for team:", error);
         dateStr = "";
       }
     }
@@ -466,7 +505,7 @@ function FreeAgents() {
     return `${prefix} ${season.nextOpponent} (${spread})${dateStr}`;
   };
 
-  // Team Card Component with DraftRoom styling
+  // ENHANCED: Team Card Component with proper data display
   const TeamCard = ({ team }) => {
     if (!team) return null;
 
@@ -475,6 +514,12 @@ function FreeAgents() {
     const previousWeekPoints = previousWeek && team.weeklyPoints?.[previousWeek] 
       ? team.weeklyPoints[previousWeek] 
       : null;
+
+    // ENHANCED: Calculate averages properly using helper functions
+    const season = team.currentSeason || {};
+    const gamesPlayed = parseRecord(season.record);
+    const avgPointsFor = calculateAverage(season.totalPointsFor || 0, gamesPlayed);
+    const avgPointsAgainst = calculateAverage(season.totalPointsAgainst || 0, gamesPlayed);
 
     return (
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20 transition-all duration-300 hover:bg-white/15">
@@ -513,13 +558,13 @@ function FreeAgents() {
             <div className="px-2 py-1 bg-white/10 rounded-lg text-center min-w-9">
               <div className="text-white/60 font-medium mb-0.5 text-xs">Points</div>
               <div className="text-green-300 font-bold text-xs">
-                {team.currentSeason?.gamePoints || 0}
+                {season.gamePoints || 0}
               </div>
             </div>
             <div className="px-2 py-1 bg-white/10 rounded-lg text-center min-w-8">
               <div className="text-white/60 font-medium mb-0.5 text-xs">Record</div>
               <div className="text-white font-semibold text-xs">
-                {team.currentSeason?.record || "0-0"}
+                {season.record || "0-0"}
               </div>
             </div>
           </div>
@@ -533,19 +578,36 @@ function FreeAgents() {
           </button>
         </div>
 
-        {/* Second Row: Conf Record, ATS, Prev Week Points */}
+        {/* ENHANCED: Second Row with proper data fields */}
         <div className="grid grid-cols-3 gap-2 text-xs mb-2">
           <div className="px-2 py-1 bg-white/5 rounded-lg text-center">
             <div className="text-white/60 font-medium mb-0.5 text-xs">Conf. Record</div>
             <div className="text-white font-semibold text-xs">
-              {team.currentSeason?.confRecord || "0-0"}
+              {season.confRecord || "0-0"}
             </div>
           </div>
 
           <div className="px-2 py-1 bg-white/5 rounded-lg text-center">
             <div className="text-white/60 font-medium mb-0.5 text-xs">ATS Record</div>
             <div className="text-white font-semibold text-xs">
-              {team.currentSeason?.ats || "0-0"}
+              {season.atsRecord || "0-0"}
+            </div>
+          </div>
+
+          <div className="px-2 py-1 bg-white/5 rounded-lg text-center">
+            <div className="text-white/60 font-medium mb-0.5 text-xs">Avg Pts For</div>
+            <div className="text-green-300 font-semibold text-xs">
+              {avgPointsFor}
+            </div>
+          </div>
+        </div>
+
+        {/* ENHANCED: Third Row with additional stats */}
+        <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+          <div className="px-2 py-1 bg-white/5 rounded-lg text-center">
+            <div className="text-white/60 font-medium mb-0.5 text-xs">Avg Pts Against</div>
+            <div className="text-red-300 font-semibold text-xs">
+              {avgPointsAgainst}
             </div>
           </div>
 
@@ -557,11 +619,11 @@ function FreeAgents() {
           </div>
         </div>
 
-        {/* Third Row: Next Game */}
+        {/* ENHANCED: Fourth Row - Next Game with proper formatting */}
         <div className="px-2 py-2 bg-white/5 rounded-lg text-xs text-center">
           <div className="text-white/60 font-medium mb-1 text-xs">Next Game</div>
           <div className="text-white font-semibold text-xs">
-            {formatNextGame(team.currentSeason)}
+            {formatNextGame(season)}
           </div>
         </div>
       </div>
