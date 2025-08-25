@@ -239,18 +239,14 @@ function MyLineup() {
     );
   };
 
-// Replace the ScheduleGrid component in MyLineup.js with this
-
-// Replace the ScheduleGrid component in MyLineup.js with this
-
+  // Enhanced Schedule Grid with Game Results
   const ScheduleGrid = () => {
     const [scheduleData, setScheduleData] = useState({});
     const [scheduleLoading, setScheduleLoading] = useState(false);
 
-    // Load full season schedule data - hooks must be called unconditionally
+    // Load full season schedule data with enhanced game information
     useEffect(() => {
       const loadFullSchedule = async () => {
-        // Move the showScheduleGrid check inside the effect
         if (!showScheduleGrid || Object.keys(scheduleData).length > 0) return;
         
         setScheduleLoading(true);
@@ -258,7 +254,7 @@ function MyLineup() {
           const allScheduleData = {};
           const weeks = Array.from({ length: 14 }, (_, i) => i + 1);
           
-          // Load schedule for each week
+          // Load schedule for each week with enhanced game data
           for (const week of weeks) {
             const gamesSnap = await getDocs(
               collection(db, "schedule", "2025", "weeks", week.toString(), "games")
@@ -271,7 +267,13 @@ function MyLineup() {
                 homeTeam: gameData.homeTeam,
                 awayTeam: gameData.awayTeam,
                 date: gameData.date,
-                gameComplete: gameData.gameComplete || false
+                gameComplete: gameData.gameComplete || false,
+                // NEW: Add score data for completed games
+                homeScore: gameData.homeScore || null,
+                awayScore: gameData.awayScore || null,
+                // NEW: Add spread data
+                homeSpread: gameData.homeSpread || null,
+                venue: gameData.venue || null
               });
             });
             
@@ -287,7 +289,7 @@ function MyLineup() {
       };
 
       loadFullSchedule();
-    }, [showScheduleGrid]); // Remove scheduleData from dependencies to avoid infinite loop
+    }, [showScheduleGrid]);
 
     // Early return AFTER all hooks have been called
     if (!showScheduleGrid) return null;
@@ -318,19 +320,32 @@ function MyLineup() {
       );
     };
 
-    // Helper function to get opponent info
+    // Enhanced helper function to get opponent info with game results
     const getOpponentInfo = (teamName, week) => {
       const game = findTeamGame(teamName, week);
       if (!game) return null;
       
       const isHome = game.homeTeam === teamName;
       const opponent = isHome ? game.awayTeam : game.homeTeam;
+      const myScore = isHome ? game.homeScore : game.awayScore;
+      const opponentScore = isHome ? game.awayScore : game.homeScore;
+      
+      // Calculate spread from team's perspective
+      let teamSpread = null;
+      if (typeof game.homeSpread === 'number') {
+        teamSpread = isHome ? game.homeSpread : -game.homeSpread;
+      }
       
       return {
         opponent: opponent,
         isHome: isHome,
         date: game.date,
-        gameComplete: game.gameComplete
+        gameComplete: game.gameComplete,
+        // NEW: Game result data
+        myScore: myScore,
+        opponentScore: opponentScore,
+        teamSpread: teamSpread,
+        won: myScore !== null && opponentScore !== null ? myScore > opponentScore : null
       };
     };
 
@@ -401,30 +416,66 @@ function MyLineup() {
                   {weeks.map(week => {
                     const opponentInfo = getOpponentInfo(team.school, week);
                     
+                    // Enhanced background color logic for completed games
+                    let bgColorClass = 'bg-white/5'; // Default for upcoming games
+                    
+                    if (!opponentInfo) {
+                      bgColorClass = 'bg-gray-600/30'; // BYE week
+                    } else if (opponentInfo.gameComplete && opponentInfo.won !== null) {
+                      if (opponentInfo.won) {
+                        bgColorClass = 'bg-green-500/20 border border-green-500/40'; // Win - green tint
+                      } else {
+                        bgColorClass = 'bg-red-500/20 border border-red-500/40'; // Loss - red tint
+                      }
+                    }
+                    
                     return (
                       <div 
                         key={week}
                         className={`w-20 rounded p-1 text-center min-h-[60px] flex flex-col justify-center ${
-                          week === currentWeek ? 'ring-1 ring-blue-400' : ''
-                        } ${
-                          opponentInfo ? 'bg-white/5' : 'bg-gray-600/30'
-                        }`}
+                          week === currentWeek ? 'ring-2 ring-blue-400' : ''
+                        } ${bgColorClass}`}
                       >
                         {opponentInfo ? (
                           <div className="text-xs">
-                            <div className="text-white font-medium mb-1">
-                              {opponentInfo.isHome ? 'vs' : '@'}
-                            </div>
-                            <div className="text-white/80 truncate text-xs leading-tight">
-                              {opponentInfo.opponent.split(' ').slice(0, 2).join(' ')}
-                            </div>
-                            {week === currentWeek && team.currentSeason?.nextOpponentSpreadDisplay && (
-                              <div className="text-yellow-400 font-bold text-xs mt-1">
-                                {team.currentSeason.nextOpponentSpreadDisplay}
+                            {/* Show game result if completed, otherwise show upcoming game info */}
+                            {opponentInfo.gameComplete && opponentInfo.myScore !== null && opponentInfo.opponentScore !== null ? (
+                              // COMPLETED GAME: Show score and W/L with enhanced styling
+                              <div>
+                                <div className={`font-bold text-xs mb-1 ${opponentInfo.won ? 'text-green-300' : 'text-red-300'}`}>
+                                  {opponentInfo.myScore}-{opponentInfo.opponentScore} {opponentInfo.won ? 'W' : 'L'}
+                                </div>
+                                <div className="text-white/90 truncate text-xs leading-tight">
+                                  {opponentInfo.isHome ? 'vs' : '@'} {opponentInfo.opponent.split(' ').slice(0, 2).join(' ')}
+                                </div>
+                                <div className={`text-xs mt-1 font-bold ${opponentInfo.won ? 'text-green-400' : 'text-red-400'}`}>
+                                  {opponentInfo.won ? '✓ WIN' : '✗ LOSS'}
+                                </div>
                               </div>
-                            )}
-                            {opponentInfo.gameComplete && (
-                              <div className="text-green-400 text-xs mt-1">✓</div>
+                            ) : (
+                              // UPCOMING GAME: Show opponent and spread
+                              <div>
+                                <div className="text-white font-medium mb-1">
+                                  {opponentInfo.isHome ? 'vs' : '@'}
+                                </div>
+                                <div className="text-white/80 truncate text-xs leading-tight">
+                                  {opponentInfo.opponent.split(' ').slice(0, 2).join(' ')}
+                                </div>
+                                {/* Show spread for current week and team has spread data */}
+                                {week === currentWeek && team.currentSeason?.nextOpponentSpreadDisplay && (
+                                  <div className="text-yellow-400 font-bold text-xs mt-1">
+                                    {team.currentSeason.nextOpponentSpreadDisplay}
+                                  </div>
+                                )}
+                                {/* Show spread from schedule data for other weeks */}
+                                {week !== currentWeek && opponentInfo.teamSpread !== null && (
+                                  <div className="text-yellow-400 font-bold text-xs mt-1">
+                                    {opponentInfo.teamSpread === 0 ? 'PICK' : 
+                                     opponentInfo.teamSpread > 0 ? `+${opponentInfo.teamSpread}` : 
+                                     `${opponentInfo.teamSpread}`}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         ) : (
@@ -439,23 +490,27 @@ function MyLineup() {
               ))}
             </div>
             
-            {/* Legend */}
-            <div className="mt-4 flex items-center justify-center gap-4 text-xs">
+            {/* Enhanced Legend */}
+            <div className="mt-4 flex items-center justify-center gap-4 text-xs flex-wrap">
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 bg-blue-500 rounded"></div>
                 <span className="text-white/80">Current Week</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 bg-white/10 rounded"></div>
-                <span className="text-white/80">Has Game</span>
+                <span className="text-white/80">Upcoming Game</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 bg-gray-600 rounded"></div>
                 <span className="text-white/80">BYE Week</span>
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-green-400 rounded"></div>
-                <span className="text-white/80">Completed</span>
+                <div className="w-3 h-3 bg-green-500/20 border border-green-500/40 rounded"></div>
+                <span className="text-white/80">Win</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-red-500/20 border border-red-500/40 rounded"></div>
+                <span className="text-white/80">Loss</span>
               </div>
             </div>
           </div>
@@ -820,7 +875,7 @@ function MyLineup() {
           </button>
         </div>
 
-        {/* Schedule Grid */}
+        {/* Enhanced Schedule Grid */}
         <ScheduleGrid />
 
     {/* WEEKLY LINEUP MANAGER */}
