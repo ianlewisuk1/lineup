@@ -398,16 +398,11 @@ function MyLineup() {
               {rosterTeams.map((team, teamIndex) => (
                 <div key={team.school} className="flex gap-1 mb-1">
                   {/* Team Name Column */}
-                  <div className="w-32 bg-white/5 rounded p-2 flex items-center">
-                    <div className="flex items-center gap-2">
-                      <TeamLogo teamName={team.school} size={20} clickable={false} />
-                      <div>
-                        <div className="text-white font-medium text-xs truncate">
-                          {team.school.split(' ')[0]}
-                        </div>
-                        <div className="text-white/60 text-xs">
-                          {team.currentSeason?.record || '0-0'}
-                        </div>
+                  <div className="w-32 bg-white/5 rounded p-2 flex items-center justify-center">
+                    <div className="flex flex-col items-center gap-1">
+                      <TeamLogo teamName={team.school} size={32} clickable={false} />
+                      <div className="text-white/80 text-xs font-medium">
+                        {team.currentSeason?.record || '0-0'}
                       </div>
                     </div>
                   </div>
