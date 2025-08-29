@@ -511,12 +511,20 @@ function MyLeague() {
     );
   };
 
-// Enhanced Team Card Modal
+// Enhanced Team Card Modal - Updated to show current week game
   const TeamCardModal = ({ team, onClose }) => {
     const [isFlipped, setIsFlipped] = useState(false);
     const [teamSchedule, setTeamSchedule] = useState([]);
-    const [nextGame, setNextGame] = useState(null);
+    const [currentWeekGame, setCurrentWeekGame] = useState(null);
     const [loadingSchedule, setLoadingSchedule] = useState(true);
+
+    // Get current week number for finding the right game
+    const getCurrentWeekNumber = () => {
+      if (typeof currentWeek === 'number') return currentWeek;
+      if (!currentWeek || typeof currentWeek !== 'string') return 1;
+      const weekMatch = currentWeek.match(/\d+/);
+      return weekMatch ? parseInt(weekMatch[0]) : 1;
+    };
 
     useEffect(() => {
       const fetchTeamSchedule = async () => {
@@ -525,6 +533,7 @@ function MyLeague() {
         try {
           setLoadingSchedule(true);
           const scheduleData = [];
+          const currentWeekNum = getCurrentWeekNumber();
           
           // Fetch schedule for 2025
           const weeksSnap = await getDocs(collection(db, "schedule", "2025", "weeks"));
@@ -550,9 +559,9 @@ function MyLeague() {
           scheduleData.sort((a, b) => a.week - b.week);
           setTeamSchedule(scheduleData);
 
-          // Find next game (first incomplete game)
-          const upcomingGame = scheduleData.find(game => !game.gameComplete);
-          setNextGame(upcomingGame);
+          // Find current week's game instead of next incomplete game
+          const weekGame = scheduleData.find(game => game.week === currentWeekNum);
+          setCurrentWeekGame(weekGame);
           
         } catch (error) {
           console.error("Error fetching team schedule:", error);
@@ -562,7 +571,48 @@ function MyLeague() {
       };
 
       fetchTeamSchedule();
-    }, [team?.name]);
+    }, [team?.name, currentWeek]);
+
+    // Format current week game display
+    const formatCurrentWeekGame = (game, teamName) => {
+      if (!game) return null;
+      
+      const isHome = game.homeTeam === teamName;
+      const opponent = isHome ? game.awayTeam : game.homeTeam;
+      const prefix = game.neutralSite ? "vs" : (isHome ? "vs" : "@");
+      
+      // Check if game is complete
+      if (game.gameComplete) {
+        const teamScore = isHome ? game.finalScore?.home : game.finalScore?.away;
+        const opponentScore = isHome ? game.finalScore?.away : game.finalScore?.home;
+        
+        if (teamScore !== null && teamScore !== undefined && 
+            opponentScore !== null && opponentScore !== undefined) {
+          const won = teamScore > opponentScore;
+          const result = won ? "W" : "L";
+          
+          // Get spread for completed games
+          const spread = game.homeSpread || game.spread || "";
+          const spreadDisplay = spread ? ` (${spread})` : "";
+          
+          return {
+            text: `${result} ${prefix} ${opponent} ${teamScore}-${opponentScore}${spreadDisplay}`,
+            isComplete: true,
+            won: won
+          };
+        }
+      }
+      
+      // Game is upcoming
+      const spread = game.homeSpread || game.spread || "TBD";
+      const spreadDisplay = spread !== "TBD" ? ` (${spread})` : "";
+      
+      return {
+        text: `${prefix} ${opponent}${spreadDisplay}`,
+        isComplete: false,
+        won: null
+      };
+    };
 
     // Use correct field names (homeScore/awayScore instead of homePoints/awayPoints)
     const formatGameResult = (game, teamName) => {
@@ -605,22 +655,10 @@ function MyLeague() {
       });
     };
 
-    const getSpreadText = () => {
-      const spread = team?.nextOpponentSpreadDisplay ?? team?.nextOpponentSpread ?? "TBD";
-      
-      if (!spread || spread === "TBD") {
-        return "Line not yet available";
-      }
-      
-      const spreadNum = parseFloat(spread);
-      if (isNaN(spreadNum)) return "Line not yet available";
-      
-      if (spreadNum > 0) return `+${spreadNum}`;
-      if (spreadNum < 0) return `${spreadNum}`;
-      return "Pick 'em";
-    };
-
     if (!team) return null;
+
+    const currentWeekGameInfo = formatCurrentWeekGame(currentWeekGame, team.name);
+    const currentWeekNum = getCurrentWeekNumber();
 
     return (
       <div 
@@ -663,7 +701,7 @@ function MyLeague() {
             }}
             onClick={() => setIsFlipped(!isFlipped)}
           >
-            {/* Front of Card - Next Game Info */}
+            {/* Front of Card - Current Week Game Info */}
             <div
               style={{
                 position: "absolute",
@@ -739,7 +777,7 @@ function MyLeague() {
                 </p>
               </div>
 
-              {/* Next Game Info */}
+              {/* Current Week Game Info */}
               <div style={{
                 backgroundColor: "rgba(255, 255, 255, 0.95)",
                 borderRadius: "12px",
@@ -755,23 +793,25 @@ function MyLeague() {
                   margin: "0 0 6px 0",
                   textAlign: "center"
                 }}>
-                  Next Game
+                  Week {currentWeekNum} Game
                 </h3>
 
                 {loadingSchedule ? (
                   <div style={{ textAlign: "center", color: "#64748b", flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
                     Loading schedule...
                   </div>
-                ) : nextGame ? (
+                ) : currentWeekGameInfo ? (
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
                     <div style={{ textAlign: "center" }}>
                       <div style={{
                         fontSize: "16px",
                         fontWeight: "700",
-                        color: "#1e293b",
+                        color: currentWeekGameInfo.isComplete 
+                          ? (currentWeekGameInfo.won ? "#059669" : "#dc2626")  // Green for win, red for loss
+                          : "#1e293b",  // Default for upcoming
                         marginBottom: "2px"
                       }}>
-                        {formatOpponent(nextGame, team.name)}
+                        {currentWeekGameInfo.text}
                       </div>
                       <div style={{
                         fontSize: "10px",
@@ -780,52 +820,52 @@ function MyLeague() {
                         fontWeight: "600",
                         letterSpacing: "0.5px"
                       }}>
-                        Week {nextGame.week}
+                        {currentWeekGameInfo.isComplete ? "FINAL" : "UPCOMING"}
                       </div>
                     </div>
 
-                    <div style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      gap: "8px",
-                      fontSize: "11px"
-                    }}>
-                      <div style={{ textAlign: "center" }}>
-                        <div style={{ fontSize: "9px", fontWeight: "600", color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>
-                          Date
-                        </div>
-                        <div style={{ color: "#1e293b", fontWeight: "500" }}>
-                          {formatDate(nextGame.date)}
-                        </div>
-                      </div>
-
-                      <div style={{ textAlign: "center" }}>
-                        <div style={{ fontSize: "9px", fontWeight: "600", color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>
-                          Spread
-                        </div>
-                        <div style={{ 
-                          color: "#1e293b", 
-                          fontWeight: "600",
-                          fontSize: "13px"
-                        }}>
-                          {getSpreadText()}
-                        </div>
-                      </div>
-                    </div>
-
-                    {nextGame.conferenceGame && (
+                    {currentWeekGame && (
                       <div style={{
-                        backgroundColor: "#fef3c7",
-                        color: "#92400e",
-                        padding: "3px 6px",
-                        borderRadius: "6px",
-                        fontSize: "9px",
-                        fontWeight: "600",
-                        textAlign: "center",
-                        marginTop: "4px"
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: "8px",
+                        fontSize: "11px"
                       }}>
-                        Conference Game
+                        <div style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: "9px", fontWeight: "600", color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>
+                            Date
+                          </div>
+                          <div style={{ color: "#1e293b", fontWeight: "500" }}>
+                            {formatDate(currentWeekGame.date)}
+                          </div>
+                        </div>
+
+                        {currentWeekGame.venue && (
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ fontSize: "9px", fontWeight: "600", color: "#64748b", textTransform: "uppercase", marginBottom: "2px" }}>
+                              Venue
+                            </div>
+                            <div style={{ color: "#1e293b", fontWeight: "500", fontSize: "10px" }}>
+                              {currentWeekGame.venue}
+                            </div>
+                          </div>
+                        )}
+
+                        {currentWeekGame.conferenceGame && (
+                          <div style={{
+                            backgroundColor: "#fef3c7",
+                            color: "#92400e",
+                            padding: "3px 6px",
+                            borderRadius: "6px",
+                            fontSize: "9px",
+                            fontWeight: "600",
+                            textAlign: "center",
+                            marginTop: "4px"
+                          }}>
+                            Conference Game
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -837,9 +877,10 @@ function MyLeague() {
                     display: "flex", 
                     alignItems: "center", 
                     justifyContent: "center",
-                    fontSize: "12px"
+                    fontSize: "12px",
+                    fontWeight: "600"
                   }}>
-                    No upcoming games scheduled
+                    BYE
                   </div>
                 )}
               </div>
