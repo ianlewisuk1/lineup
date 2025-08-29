@@ -64,7 +64,7 @@ function MyLeague() {
                 mascot: teamData.mascot || "",
                 city: teamData.city || "",
                 state: teamData.state || "",
-                currentSeason: teamData.currentSeason || {}, // ✅ Include full currentSeason object
+                currentSeason: teamData.currentSeason || {}, // Include full currentSeason object
                 gameComplete: teamData.currentSeason?.gameComplete || false,
                 nextOpponentSpread: teamData.currentSeason?.nextOpponentSpread || null,
                 name: teamData.school,  // ADD THIS LINE
@@ -115,7 +115,7 @@ function MyLeague() {
     fetchData();
   }, [leagueId]);
 
-// Team logo component with spread display
+// Team logo component with enhanced live game display
   const TeamLogo = ({ teamName, size = 32, clickable = false }) => {
 
     const normalize = (name) =>
@@ -158,9 +158,8 @@ function MyLeague() {
       backdropFilter: "blur(10px)"
     };
 
-    // ✅ FIXED: Get current week number and use correct data structure for POINTS
+    // Get current week number
     const getCurrentWeekNumber = () => {
-      // Handle both number and string formats from Firebase
       if (typeof currentWeek === 'number') return currentWeek;
       if (!currentWeek || typeof currentWeek !== 'string') return 1;
       const weekMatch = currentWeek.match(/\d+/);
@@ -168,9 +167,57 @@ function MyLeague() {
     };
     const currentWeekNum = getCurrentWeekNumber();
     
-    const weeklyPointsDisplay = team?.currentSeason?.gameComplete
-      ? (team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`] || 0)
-      : "?";
+    // Enhanced game state detection
+    const getTeamDisplayState = () => {
+      const weeklyPoints = team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`] || 0;
+      const gameComplete = team?.currentSeason?.gameComplete;
+      const gameStatus = team?.currentSeason?.gameStatus; // 'in_progress', 'scheduled', 'final'
+      const hasLiveGame = team?.currentSeason?.hasLiveGame; // New field from live scoring system
+      
+      // No points yet - game hasn't started
+      if (weeklyPoints === 0) {
+        return { 
+          display: "?", 
+          state: "unplayed", 
+          color: "#6b7280",
+          bgColor: "#374151",
+          shouldPulse: false
+        };
+      }
+      
+      // Game is currently in progress - prioritize the live detection logic
+      if (gameStatus === 'in_progress' || hasLiveGame || (weeklyPoints > 0 && gameComplete === false)) {
+        return { 
+          display: weeklyPoints, 
+          state: "live", 
+          color: "#10b981",
+          bgColor: "#059669",
+          shouldPulse: true
+        };
+      }
+      
+      // Game is complete
+      if (gameComplete === true) {
+        return { 
+          display: weeklyPoints, 
+          state: "final", 
+          color: "#3b82f6",
+          bgColor: "#2563eb",
+          shouldPulse: false
+        };
+      }
+      
+      // Fallback for edge cases - treat as live if we have points but no clear completion status
+      return { 
+        display: weeklyPoints, 
+        state: "live", 
+        color: "#10b981",
+        bgColor: "#059669",
+        shouldPulse: true
+      };
+    };
+
+    const teamState = getTeamDisplayState();
 
     // Get the spread for display - use nextOpponentSpreadDisplay or calculate from nextOpponentSpread
     const getSpreadDisplay = () => {
@@ -196,30 +243,31 @@ function MyLeague() {
     if (logoUrl) {
       return (
         <div style={{ position: "relative", display: "inline-block" }}>
-          {/* Weekly Points Badge - Above logo */}
+          {/* Weekly Points Badge - Above logo with enhanced styling */}
           {clickable && (
-            <div style={{
-              position: "absolute",
-              top: "-8px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              backgroundColor: team?.currentSeason?.gameComplete 
-                ? (weeklyPointsDisplay > 0 ? "#10b981" : "#6b7280")
-                : "#f59e0b",
-              color: "white",
-              borderRadius: "50%",
-              width: "18px",
-              height: "18px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "9px",
-              fontWeight: "700",
-              zIndex: 10,
-              border: "2px solid rgba(255, 255, 255, 0.3)",
-              boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)"
-            }}>
-              {weeklyPointsDisplay}
+            <div 
+              className={teamState.shouldPulse ? "animate-pulse" : ""}
+              style={{
+                position: "absolute",
+                top: "-8px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                backgroundColor: teamState.bgColor,
+                color: "white",
+                borderRadius: "50%",
+                width: "18px",
+                height: "18px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "9px",
+                fontWeight: "700",
+                zIndex: 10,
+                border: "2px solid rgba(255, 255, 255, 0.3)",
+                boxShadow: `0 2px 6px rgba(0, 0, 0, 0.2)${teamState.shouldPulse ? ', 0 0 10px ' + teamState.color + '40' : ''}`
+              }}
+            >
+              {teamState.display}
             </div>
           )}
 
@@ -309,11 +357,39 @@ function MyLeague() {
     // Fallback placeholder with team initials and gradient
     return (
       <div style={{ position: "relative", display: "inline-block" }}>
+        {/* Weekly Points Badge - Enhanced for fallback */}
+        {clickable && (
+          <div 
+            className={teamState.shouldPulse ? "animate-pulse" : ""}
+            style={{
+              position: "absolute",
+              top: "-8px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              backgroundColor: teamState.bgColor,
+              color: "white",
+              borderRadius: "50%",
+              width: "18px",
+              height: "18px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "9px",
+              fontWeight: "700",
+              zIndex: 10,
+              border: "2px solid rgba(255, 255, 255, 0.3)",
+              boxShadow: `0 2px 6px rgba(0, 0, 0, 0.2)${teamState.shouldPulse ? ', 0 0 10px ' + teamState.color + '40' : ''}`
+            }}
+          >
+            {teamState.display}
+          </div>
+        )}
+
         {/* Spread Badge - Positioned above logo */}
         {clickable && spreadDisplay && (
           <div style={{
             position: "absolute",
-            top: "-8px",
+            bottom: "-8px",
             left: "50%",
             transform: "translateX(-50%)",
             backgroundColor: spreadDisplay.includes('+') ? "#10b981" : // Underdog (green)
@@ -488,12 +564,12 @@ function MyLeague() {
       fetchTeamSchedule();
     }, [team?.name]);
 
-    // ✅ FIXED: Use correct field names (homeScore/awayScore instead of homePoints/awayPoints)
+    // Use correct field names (homeScore/awayScore instead of homePoints/awayPoints)
     const formatGameResult = (game, teamName) => {
       const isHome = game.homeTeam === teamName;
       const opponent = isHome ? game.awayTeam : game.homeTeam;
       
-      // ✅ FIXED: Use homeScore and awayScore (not homePoints/awayPoints)
+      // Use homeScore and awayScore (not homePoints/awayPoints)
       const teamScore = isHome ? game.homeScore : game.awayScore;
       const opponentScore = isHome ? game.awayScore : game.homeScore;
       
@@ -827,12 +903,12 @@ function MyLeague() {
                 ) : (
                   <div style={{ fontSize: "11px" }}>
                     {teamSchedule.map((game, index) => {
-                      // ✅ FIXED: Proper game result calculation
+                      // Proper game result calculation
                       const formatGameResult = (game, teamName) => {
                         const isHome = game.homeTeam === teamName;
                         const opponent = isHome ? game.awayTeam : game.homeTeam;
                         
-                        // ✅ FIXED: Use homeScore and awayScore (correct field names)
+                        // Use homeScore and awayScore (correct field names)
                         const teamScore = isHome ? game.homeScore : game.awayScore;
                         const opponentScore = isHome ? game.awayScore : game.homeScore;
                         
@@ -951,6 +1027,29 @@ function MyLeague() {
     }
   };
 
+  // Helper function to check if a member has live games
+  const getMemberLiveStatus = (member) => {
+    const lineup = member.lineup || {};
+    const starters = Array.isArray(lineup.starters) ? lineup.starters : [];
+    const bench = Array.isArray(lineup.bench) ? lineup.bench : [];
+    const allTeamsOwned = [...starters, ...bench].filter(team => 
+      typeof team === 'string' && team.trim() !== ''
+    );
+
+    const normalize = (name) =>
+      name
+        ?.toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/&/g, "-")
+        .replace(/[^a-z0-9\-]/g, "");
+
+    // Check if any owned teams have live games
+    return allTeamsOwned.some(teamName => {
+      const team = allTeams[normalize(teamName)];
+      return team?.currentSeason?.gameStatus === 'in_progress' || team?.currentSeason?.hasLiveGame;
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
@@ -1035,6 +1134,25 @@ function MyLeague() {
           </p>
         </div>
 
+        {/* Live Game Status Key */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 mb-6">
+          <h3 className="text-sm font-semibold text-white/90 mb-3 text-center">Game Status Legend</h3>
+          <div className="flex items-center justify-center gap-6 text-xs text-white/70">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-gray-500 rounded-full flex items-center justify-center text-white text-xs font-bold">?</div>
+              <span>Not Started</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-green-500 rounded-full animate-pulse flex items-center justify-center text-white text-xs font-bold">5</div>
+              <span>Live Game</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">5</div>
+              <span>Final</span>
+            </div>
+          </div>
+        </div>
+
         {/* Recent Moves Widget */}
         <RecentMovesWidget leagueId={leagueId} />
 
@@ -1054,6 +1172,7 @@ function MyLeague() {
                 // Calculate playoff cutoff based on maxManagers
                 const playoffSpots = maxManagers === 8 ? 4 : 6;
                 const isPlayoffLine = idx === playoffSpots;
+                const hasLiveGames = getMemberLiveStatus(member);
 
                 return (
                   <div key={`summary-${member.id}`}>
@@ -1079,6 +1198,13 @@ function MyLeague() {
                         <span className="text-white font-medium truncate">
                           {member.teamName || "Unnamed Team"}
                         </span>
+                        {/* Live Games Indicator */}
+                        {hasLiveGames && (
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                            <span className="text-xs text-green-400 font-medium">LIVE</span>
+                          </div>
+                        )}
                         {/* Playoff indicator */}
                         {idx < playoffSpots && (
                           <div className="text-green-400 text-xs">🏆</div>
@@ -1125,6 +1251,7 @@ function MyLeague() {
               const allTeamsOwned = [...starters, ...bench].filter(team => 
                 typeof team === 'string' && team.trim() !== ''
               );
+              const hasLiveGames = getMemberLiveStatus(member);
 
               // Determine rank styling
               const getRankStyle = (position) => {
@@ -1165,15 +1292,24 @@ function MyLeague() {
 
                     {/* Team Info */}
                     <div className="flex-1 min-w-0 ml-4">
-                      <h3 className="text-base font-bold text-white mb-1 truncate">
-                        {member.teamName || "Unnamed Team"}
-                      </h3>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-base font-bold text-white truncate">
+                          {member.teamName || "Unnamed Team"}
+                        </h3>
+                        {/* Enhanced Live Games Indicator for Manager */}
+                        {hasLiveGames && (
+                          <div className="flex items-center gap-1 bg-green-500/20 px-2 py-1 rounded-full border border-green-400/30">
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                            <span className="text-xs text-green-300 font-medium">LIVE</span>
+                          </div>
+                        )}
+                      </div>
                       <p className="text-white/70">
                         {member.firstName || "Unknown Manager"}
                       </p>
                     </div>
 
-                    {/* Points & Weekly Score - ✅ FIXED: Using correct member data */}
+                    {/* Points & Weekly Score */}
                     <div className="text-right">
                       <div className="text-2xl font-black text-blue-400 leading-none">
                         {member.points ?? 0}
