@@ -19,6 +19,8 @@ function TeamPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [teamToAdd, setTeamToAdd] = useState(null);
   const [loadingStage, setLoadingStage] = useState("Fetching team info...");
+  const [currentWeek, setCurrentWeek] = useState(1);
+  const [currentWeekGame, setCurrentWeekGame] = useState(null);
   
   // Custom notification modal states
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -27,7 +29,7 @@ function TeamPage() {
   const [showDropdown, setShowDropdown] = useState(false); 
   const [modalTitle, setModalTitle] = useState("");
 
-  // FIXED: Helper function to parse record and calculate games played
+  // Helper function to parse record and calculate games played
   const parseRecord = (record) => {
     if (!record || record === "0-0") return 0;
     const parts = record.split('-');
@@ -37,7 +39,7 @@ function TeamPage() {
     return wins + losses;
   };
 
-  // FIXED: Helper function to calculate averages safely
+  // Helper function to calculate averages safely
   const calculateAverage = (total, gamesPlayed) => {
     if (!gamesPlayed || gamesPlayed === 0) return "0.0";
     return (total / gamesPlayed).toFixed(1);
@@ -84,6 +86,35 @@ function TeamPage() {
       .replace(/\bAnd\b/g, '&');
   };
 
+  // Format the current week's game display
+  const formatWeekGame = (game, teamName) => {
+    if (!game) return "BYE";
+    
+    const isHome = game.homeTeam === teamName;
+    const opponent = isHome ? game.awayTeam : game.homeTeam;
+    const prefix = game.neutralSite ? "vs" : (isHome ? "vs" : "@");
+    
+    // Get spread information
+    const spread = game.homeSpread || game.spread || "TBD";
+    const displaySpread = spread !== "TBD" ? `(${spread})` : "";
+    
+    // Check if game is complete
+    if (game.gameComplete) {
+      const teamScore = isHome ? game.finalScore?.home : game.finalScore?.away;
+      const opponentScore = isHome ? game.finalScore?.away : game.finalScore?.home;
+      
+      if (teamScore !== null && teamScore !== undefined && 
+          opponentScore !== null && opponentScore !== undefined) {
+        const won = teamScore > opponentScore;
+        const result = won ? "W" : "L";
+        return `${result} ${prefix} ${opponent} ${teamScore}-${opponentScore} ${displaySpread}`;
+      }
+    }
+    
+    // Game is upcoming
+    return `${prefix} ${opponent} ${displaySpread}`;
+  };
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (showDropdown && !event.target.closest('[data-dropdown]')) {
@@ -102,11 +133,19 @@ function TeamPage() {
       try {
         const decodedTeamName = decodeURIComponent(teamName);
         
-        // Stage 1: Fetch team info with query optimization
+        // Stage 1: Fetch current week and team info
         setLoadingStage("Loading team details...");
-        const teamsSnap = await getDocs(collection(db, "teams"));
-        let foundTeam = null;
+        const [seasonDoc, teamsSnap] = await Promise.all([
+          getDoc(doc(db, "config", "season")),
+          getDocs(collection(db, "teams"))
+        ]);
         
+        // Get current week
+        const week = seasonDoc.exists() ? seasonDoc.data().currentWeek || 1 : 1;
+        setCurrentWeek(week);
+        
+        // Find team info
+        let foundTeam = null;
         teamsSnap.forEach(doc => {
           const data = doc.data();
           if (data.school === decodedTeamName) {
@@ -115,7 +154,24 @@ function TeamPage() {
         });
         setTeamInfo(foundTeam);
 
-        // Stage 2: Fetch ownership and user data in parallel
+        // Stage 2: Fetch current week's game
+        setLoadingStage("Loading current week game...");
+        const currentWeekGamesSnap = await getDocs(collection(db, "schedule", "2025", "weeks", week.toString(), "games"));
+        let weekGame = null;
+        
+        currentWeekGamesSnap.forEach(gameDoc => {
+          const game = gameDoc.data();
+          if (game.homeTeam === decodedTeamName || game.awayTeam === decodedTeamName) {
+            weekGame = {
+              ...game,
+              week: week,
+              gameId: gameDoc.id
+            };
+          }
+        });
+        setCurrentWeekGame(weekGame);
+
+        // Stage 3: Fetch ownership and user data in parallel
         setLoadingStage("Checking ownership status...");
         const [ownershipResult, userTeamsResult] = await Promise.all([
           fetchOwnershipInfo(decodedTeamName),
@@ -125,7 +181,7 @@ function TeamPage() {
         setOwnershipInfo(ownershipResult);
         setUserTeams(userTeamsResult);
 
-        // Stage 3: Fetch schedule (most expensive operation)
+        // Stage 4: Fetch full schedule (most expensive operation)
         setLoadingStage("Loading schedule...");
         const scheduleData = await fetchTeamSchedule(decodedTeamName);
         setSchedule(scheduleData);
@@ -154,9 +210,9 @@ function TeamPage() {
         const bench = lineup.bench || [];
         
         let status = null;
-        if (starters.includes(normalizedTeamName)) { // Use normalized name
+        if (starters.includes(normalizedTeamName)) {
           status = "starting";
-        } else if (bench.includes(normalizedTeamName)) { // Use normalized name
+        } else if (bench.includes(normalizedTeamName)) {
           status = "bench";
         }
         
@@ -278,9 +334,9 @@ function TeamPage() {
       const emptyBenchIndex = bench.findIndex(t => !t);
       
       if (emptyStarterIndex !== -1) {
-        starters[emptyStarterIndex] = normalizedTeamName; // Use normalized name
+        starters[emptyStarterIndex] = normalizedTeamName;
       } else if (emptyBenchIndex !== -1) {
-        bench[emptyBenchIndex] = normalizedTeamName; // Use normalized name
+        bench[emptyBenchIndex] = normalizedTeamName;
       } else {
         showError("Roster Full", "Your roster is full! Please drop a team first.");
         return;
@@ -351,9 +407,9 @@ function TeamPage() {
       const benchIndex = bench.findIndex(t => t === selectedDropTeam);
       
       if (starterIndex !== -1) {
-        starters[starterIndex] = normalizedNewTeam; // CHANGED: Use normalized name
+        starters[starterIndex] = normalizedNewTeam;
       } else if (benchIndex !== -1) {
-        bench[benchIndex] = normalizedNewTeam; // CHANGED: Use normalized name
+        bench[benchIndex] = normalizedNewTeam;
       }
 
       await updateDoc(memberRef, {
@@ -395,7 +451,6 @@ function TeamPage() {
 
   const formatGameResult = (game, teamName) => {
     const isHome = game.homeTeam === teamName;
-    // FIXED: Use homeScore/awayScore instead of homePoints/awayPoints
     const teamScore = isHome ? game.homeScore : game.awayScore;
     const opponentScore = isHome ? game.awayScore : game.homeScore;
     
@@ -509,7 +564,7 @@ function TeamPage() {
 
       <BottomNavBar leagueId={leagueId} isDraftComplete={true} />
 
-      {/* Navigation - matching DraftRoom exactly */}
+      {/* Navigation */}
       <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
         <Link to="/home" className="flex items-center space-x-3">
           <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
@@ -570,7 +625,7 @@ function TeamPage() {
         {/* Ownership Status */}
         {renderOwnershipStatus()}
         
-        {/* Team Stats - FIXED TO USE NEW DATABASE FIELDS */}
+        {/* Team Stats */}
         {teamInfo?.currentSeason && (
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
             <h3 className="flex items-center gap-2 text-xl font-bold text-white mb-6">
@@ -648,30 +703,22 @@ function TeamPage() {
               </div>
             </div>
 
-            {/* Next Game - Full Width if exists */}
-            {teamInfo.currentSeason.nextOpponent && (
-              <div className="mt-4 bg-white/5 rounded-xl p-4 text-center">
-                <div className="text-xs text-white/60 font-medium mb-2">Next Game</div>
-                <div className="text-lg font-bold text-white">
-                  {teamInfo.currentSeason.nextGameIsHome === false ? "@" : "vs"} {teamInfo.currentSeason.nextOpponent}
-                  {(teamInfo.currentSeason.nextOpponentSpreadDisplay || teamInfo.currentSeason.nextOpponentSpread) && 
-                  (teamInfo.currentSeason.nextOpponentSpreadDisplay || teamInfo.currentSeason.nextOpponentSpread) !== "TBD" && (
-                    <span className="text-white/60 font-normal"> 
-                      ({teamInfo.currentSeason.nextOpponentSpreadDisplay || teamInfo.currentSeason.nextOpponentSpread})
-                    </span>
-                  )}
-                </div>
-                {teamInfo.currentSeason.nextGameDate && (
-                  <div className="text-sm text-white/60 mt-1">
-                    {new Date(teamInfo.currentSeason.nextGameDate).toLocaleDateString('en-US', { 
-                      weekday: 'short', 
-                      month: 'short', 
-                      day: 'numeric' 
-                    })}
-                  </div>
-                )}
+            {/* Week X Game - Updated Section */}
+            <div className="mt-4 bg-white/5 rounded-xl p-4 text-center">
+              <div className="text-xs text-white/60 font-medium mb-2">Week {currentWeek} Game</div>
+              <div className="text-lg font-bold text-white">
+                {formatWeekGame(currentWeekGame, decodedTeamName)}
               </div>
-            )}
+              {currentWeekGame && currentWeekGame.date && (
+                <div className="text-sm text-white/60 mt-1">
+                  {new Date(currentWeekGame.date).toLocaleDateString('en-US', { 
+                    weekday: 'short', 
+                    month: 'short', 
+                    day: 'numeric' 
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -757,7 +804,6 @@ function TeamPage() {
                         </td>
                         <td className="px-4 py-3 text-center">
                           {(() => {
-                            // FIXED: Get fantasy points from team's weekly points, not game document
                             if (game.gameComplete && teamInfo?.currentSeason?.weeklyPoints) {
                               const weekKey = `week${game.week}`;
                               const weeklyPoints = teamInfo.currentSeason.weeklyPoints[weekKey];
@@ -899,7 +945,6 @@ function TeamPage() {
       {showSuccessModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full text-center shadow-2xl">
-            {/* Success Icon */}
             <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
               <div className="text-white text-2xl font-bold">✓</div>
             </div>
@@ -926,7 +971,6 @@ function TeamPage() {
       {showErrorModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full text-center shadow-2xl">
-            {/* Error Icon */}
             <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
               <div className="text-white text-2xl font-bold">!</div>
             </div>
