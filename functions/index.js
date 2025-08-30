@@ -3362,3 +3362,129 @@ exports.debugTeamCalculation = onRequest(async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+exports.updateArmySpread = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    
+    console.log('🎖️ Updating Army team spread specifically...');
+    
+    // Get current week from global config
+    const configSnap = await db.collection('config').doc('season').get();
+    if (!configSnap.exists) {
+      return res.status(404).json({ error: 'Season config not found' });
+    }
+    
+    const configData = configSnap.data();
+    const currentWeek = configData.currentWeek || 1;
+    
+    console.log(`📅 Current week from config: ${currentWeek}`);
+    
+    // Find Army's team document
+    const armySlug = slugTeam('Army'); // This should be 'army'
+    const armyRef = db.collection('teams').doc(armySlug);
+    
+    const armySnap = await armyRef.get();
+    if (!armySnap.exists) {
+      return res.status(404).json({ error: `Army team document not found with slug: ${armySlug}` });
+    }
+    
+    const armyData = armySnap.data();
+    const teamName = armyData.school || 'Army';
+    
+    console.log(`📋 Found Army team: ${teamName}`);
+    
+    // Look for Army's game in the current week specifically
+    const gamesSnap = await db
+      .collection('schedule').doc('2025')
+      .collection('weeks').doc(currentWeek.toString())
+      .collection('games')
+      .get();
+    
+    let currentWeekGame = null;
+    
+    gamesSnap.forEach(gameDoc => {
+      const game = gameDoc.data();
+      
+      // Check if Army is playing in this game
+      if (game.homeTeam === teamName || game.awayTeam === teamName) {
+        const isHome = game.homeTeam === teamName;
+        
+        // Calculate spread from Army's perspective
+        let armySpread = null;
+        let spreadDisplay = null;
+        
+        if (typeof game.homeSpread === 'number') {
+          armySpread = isHome ? game.homeSpread : -game.homeSpread;
+          
+          // Format display string
+          if (armySpread === 0) {
+            spreadDisplay = 'PICK';
+          } else if (armySpread > 0) {
+            spreadDisplay = `+${armySpread}`;
+          } else {
+            spreadDisplay = String(armySpread);
+          }
+        }
+        
+        currentWeekGame = {
+          opponent: isHome ? game.awayTeam : game.homeTeam,
+          date: game.date,
+          isHome: isHome,
+          spread: armySpread,
+          spreadDisplay: spreadDisplay,
+          venue: game.venue,
+          week: currentWeek,
+          gameComplete: game.gameComplete
+        };
+        
+        console.log(`🏈 Found Army's Week ${currentWeek} game: vs ${currentWeekGame.opponent} on ${currentWeekGame.date}`);
+        console.log(`📊 Army spread: ${armySpread} (display: ${spreadDisplay})`);
+        console.log(`🏁 Game complete: ${game.gameComplete}`);
+      }
+    });
+
+    if (!currentWeekGame) {
+      return res.status(404).json({ 
+        error: `No game found for Army in week ${currentWeek}`,
+        teamName: teamName,
+        currentWeek: currentWeek
+      });
+    }
+
+    // Update Army's team document with the current week game info
+    const updateData = {
+      'currentSeason.nextOpponent': currentWeekGame.opponent,
+      'currentSeason.nextGameDate': currentWeekGame.date,
+      'currentSeason.nextGameIsHome': currentWeekGame.isHome,
+      'currentSeason.nextOpponentSpread': currentWeekGame.spread,
+      'currentSeason.nextOpponentSpreadDisplay': currentWeekGame.spreadDisplay,
+      'currentSeason.updatedAt': admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await armyRef.update(updateData);
+    
+    console.log(`✅ Updated Army spread successfully for week ${currentWeek}`);
+
+    res.json({
+      success: true,
+      team: teamName,
+      currentWeek: currentWeek,
+      currentWeekGame: {
+        opponent: currentWeekGame.opponent,
+        date: currentWeekGame.date,
+        isHome: currentWeekGame.isHome,
+        spread: currentWeekGame.spread,
+        spreadDisplay: currentWeekGame.spreadDisplay,
+        venue: currentWeekGame.venue,
+        week: currentWeekGame.week,
+        gameComplete: currentWeekGame.gameComplete
+      },
+      message: `Army spread updated successfully for current week ${currentWeek}`
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating Army spread:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
