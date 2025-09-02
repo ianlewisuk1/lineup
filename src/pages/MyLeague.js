@@ -572,8 +572,8 @@ function MyLeague() {
       
       // Check if game is complete
       if (game.gameComplete) {
-        const teamScore = isHome ? game.finalScore?.home : game.finalScore?.away;
-        const opponentScore = isHome ? game.finalScore?.away : game.finalScore?.home;
+        const teamScore = isHome ? game.homeScore : game.awayScore;
+        const opponentScore = isHome ? game.awayScore : game.homeScore;
         
         if (teamScore !== null && teamScore !== undefined && 
             opponentScore !== null && opponentScore !== undefined) {
@@ -581,7 +581,7 @@ function MyLeague() {
           const result = won ? "W" : "L";
           
           // Get spread for completed games
-          const spread = game.homeSpread || game.spread || "";
+          const spread = game.homeSpread || "";
           const spreadDisplay = spread ? ` (${spread})` : "";
           
           return {
@@ -593,7 +593,7 @@ function MyLeague() {
       }
       
       // Game is upcoming
-      const spread = game.homeSpread || game.spread || "TBD";
+      const spread = game.homeSpread || "TBD";
       const spreadDisplay = spread !== "TBD" ? ` (${spread})` : "";
       
       return {
@@ -1333,12 +1333,12 @@ function MyLeague() {
                             <span className="text-xs text-green-300 font-medium">LIVE</span>
                           </div>
                         )}
-                        {/* Double Play Indicator */}
+                        {/* Double Play Indicator
                         {member.doublePlay && (
                           <div className="flex items-center gap-1 bg-purple-500/20 px-2 py-1 rounded-full border border-purple-400/30">
                             <span className="text-xs text-purple-300 font-medium">6 GAMES COUNTED</span>
                           </div>
-                        )}
+                        )} */}
                       </div>
                       <p className="text-white/70">
                         {member.firstName || "Unknown Manager"}
@@ -1353,15 +1353,15 @@ function MyLeague() {
                       <div className="text-xs text-white/60 mt-1">
                         {member.weeklyPoints ?? 0} Pts in Wk {currentWeek}
                       </div>
-                      {/* Bonus Points Display */}
-                      {member.bonusPoints !== undefined && member.bonusPoints !== null && (
-                        <div className="text-xs text-purple-400 mt-1 font-medium">
-                          {member.bonusPoints > 0 ? '+' : ''}{member.bonusPoints} from Wk {currentWeek} double play
-                        </div>
-                      )}
                       <div className="text-xs text-white/60 mt-1">
                         {member.freeAgentMoves ?? 0} FA moves
                       </div>
+                                            {/* Bonus Points Display */}
+                      {member.bonusPoints !== undefined && member.bonusPoints !== null && (
+                        <div className="text-xs text-purple-400 mt-1 font-medium">
+                          {member.bonusPoints > 0 ? '+' : ''}{member.bonusPoints} from double play
+                        </div>
+                      )}
                     </div>
                   </div>
 

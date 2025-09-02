@@ -394,7 +394,6 @@ const TEAM_ALIASES = {
   "hawaii": 'hawaii',
   "miami-oh": 'miami-oh',          // ← CHANGED: map to actual doc ID
   "miami (oh)": 'miami-oh',        // ← CHANGED: map to actual doc ID  
-  "ucf": 'central-florida',
   "umass": 'massachusetts',
 
   // Texas A&M variations -> your doc id
