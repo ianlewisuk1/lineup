@@ -1354,9 +1354,9 @@ function MyLeague() {
                         {member.weeklyPoints ?? 0} Pts in Wk {currentWeek}
                       </div>
                       {/* Bonus Points Display */}
-                      {member.bonusPoints && member.bonusPoints > 0 && (
+                      {member.bonusPoints !== undefined && member.bonusPoints !== null && (
                         <div className="text-xs text-purple-400 mt-1 font-medium">
-                          +{member.bonusPoints} from Wk {currentWeek} double play
+                          {member.bonusPoints > 0 ? '+' : ''}{member.bonusPoints} from Wk {currentWeek} double play
                         </div>
                       )}
                       <div className="text-xs text-white/60 mt-1">
