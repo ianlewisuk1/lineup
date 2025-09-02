@@ -528,7 +528,7 @@
     for (const game of games) {
       if (!game.homeTeam || !game.awayTeam || !game.startDate) continue;
       
-      const line = game.linesByProvider?.['consensus'] || 
+      let line = game.linesByProvider?.['consensus'] || 
                   Object.values(game.linesByProvider || {}).find(Boolean) || null;
       
       if (!line) {
@@ -880,10 +880,10 @@
   }
 
   /* -------------------------------------------------------------------------- */
-  /*                             HTTP: manual ingest                             */
+  /*                        Scheduler: daily automatic ingest                    */
   /* -------------------------------------------------------------------------- */
 
-  exports.cfbIngestLinesScheduled = onSchedule(
+    exports.cfbIngestLinesScheduled = onSchedule(
     { schedule: '*/30 * * * *', timeZone: 'America/New_York' }, // Every 30 minutes
     async () => {
       try {
@@ -927,40 +927,6 @@
         return null;
       } catch (e) {
         console.error('❌ cfbIngestLinesScheduled error:', e);
-        return null;
-      }
-    }
-  );
-
-  /* -------------------------------------------------------------------------- */
-  /*                        Scheduler: daily automatic ingest                    */
-  /* -------------------------------------------------------------------------- */
-
-  exports.cfbIngestLinesScheduled = onSchedule(
-    { schedule: '10 7,19 * * *', timeZone: 'America/New_York' },
-    async () => {
-      try {
-        const key = CFB_KEY.value();
-
-        // TODO: make these dynamic if you store current year/week in Firestore
-        const year = 2025;
-        const week = 1;
-        const seasonType = 'regular';
-        const book = 'consensus';
-
-        const result = await ingestLines({ 
-          year, 
-          week, 
-          seasonType, 
-          book, 
-          updateTeams: true, 
-          updateSchedule: true,  // Enable authoritative schedule management
-          key 
-        });
-        console.log('Scheduled ingest result:', result);
-        return null;
-      } catch (e) {
-        console.error('cfbIngestLinesScheduled error:', e);
         return null;
       }
     }
@@ -4254,5 +4220,68 @@ exports.fixCurrentWeekState = onRequest(async (req, res) => {
     
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+exports.testCFBDAPI = onRequest(async (req, res) => {
+  try {
+    const key = CFB_KEY.value();
+    const week = req.query.week || 2;
+    
+    console.log(`Testing CFBD API for Week ${week}...`);
+    
+    const url = `https://api.collegefootballdata.com/lines?year=2025&week=${week}&seasonType=regular&book=consensus`;
+    
+    const response = await fetch(url, { 
+      headers: { Authorization: `Bearer ${key}` } 
+    });
+    
+    const responseText = await response.text();
+    
+    res.json({
+      success: response.ok,
+      status: response.status,
+      url: url,
+      dataLength: responseText.length,
+      hasData: responseText.length > 2, // More than just "[]"
+      rawResponse: responseText.substring(0, 500) // First 500 chars
+    });
+    
+  } catch (error) {
+    res.status(500).json({ 
+      error: error.message,
+      success: false 
+    });
+  }
+});
+
+exports.testWeek2Ingestion = onRequest(async (req, res) => {
+  try {
+    const key = CFB_KEY.value();
+    
+    console.log('Testing Week 2 ingestion...');
+    
+    const result = await ingestLines({ 
+      year: 2025, 
+      week: 2, 
+      seasonType: 'regular', 
+      book: 'consensus', 
+      updateTeams: true, 
+      updateSchedule: true,
+      key 
+    });
+    
+    res.json({
+      success: true,
+      message: 'Week 2 ingestion test complete',
+      result
+    });
+    
+  } catch (error) {
+    console.error('Week 2 ingestion failed:', error);
+    res.status(500).json({ 
+      error: error.message,
+      stack: error.stack
+    });
   }
 });
