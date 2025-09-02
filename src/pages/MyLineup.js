@@ -269,8 +269,8 @@ function MyLineup() {
                 date: gameData.date,
                 gameComplete: gameData.gameComplete || false,
                 // NEW: Add score data for completed games
-                homeScore: gameData.homeScore || null,
-                awayScore: gameData.awayScore || null,
+                homeScore: gameData.homeScore ?? null,
+                awayScore: gameData.awayScore ?? null,
                 // NEW: Add spread data
                 homeSpread: gameData.homeSpread || null,
                 venue: gameData.venue || null

@@ -18,6 +18,57 @@ function MyLeague() {
   const [loading, setLoading] = useState(true);
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [showScoringModal, setShowScoringModal] = useState(false);
+  
+  // NEW: Schedule data for live game status
+  const [scheduleData, setScheduleData] = useState({});
+  const [scheduleLoading, setScheduleLoading] = useState(true);
+
+  // NEW: Function to fetch schedule data for live game status
+  const fetchScheduleData = async (weekNum) => {
+    try {
+      setScheduleLoading(true);
+      
+      // Fetch current week's games
+      const gamesSnap = await getDocs(
+        collection(db, "schedule", "2025", "weeks", weekNum.toString(), "games")
+      );
+      
+      const gamesByTeam = {};
+      
+      gamesSnap.forEach(doc => {
+        const game = doc.data();
+        if (game.homeTeam && game.awayTeam) {
+          // Store game data for both teams - using exact team names from schedule
+          gamesByTeam[game.homeTeam] = {
+            opponent: game.awayTeam,
+            isHome: true,
+            gameStatus: game.gameStatus || 'scheduled',
+            gameComplete: game.gameComplete || false,
+            homeScore: game.homeScore || 0,
+            awayScore: game.awayScore || 0,
+            hasLiveGame: game.gameStatus === 'in_progress'
+          };
+          
+          gamesByTeam[game.awayTeam] = {
+            opponent: game.homeTeam,
+            isHome: false,
+            gameStatus: game.gameStatus || 'scheduled',
+            gameComplete: game.gameComplete || false,
+            homeScore: game.homeScore || 0,
+            awayScore: game.awayScore || 0,
+            hasLiveGame: game.gameStatus === 'in_progress'
+          };
+        }
+      });
+      
+      setScheduleData(gamesByTeam);
+      console.log('Schedule data loaded:', Object.keys(gamesByTeam));
+    } catch (error) {
+      console.error("Error fetching schedule data:", error);
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -34,8 +85,27 @@ function MyLeague() {
 
         // Fetch current week from global config
         const configDoc = await getDoc(doc(db, "config", "season"));
+        let weekData = "Preseason";
         if (configDoc.exists()) {
-          setCurrentWeek(configDoc.data().currentWeek || "Preseason");
+          weekData = configDoc.data().currentWeek || "Preseason";
+          setCurrentWeek(weekData);
+          
+          // NEW: Fetch schedule data for current week
+          if (weekData !== "Preseason") {
+            const getCurrentWeekNumber = () => {
+              if (typeof weekData === 'number') return weekData;
+              if (!weekData || typeof weekData !== 'string') return 1;
+              const weekMatch = weekData.match(/\d+/);
+              return weekMatch ? parseInt(weekMatch[0]) : 1;
+            };
+            
+            const weekNum = getCurrentWeekNumber();
+            await fetchScheduleData(weekNum);
+          } else {
+            setScheduleLoading(false);
+          }
+        } else {
+          setScheduleLoading(false);
         }
 
         // Fetch all teams first to get team logos and current season data
@@ -109,13 +179,14 @@ function MyLeague() {
       } catch (error) {
         console.error("Error fetching data:", error);
         setLoading(false);
+        setScheduleLoading(false);
       }
     };
 
     fetchData();
   }, [leagueId]);
 
-// Team logo component with enhanced live game display
+// FIXED: Team logo component with schedule-based live game display
   const TeamLogo = ({ teamName, size = 32, clickable = false }) => {
 
     const normalize = (name) =>
@@ -127,7 +198,9 @@ function MyLeague() {
 
     const team = allTeams[normalize(teamName)];
     const logoUrl = team?.logo;
-    const [isFlipped, setIsFlipped] = useState(false);
+    
+    // NEW: Get schedule data for this team (direct lookup by team name)
+    const scheduleGame = scheduleData[teamName];
 
     const handleClick = () => {
       if (clickable && teamName) {
@@ -167,14 +240,57 @@ function MyLeague() {
     };
     const currentWeekNum = getCurrentWeekNumber();
     
-    // Enhanced game state detection
+    // FIXED: Enhanced game state detection using schedule data first
     const getTeamDisplayState = () => {
+      // First check schedule data (most reliable for current week)
+      if (scheduleGame && !scheduleLoading) {
+        const gameStatus = scheduleGame.gameStatus;
+        const gameComplete = scheduleGame.gameComplete;
+        const hasLiveGame = scheduleGame.hasLiveGame;
+        
+        // Get weekly points from team document (still use this for display)
+        const weeklyPoints = team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`] || 0;
+        
+        console.log(`${teamName} schedule status:`, { gameStatus, gameComplete, hasLiveGame, weeklyPoints });
+        
+        // Determine status based on schedule data
+        if (gameComplete === true || gameStatus === 'final') {
+          return { 
+            display: weeklyPoints, 
+            state: "final", 
+            color: "#3b82f6",
+            bgColor: "#2563eb",
+            shouldPulse: false
+          };
+        }
+        
+        // Game is currently in progress (based on schedule)
+        if (gameStatus === 'in_progress' || hasLiveGame) {
+          return { 
+            display: weeklyPoints, 
+            state: "live", 
+            color: "#10b981",
+            bgColor: "#059669",
+            shouldPulse: true
+          };
+        }
+        
+        // Game hasn't started yet but is scheduled
+        return { 
+          display: "?", 
+          state: "unplayed", 
+          color: "#6b7280",
+          bgColor: "#374151",
+          shouldPulse: false
+        };
+      }
+      
+      // Fallback to team document if no schedule data (shouldn't happen for current week)
       const weeklyPoints = team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`] || 0;
       const gameComplete = team?.currentSeason?.gameComplete;
       const gameStatus = team?.currentSeason?.gameStatus;
-      const hasLiveGame = team?.currentSeason?.hasLiveGame; // Add this line
+      const hasLiveGame = team?.currentSeason?.hasLiveGame;
       
-      // Check if game is complete first, before checking points
       if (gameComplete === true || gameStatus === 'final') {
         return { 
           display: weeklyPoints, 
@@ -185,7 +301,6 @@ function MyLeague() {
         };
       }
       
-      // Game is currently in progress
       if (gameStatus === 'in_progress' || hasLiveGame || (weeklyPoints > 0 && gameComplete === false)) {
         return { 
           display: weeklyPoints, 
@@ -1057,7 +1172,7 @@ function MyLeague() {
     }
   };
 
-  // Helper function to check if a member has live games
+  // FIXED: Helper function to check if a member has live games using schedule data
   const getMemberLiveStatus = (member) => {
     const lineup = member.lineup || {};
     const starters = Array.isArray(lineup.starters) ? lineup.starters : [];
@@ -1066,15 +1181,22 @@ function MyLeague() {
       typeof team === 'string' && team.trim() !== ''
     );
 
-    const normalize = (name) =>
-      name
-        ?.toLowerCase()
-        .replace(/\s+/g, "-")
-        .replace(/&/g, "-")
-        .replace(/[^a-z0-9\-]/g, "");
-
-    // Check if any owned teams have live games
+    // NEW: Check schedule data first, then fallback to team documents
     return allTeamsOwned.some(teamName => {
+      // First check schedule data (more reliable)
+      const scheduleGame = scheduleData[teamName];
+      if (scheduleGame && !scheduleLoading) {
+        return scheduleGame.gameStatus === 'in_progress' || scheduleGame.hasLiveGame;
+      }
+      
+      // Fallback to team document
+      const normalize = (name) =>
+        name
+          ?.toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/&/g, "-")
+          .replace(/[^a-z0-9\-]/g, "");
+
       const team = allTeams[normalize(teamName)];
       return team?.currentSeason?.gameStatus === 'in_progress' || team?.currentSeason?.hasLiveGame;
     });

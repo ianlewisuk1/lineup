@@ -48,6 +48,10 @@ function FreeAgents() {
   const [sortConfig, setSortConfig] = useState({ key: "school", direction: "asc" });
   const [searchQuery, setSearchQuery] = useState("");
   
+  // ADDED: Free agency lock state
+  const [faLocked, setFaLocked] = useState(false);
+  const [configLoading, setConfigLoading] = useState(true);
+  
   // Custom notification modal states
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
@@ -89,6 +93,28 @@ function FreeAgents() {
     setModalMessage("");
   };
 
+  // ADDED: Function to fetch config data and check faLocked status
+  const fetchConfigData = async () => {
+    try {
+      const configRef = doc(db, "config", "season");
+      const configSnap = await getDoc(configRef);
+      
+      if (configSnap.exists()) {
+        const configData = configSnap.data();
+        setFaLocked(configData.faLocked || false);
+      } else {
+        // If config doesn't exist, default to unlocked
+        setFaLocked(false);
+      }
+    } catch (error) {
+      console.error("Error fetching config:", error);
+      // Default to unlocked on error
+      setFaLocked(false);
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
     if (window.confirm("Are you sure you want to log out?")) {
       try {
@@ -100,8 +126,12 @@ function FreeAgents() {
     }
   };
 
+  // MODIFIED: Added config fetch to initial useEffect
   useEffect(() => {
     const fetchData = async () => {
+      // Fetch config data first
+      await fetchConfigData();
+      
       const teamsSnap = await getDocs(collection(db, "teams"));
       const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
 
@@ -190,7 +220,17 @@ function FreeAgents() {
     navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
   };
 
+  // MODIFIED: Added free agency lock check
   const handleAddTeam = (team) => {
+    // Check if free agency is locked
+    if (faLocked) {
+      showError(
+        "Free Agency Closed", 
+        "Free agent moves are currently locked. Please try again later when the window reopens."
+      );
+      return;
+    }
+
     const user = auth.currentUser;
     if (!user) return;
 
@@ -206,6 +246,17 @@ function FreeAgents() {
 
   const confirmAddTeam = async () => {
     if (!teamToAdd) return;
+    
+    // Double-check lock status before proceeding
+    if (faLocked) {
+      showError(
+        "Free Agency Closed", 
+        "Free agent moves are currently locked. Please try again later when the window reopens."
+      );
+      setShowAddModal(false);
+      setTeamToAdd(null);
+      return;
+    }
     
     try {
       const user = auth.currentUser;
@@ -298,6 +349,18 @@ function FreeAgents() {
 
   const handleConfirmSwap = async () => {
     if (!selectedDropTeam || !pendingAddTeam) return;
+    
+    // Double-check lock status before proceeding
+    if (faLocked) {
+      showError(
+        "Free Agency Closed", 
+        "Free agent moves are currently locked. Please try again later when the window reopens."
+      );
+      setShowSwapUI(false);
+      setPendingAddTeam("");
+      setSelectedDropTeam("");
+      return;
+    }
     
     try {
       const user = auth.currentUser;
@@ -505,7 +568,7 @@ function FreeAgents() {
     return `${prefix} ${season.nextOpponent} (${spread})${dateStr}`;
   };
 
-  // ENHANCED: Team Card Component with proper data display
+  // MODIFIED: Team Card Component with lock status check for Add button
   const TeamCard = ({ team }) => {
     if (!team) return null;
 
@@ -569,10 +632,18 @@ function FreeAgents() {
             </div>
           </div>
 
-          {/* Add Button */}
+          {/* MODIFIED: Add Button with lock status visual indication */}
           <button 
             onClick={() => handleAddTeam(team)}
-            className="w-7 h-7 rounded-full bg-green-500 hover:bg-green-600 border-none text-white cursor-pointer flex items-center justify-center shadow-lg transition-all duration-200 hover:scale-105 flex-shrink-0"
+            disabled={faLocked}
+            className={`
+              w-7 h-7 rounded-full border-none text-white cursor-pointer flex items-center justify-center shadow-lg transition-all duration-200 flex-shrink-0
+              ${faLocked 
+                ? 'bg-gray-500 cursor-not-allowed opacity-50' 
+                : 'bg-green-500 hover:bg-green-600 hover:scale-105'
+              }
+            `}
+            title={faLocked ? "Free agency is currently locked" : "Add team to your roster"}
           >
             <Plus size={12} />
           </button>
@@ -630,7 +701,8 @@ function FreeAgents() {
     );
   };
 
-  if (loading) {
+  // MODIFIED: Updated loading check to include config loading
+  if (loading || configLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
         {/* Animated Background Elements */}
@@ -696,6 +768,14 @@ function FreeAgents() {
           <p className="text-lg sm:text-xl text-white/80">
             {sortedTeams.length} teams available
           </p>
+          {/* ADDED: Free agency status indicator */}
+          {faLocked && (
+            <div className="mt-4 p-3 bg-red-500/20 border border-red-500/40 rounded-xl">
+              <p className="text-red-300 font-medium">
+                🔒 Free agency is currently locked
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Controls Section */}
