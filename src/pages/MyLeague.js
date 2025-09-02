@@ -171,21 +171,21 @@ function MyLeague() {
     const getTeamDisplayState = () => {
       const weeklyPoints = team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`] || 0;
       const gameComplete = team?.currentSeason?.gameComplete;
-      const gameStatus = team?.currentSeason?.gameStatus; // 'in_progress', 'scheduled', 'final'
-      const hasLiveGame = team?.currentSeason?.hasLiveGame; // New field from live scoring system
+      const gameStatus = team?.currentSeason?.gameStatus;
+      const hasLiveGame = team?.currentSeason?.hasLiveGame; // Add this line
       
-      // No points yet - game hasn't started
-      if (weeklyPoints === 0) {
+      // Check if game is complete first, before checking points
+      if (gameComplete === true || gameStatus === 'final') {
         return { 
-          display: "?", 
-          state: "unplayed", 
-          color: "#6b7280",
-          bgColor: "#374151",
+          display: weeklyPoints, 
+          state: "final", 
+          color: "#3b82f6",
+          bgColor: "#2563eb",
           shouldPulse: false
         };
       }
       
-      // Game is currently in progress - prioritize the live detection logic
+      // Game is currently in progress
       if (gameStatus === 'in_progress' || hasLiveGame || (weeklyPoints > 0 && gameComplete === false)) {
         return { 
           display: weeklyPoints, 
@@ -196,24 +196,13 @@ function MyLeague() {
         };
       }
       
-      // Game is complete
-      if (gameComplete === true) {
-        return { 
-          display: weeklyPoints, 
-          state: "final", 
-          color: "#3b82f6",
-          bgColor: "#2563eb",
-          shouldPulse: false
-        };
-      }
-      
-      // Fallback for edge cases - treat as live if we have points but no clear completion status
+      // Game hasn't started yet
       return { 
-        display: weeklyPoints, 
-        state: "live", 
-        color: "#10b981",
-        bgColor: "#059669",
-        shouldPulse: true
+        display: "?", 
+        state: "unplayed", 
+        color: "#6b7280",
+        bgColor: "#374151",
+        shouldPulse: false
       };
     };
 
@@ -1344,6 +1333,12 @@ function MyLeague() {
                             <span className="text-xs text-green-300 font-medium">LIVE</span>
                           </div>
                         )}
+                        {/* Double Play Indicator */}
+                        {member.doublePlay && (
+                          <div className="flex items-center gap-1 bg-purple-500/20 px-2 py-1 rounded-full border border-purple-400/30">
+                            <span className="text-xs text-purple-300 font-medium">6 GAMES COUNTED</span>
+                          </div>
+                        )}
                       </div>
                       <p className="text-white/70">
                         {member.firstName || "Unknown Manager"}
@@ -1358,6 +1353,12 @@ function MyLeague() {
                       <div className="text-xs text-white/60 mt-1">
                         {member.weeklyPoints ?? 0} Pts in Wk {currentWeek}
                       </div>
+                      {/* Bonus Points Display */}
+                      {member.bonusPoints && member.bonusPoints > 0 && (
+                        <div className="text-xs text-purple-400 mt-1 font-medium">
+                          +{member.bonusPoints} from Wk {currentWeek} double play
+                        </div>
+                      )}
                       <div className="text-xs text-white/60 mt-1">
                         {member.freeAgentMoves ?? 0} FA moves
                       </div>

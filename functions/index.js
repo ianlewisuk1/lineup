@@ -394,11 +394,8 @@ const TEAM_ALIASES = {
   "hawaii": 'hawaii',
   "miami-oh": 'miami-oh',          // ← CHANGED: map to actual doc ID
   "miami (oh)": 'miami-oh',        // ← CHANGED: map to actual doc ID  
-  "utsa": 'texas-san-antonio',
   "ucf": 'central-florida',
   "umass": 'massachusetts',
-  "ole-miss": 'mississippi',
-  "smu": 'southern-methodist',
 
   // Texas A&M variations -> your doc id
   "texas-a-and-m": "texas-a-m",
@@ -2156,6 +2153,13 @@ async function recalculateAllMemberPoints(db, currentWeek) {
           }
         }
         
+        // ADD BONUS POINTS TO SEASON TOTAL
+        const bonusPoints = memberData.bonusPoints || 0;
+        if (bonusPoints !== 0) {
+          memberSeasonTotal += bonusPoints;
+          console.log(`  ${bonusPoints > 0 ? '🎁 Added' : '⚠️ Deducted'} ${Math.abs(bonusPoints)} ${bonusPoints > 0 ? 'bonus' : 'penalty'} points to member ${memberDoc.id}`);
+        }
+        
         // Queue member update
         memberUpdates.push({
           ref: memberDoc.ref,
@@ -2163,7 +2167,7 @@ async function recalculateAllMemberPoints(db, currentWeek) {
           weeklyPoints: memberCurrentWeekPoints
         });
         
-        console.log(`📊 Member ${memberDoc.id} FINAL: ${memberSeasonTotal} season pts (${starterTeams.length} starters), ${memberCurrentWeekPoints} week pts`);
+        console.log(`📊 Member ${memberDoc.id} FINAL: ${memberSeasonTotal} season pts (${starterTeams.length} starters${bonusPoints > 0 ? ` + ${bonusPoints} bonus` : ''}), ${memberCurrentWeekPoints} week pts`);
       }
       
       // Batch update all members in this league
@@ -3488,3 +3492,466 @@ exports.updateArmySpread = onRequest(async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+/**
+ * Calculate team records from schedule data and update team documents
+ * Works purely from Firestore schedule data without relying on external APIs
+ */
+exports.updateTeamRecordsFromSchedule = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    const week = parseInt(req.query.week);
+    const year = req.query.year || '2025';
+    
+    if (!week) {
+      return res.status(400).json({ error: 'Week parameter is required' });
+    }
+    
+    console.log(`Updating team records from schedule data for week ${week}...`);
+    
+    // Get all completed games for the specified week
+    const gamesSnap = await db
+      .collection('schedule').doc(year)
+      .collection('weeks').doc(week.toString())
+      .collection('games')
+      .where('gameComplete', '==', true)
+      .get();
+    
+    if (gamesSnap.empty) {
+      return res.json({
+        success: true,
+        message: `No completed games found for week ${week}`,
+        week,
+        teamsUpdated: 0
+      });
+    }
+    
+    // Collect team results
+    const teamResults = new Map();
+    const processedGames = [];
+    
+    gamesSnap.forEach(gameDoc => {
+      const game = gameDoc.data();
+      
+      // Validate required fields
+      if (!game.homeTeam || !game.awayTeam || 
+          typeof game.homeScore !== 'number' || 
+          typeof game.awayScore !== 'number') {
+        console.log(`Skipping incomplete game: ${game.homeTeam} vs ${game.awayTeam}`);
+        return;
+      }
+      
+      const homeWon = game.homeScore > game.awayScore;
+      const awayWon = game.awayScore > game.homeScore;
+      const isTie = game.homeScore === game.awayScore;
+      
+      // Initialize team records if not exists
+      if (!teamResults.has(game.homeTeam)) {
+        teamResults.set(game.homeTeam, {
+          wins: 0,
+          losses: 0,
+          ties: 0,
+          confWins: 0,
+          confLosses: 0,
+          confTies: 0,
+          gamesPlayed: 0,
+          totalPointsFor: 0,
+          totalPointsAgainst: 0,
+          conferenceGames: 0
+        });
+      }
+      
+      if (!teamResults.has(game.awayTeam)) {
+        teamResults.set(game.awayTeam, {
+          wins: 0,
+          losses: 0,
+          ties: 0,
+          confWins: 0,
+          confLosses: 0,
+          confTies: 0,
+          gamesPlayed: 0,
+          totalPointsFor: 0,
+          totalPointsAgainst: 0,
+          conferenceGames: 0
+        });
+      }
+      
+      const homeStats = teamResults.get(game.homeTeam);
+      const awayStats = teamResults.get(game.awayTeam);
+      
+      // Update game counts and points
+      homeStats.gamesPlayed++;
+      awayStats.gamesPlayed++;
+      homeStats.totalPointsFor += game.homeScore;
+      homeStats.totalPointsAgainst += game.awayScore;
+      awayStats.totalPointsFor += game.awayScore;
+      awayStats.totalPointsAgainst += game.homeScore;
+      
+      // Check if it's a conference game
+      const isConferenceGame = game.conferenceGame === true;
+      
+      if (isConferenceGame) {
+        homeStats.conferenceGames++;
+        awayStats.conferenceGames++;
+      }
+      
+      // Update win/loss records
+      if (isTie) {
+        homeStats.ties++;
+        awayStats.ties++;
+        if (isConferenceGame) {
+          homeStats.confTies++;
+          awayStats.confTies++;
+        }
+      } else if (homeWon) {
+        homeStats.wins++;
+        awayStats.losses++;
+        if (isConferenceGame) {
+          homeStats.confWins++;
+          awayStats.confLosses++;
+        }
+      } else {
+        homeStats.losses++;
+        awayStats.wins++;
+        if (isConferenceGame) {
+          homeStats.confLosses++;
+          awayStats.confWins++;
+        }
+      }
+      
+      processedGames.push({
+        homeTeam: game.homeTeam,
+        awayTeam: game.awayTeam,
+        score: `${game.homeScore}-${game.awayScore}`,
+        winner: isTie ? 'TIE' : (homeWon ? game.homeTeam : game.awayTeam),
+        conferenceGame: isConferenceGame
+      });
+    });
+    
+    console.log(`Processed ${processedGames.length} completed games`);
+    console.log(`Updating ${teamResults.size} teams`);
+    
+    // Update team documents
+    const bw = new BatchWriter(db);
+    let teamsUpdated = 0;
+    
+    for (const [teamName, stats] of teamResults) {
+      try {
+        const slug = slugTeam(teamName);
+        const teamRef = db.collection('teams').doc(slug);
+        
+        // Check if team document exists
+        const teamSnap = await teamRef.get();
+        if (!teamSnap.exists) {
+          console.warn(`Team document not found: ${teamName} (${slug})`);
+          continue;
+        }
+        
+        // Format records
+        const overallRecord = stats.ties > 0 
+          ? `${stats.wins}-${stats.losses}-${stats.ties}`
+          : `${stats.wins}-${stats.losses}`;
+          
+        const confRecord = stats.conferenceGames > 0
+          ? (stats.confTies > 0 
+             ? `${stats.confWins}-${stats.confLosses}-${stats.confTies}`
+             : `${stats.confWins}-${stats.confLosses}`)
+          : '0-0';
+        
+        // Calculate averages
+        const avgPointsFor = stats.gamesPlayed > 0 
+          ? (stats.totalPointsFor / stats.gamesPlayed).toFixed(1)
+          : '0.0';
+          
+        const avgPointsAgainst = stats.gamesPlayed > 0 
+          ? (stats.totalPointsAgainst / stats.gamesPlayed).toFixed(1)
+          : '0.0';
+        
+        // Update team document
+        const updateData = {
+          // Win-loss records
+          'currentSeason.record': overallRecord,
+          'currentSeason.confRecord': confRecord,
+          'currentSeason.wins': stats.wins,
+          'currentSeason.losses': stats.losses,
+          'currentSeason.ties': stats.ties,
+          
+          // Conference records
+          'currentSeason.confWins': stats.confWins,
+          'currentSeason.confLosses': stats.confLosses,
+          'currentSeason.confTies': stats.confTies,
+          
+          // Game statistics
+          'currentSeason.gamesPlayed': stats.gamesPlayed,
+          'currentSeason.totalPointsFor': stats.totalPointsFor,
+          'currentSeason.totalPointsAgainst': stats.totalPointsAgainst,
+          
+          // Averages
+          'currentSeason.avgPointsFor': avgPointsFor,
+          'currentSeason.avgPointsAgainst': avgPointsAgainst,
+          
+          // Update timestamp
+          'currentSeason.recordLastUpdated': admin.firestore.FieldValue.serverTimestamp()
+        };
+        
+        bw.update(teamRef, updateData);
+        teamsUpdated++;
+        
+        console.log(`${teamName}: ${overallRecord} overall, ${confRecord} conf, ${avgPointsFor} PPG`);
+        
+      } catch (error) {
+        console.error(`Error updating team ${teamName}:`, error);
+      }
+    }
+    
+    await bw.commit();
+    
+    console.log(`Successfully updated ${teamsUpdated} team records`);
+    
+    res.json({
+      success: true,
+      message: `Updated records for ${teamsUpdated} teams from ${processedGames.length} completed games`,
+      week,
+      year,
+      teamsUpdated,
+      gamesProcessed: processedGames.length,
+      teamResults: Object.fromEntries(
+        Array.from(teamResults.entries()).map(([team, stats]) => [
+          team,
+          {
+            record: stats.ties > 0 ? `${stats.wins}-${stats.losses}-${stats.ties}` : `${stats.wins}-${stats.losses}`,
+            confRecord: stats.conferenceGames > 0 
+              ? (stats.confTies > 0 ? `${stats.confWins}-${stats.confLosses}-${stats.confTies}` : `${stats.confWins}-${stats.confLosses}`)
+              : '0-0',
+            avgPointsFor: stats.gamesPlayed > 0 ? (stats.totalPointsFor / stats.gamesPlayed).toFixed(1) : '0.0'
+          }
+        ])
+      )
+    });
+    
+  } catch (error) {
+    console.error('Error updating team records from schedule:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Scheduled function to update team records from completed games
+ * Runs daily at 8 AM ET to catch any games that completed overnight
+ */
+exports.updateTeamRecordsScheduled = onSchedule(
+  { 
+    schedule: '0 8 * * *',           // 8 AM daily
+    timeZone: 'America/New_York' 
+  },
+  async () => {
+    try {
+      console.log('Starting scheduled team records update...');
+      
+      const db = admin.firestore();
+      
+      // Get current week from season config
+      const seasonSnap = await db.collection('config').doc('season').get();
+      if (!seasonSnap.exists) {
+        console.log('No season config found');
+        return;
+      }
+      
+      const seasonData = seasonSnap.data();
+      const currentWeek = seasonData.currentWeek || 1;
+      
+      // Parse week number if it's a string like "Week 1"
+      const getCurrentWeekNumber = () => {
+        if (typeof currentWeek === 'number') return currentWeek;
+        if (!currentWeek || typeof currentWeek !== 'string') return 1;
+        const weekMatch = currentWeek.match(/\d+/);
+        return weekMatch ? parseInt(weekMatch[0]) : 1;
+      };
+      
+      const weekNum = getCurrentWeekNumber();
+      console.log(`Updating records for week ${weekNum}`);
+      
+      // Run the same logic as the HTTP function
+      const year = '2025';
+      
+      // Get all completed games for the current week
+      const gamesSnap = await db
+        .collection('schedule').doc(year)
+        .collection('weeks').doc(weekNum.toString())
+        .collection('games')
+        .where('gameComplete', '==', true)
+        .get();
+      
+      if (gamesSnap.empty) {
+        console.log(`No completed games found for week ${weekNum}`);
+        return;
+      }
+      
+      // Use the same team results calculation logic
+      const teamResults = new Map();
+      const processedGames = [];
+      
+      gamesSnap.forEach(gameDoc => {
+        const game = gameDoc.data();
+        
+        if (!game.homeTeam || !game.awayTeam || 
+            typeof game.homeScore !== 'number' || 
+            typeof game.awayScore !== 'number') {
+          return;
+        }
+        
+        const homeWon = game.homeScore > game.awayScore;
+        const awayWon = game.awayScore > game.homeScore;
+        const isTie = game.homeScore === game.awayScore;
+        
+        // Initialize team records
+        [game.homeTeam, game.awayTeam].forEach(teamName => {
+          if (!teamResults.has(teamName)) {
+            teamResults.set(teamName, {
+              wins: 0, losses: 0, ties: 0,
+              confWins: 0, confLosses: 0, confTies: 0,
+              gamesPlayed: 0, totalPointsFor: 0, totalPointsAgainst: 0,
+              conferenceGames: 0
+            });
+          }
+        });
+        
+        const homeStats = teamResults.get(game.homeTeam);
+        const awayStats = teamResults.get(game.awayTeam);
+        
+        // Update stats
+        homeStats.gamesPlayed++;
+        awayStats.gamesPlayed++;
+        homeStats.totalPointsFor += game.homeScore;
+        homeStats.totalPointsAgainst += game.awayScore;
+        awayStats.totalPointsFor += game.awayScore;
+        awayStats.totalPointsAgainst += game.homeScore;
+        
+        const isConferenceGame = game.conferenceGame === true;
+        if (isConferenceGame) {
+          homeStats.conferenceGames++;
+          awayStats.conferenceGames++;
+        }
+        
+        // Update records
+        if (isTie) {
+          homeStats.ties++;
+          awayStats.ties++;
+          if (isConferenceGame) {
+            homeStats.confTies++;
+            awayStats.confTies++;
+          }
+        } else if (homeWon) {
+          homeStats.wins++;
+          awayStats.losses++;
+          if (isConferenceGame) {
+            homeStats.confWins++;
+            awayStats.confLosses++;
+          }
+        } else {
+          homeStats.losses++;
+          awayStats.wins++;
+          if (isConferenceGame) {
+            homeStats.confLosses++;
+            awayStats.confWins++;
+          }
+        }
+        
+        processedGames.push({
+          homeTeam: game.homeTeam,
+          awayTeam: game.awayTeam,
+          score: `${game.homeScore}-${game.awayScore}`
+        });
+      });
+      
+      // Update team documents
+      const bw = new BatchWriter(db);
+      let teamsUpdated = 0;
+      
+      for (const [teamName, stats] of teamResults) {
+        try {
+          const slug = slugTeam(teamName);
+          const teamRef = db.collection('teams').doc(slug);
+          
+          const teamSnap = await teamRef.get();
+          if (!teamSnap.exists) continue;
+          
+          const overallRecord = stats.ties > 0 
+            ? `${stats.wins}-${stats.losses}-${stats.ties}`
+            : `${stats.wins}-${stats.losses}`;
+            
+          const confRecord = stats.conferenceGames > 0
+            ? (stats.confTies > 0 
+               ? `${stats.confWins}-${stats.confLosses}-${stats.confTies}`
+               : `${stats.confWins}-${stats.confLosses}`)
+            : '0-0';
+          
+          const avgPointsFor = stats.gamesPlayed > 0 
+            ? (stats.totalPointsFor / stats.gamesPlayed).toFixed(1)
+            : '0.0';
+            
+          const avgPointsAgainst = stats.gamesPlayed > 0 
+            ? (stats.totalPointsAgainst / stats.gamesPlayed).toFixed(1)
+            : '0.0';
+          
+          const updateData = {
+            'currentSeason.record': overallRecord,
+            'currentSeason.confRecord': confRecord,
+            'currentSeason.wins': stats.wins,
+            'currentSeason.losses': stats.losses,
+            'currentSeason.ties': stats.ties,
+            'currentSeason.confWins': stats.confWins,
+            'currentSeason.confLosses': stats.confLosses,
+            'currentSeason.confTies': stats.confTies,
+            'currentSeason.gamesPlayed': stats.gamesPlayed,
+            'currentSeason.totalPointsFor': stats.totalPointsFor,
+            'currentSeason.totalPointsAgainst': stats.totalPointsAgainst,
+            'currentSeason.avgPointsFor': avgPointsFor,
+            'currentSeason.avgPointsAgainst': avgPointsAgainst,
+            'currentSeason.recordLastUpdated': admin.firestore.FieldValue.serverTimestamp()
+          };
+          
+          bw.update(teamRef, updateData);
+          teamsUpdated++;
+          
+          console.log(`Updated ${teamName}: ${overallRecord}`);
+          
+        } catch (error) {
+          console.error(`Error updating team ${teamName}:`, error);
+        }
+      }
+      
+      await bw.commit();
+      
+      console.log(`Scheduled team records update complete: ${teamsUpdated} teams updated from ${processedGames.length} games`);
+      
+      // Log to system collection for monitoring
+      try {
+        await db.collection('system').doc('team-records-log').collection('daily').add({
+          week: weekNum,
+          teamsUpdated,
+          gamesProcessed: processedGames.length,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          status: 'success'
+        });
+      } catch (logError) {
+        console.warn('Failed to log team records update:', logError);
+      }
+      
+    } catch (error) {
+      console.error('Scheduled team records update failed:', error);
+      
+      // Log failure
+      try {
+        const db = admin.firestore();
+        await db.collection('system').doc('team-records-log').collection('daily').add({
+          error: error.message,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          status: 'failed'
+        });
+      } catch (logError) {
+        console.warn('Failed to log team records error:', logError);
+      }
+    }
+  }
+);
