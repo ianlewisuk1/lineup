@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { db, auth } from "../firebase/firebase";
 import { collection, getDocs, doc, getDoc } from "firebase/firestore";
-import { Trophy, Users, Star, TrendingUp, Settings } from "lucide-react";
+import { Trophy, Users, Star, TrendingUp, Settings, ChevronDown, ChevronUp, Calendar } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 import ScoringSystemModal from "../components/ScoringSystemModal";
 import RecentMovesWidget from '../components/RecentMovesWidget';
@@ -18,6 +18,13 @@ function MyLeague() {
   const [loading, setLoading] = useState(true);
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [showScoringModal, setShowScoringModal] = useState(false);
+  
+  // NEW: Weekly standings state
+  const [selectedWeek, setSelectedWeek] = useState(null);
+  const [viewMode, setViewMode] = useState('current'); // 'current' vs 'historical'
+  const [weeklyStandings, setWeeklyStandings] = useState({});
+  const [availableWeeks, setAvailableWeeks] = useState([]);
+  const [standingsLoading, setStandingsLoading] = useState(false);
   
   // NEW: Schedule data for live game status
   const [scheduleData, setScheduleData] = useState({});
@@ -70,6 +77,132 @@ function MyLeague() {
     }
   };
 
+  // NEW: Load available historical weeks
+  const loadAvailableWeeks = async () => {
+    try {
+      const weeklyStandingsRef = collection(db, "leagues", leagueId, "weeklyStandings");
+      const snapshot = await getDocs(weeklyStandingsRef);
+      
+      if (!snapshot.empty) {
+        // Get a sample user's document to see which weeks exist
+        const sampleDoc = snapshot.docs[0].data();
+        const weeks = Object.keys(sampleDoc)
+          .filter(key => key.startsWith('week'))
+          .map(key => parseInt(key.replace('week', '')))
+          .sort((a, b) => a - b);
+        
+        setAvailableWeeks(weeks);
+        console.log('Available historical weeks:', weeks);
+      }
+    } catch (error) {
+      console.error("Error loading available weeks:", error);
+    }
+  };
+
+  // NEW: Load historical standings for a specific week
+  const loadWeeklyStandings = async (week) => {
+    if (weeklyStandings[week]) {
+      return; // Already loaded
+    }
+    
+    try {
+      setStandingsLoading(true);
+      
+      const weeklyStandingsRef = collection(db, "leagues", leagueId, "weeklyStandings");
+      const snapshot = await getDocs(weeklyStandingsRef);
+      
+      const weekStandings = [];
+      
+      snapshot.forEach(doc => {
+        const userData = doc.data();
+        const weekData = userData[`week${week}`];
+        
+        if (weekData) {
+          weekStandings.push({
+            id: doc.id,
+            ...weekData
+          });
+        }
+      });
+      
+      // Sort by rank
+      weekStandings.sort((a, b) => (a.rank || 0) - (b.rank || 0));
+      
+      setWeeklyStandings(prev => ({
+        ...prev,
+        [week]: weekStandings
+      }));
+      
+      console.log(`Loaded Week ${week} standings:`, weekStandings);
+      
+    } catch (error) {
+      console.error(`Error loading Week ${week} standings:`, error);
+    } finally {
+      setStandingsLoading(false);
+    }
+  };
+
+  // NEW: Week selector component
+  const WeekSelector = () => {
+    const getCurrentWeekNumber = () => {
+      if (typeof currentWeek === 'number') return currentWeek;
+      if (!currentWeek || typeof currentWeek !== 'string') return 1;
+      const weekMatch = currentWeek.match(/\d+/);
+      return weekMatch ? parseInt(weekMatch[0]) : 1;
+    };
+
+    const currentWeekNum = getCurrentWeekNumber();
+
+    return (
+      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 mb-6">
+        <h3 className="text-lg font-bold text-white mb-4 text-center flex items-center justify-center gap-2">
+          <Calendar size={20} />
+          Select Week to View
+        </h3>
+        
+        <div className="flex flex-wrap gap-2 justify-center">
+          {/* Current Live Week */}
+          <button
+            onClick={() => setViewMode('current')}
+            className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+              viewMode === 'current'
+                ? 'bg-green-600 text-white shadow-lg scale-105'
+                : 'bg-white/20 text-white/80 hover:bg-white/30'
+            }`}
+          >
+            Week {currentWeekNum} Live
+          </button>
+
+          {/* Historical Weeks */}
+          {availableWeeks.map(week => (
+            <button
+              key={week}
+              onClick={() => {
+                setViewMode('historical');
+                setSelectedWeek(week);
+                loadWeeklyStandings(week);
+              }}
+              className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                viewMode === 'historical' && selectedWeek === week
+                  ? 'bg-blue-600 text-white shadow-lg scale-105'
+                  : 'bg-white/20 text-white/80 hover:bg-white/30'
+              }`}
+            >
+              Week {week} Final
+            </button>
+          ))}
+        </div>
+
+        {/* Loading indicator */}
+        {standingsLoading && (
+          <div className="text-center mt-4">
+            <div className="text-white/60 text-sm">Loading standings...</div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -107,6 +240,9 @@ function MyLeague() {
         } else {
           setScheduleLoading(false);
         }
+
+        // NEW: Load available historical weeks
+        await loadAvailableWeeks();
 
         // Fetch all teams first to get team logos and current season data
           const teamsRef = collection(db, "teams");
@@ -242,6 +378,17 @@ function MyLeague() {
     
     // FIXED: Enhanced game state detection using schedule data first
     const getTeamDisplayState = () => {
+      // Only show live status for current week view
+      if (viewMode !== 'current') {
+        return { 
+          display: "?", 
+          state: "historical", 
+          color: "#6b7280",
+          bgColor: "#374151",
+          shouldPulse: false
+        };
+      }
+
       // First check schedule data (most reliable for current week)
       if (scheduleGame && !scheduleLoading) {
         const gameStatus = scheduleGame.gameStatus;
@@ -325,6 +472,9 @@ function MyLeague() {
 
     // Get the spread for display - use nextOpponentSpreadDisplay or calculate from nextOpponentSpread
     const getSpreadDisplay = () => {
+      // Only show spread for current week
+      if (viewMode !== 'current') return null;
+
       const spreadDisplay = team?.currentSeason?.nextOpponentSpreadDisplay;
       const spreadNum = team?.currentSeason?.nextOpponentSpread;
       
@@ -376,7 +526,7 @@ function MyLeague() {
           )}
 
           {/* Spread Badge - Below logo */}
-          {clickable && (
+          {clickable && spreadDisplay && (
             <div style={{
               position: "absolute",
               bottom: "-8px",
@@ -1174,6 +1324,9 @@ function MyLeague() {
 
   // FIXED: Helper function to check if a member has live games using schedule data
   const getMemberLiveStatus = (member) => {
+    // Only check for live games in current view mode
+    if (viewMode !== 'current') return false;
+
     const lineup = member.lineup || {};
     const starters = Array.isArray(lineup.starters) ? lineup.starters : [];
     const bench = Array.isArray(lineup.bench) ? lineup.bench : [];
@@ -1218,16 +1371,36 @@ function MyLeague() {
     );
   }
 
-  // Sort by points descending
-  const sortedMembers = [...members].sort((a, b) => {
-    const aPoints = a.points ?? 0;
-    const bPoints = b.points ?? 0;
-    if (bPoints !== aPoints) return bPoints - aPoints;
-    
-    const aWeeklyPoints = a.weeklyPoints ?? 0;
-    const bWeeklyPoints = b.weeklyPoints ?? 0;
-    return bWeeklyPoints - aWeeklyPoints;
-  });
+  // NEW: Get display data based on view mode
+  const getDisplayData = () => {
+    if (viewMode === 'current') {
+      // Current live standings
+      return [...members].sort((a, b) => {
+        const aPoints = a.points ?? 0;
+        const bPoints = b.points ?? 0;
+        if (bPoints !== aPoints) return bPoints - aPoints;
+        
+        const aWeeklyPoints = a.weeklyPoints ?? 0;
+        const bWeeklyPoints = b.weeklyPoints ?? 0;
+        return bWeeklyPoints - aWeeklyPoints;
+      });
+    } else {
+      // Historical standings for selected week
+      return weeklyStandings[selectedWeek] || [];
+    }
+  };
+
+  const displayData = getDisplayData();
+
+  // NEW: Get current week number for display
+  const getCurrentWeekNumber = () => {
+    if (typeof currentWeek === 'number') return currentWeek;
+    if (!currentWeek || typeof currentWeek !== 'string') return 1;
+    const weekMatch = currentWeek.match(/\d+/);
+    return weekMatch ? parseInt(weekMatch[0]) : 1;
+  };
+
+  const currentWeekNum = getCurrentWeekNumber();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
@@ -1282,38 +1455,48 @@ function MyLeague() {
             </Link>
           </div>
           <p className="text-lg sm:text-xl text-white/80">
-            Current Week: {currentWeek}
+            {viewMode === 'current' 
+              ? `Live Standings - Week ${currentWeekNum}`
+              : `Final Standings - Week ${selectedWeek}`
+            }
           </p>
         </div>
 
-        {/* Live Game Status Key */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 mb-6">
-          <h3 className="text-sm font-semibold text-white/90 mb-3 text-center">Game Status Legend</h3>
-          <div className="flex items-center justify-center gap-6 text-xs text-white/70">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-gray-500 rounded-full flex items-center justify-center text-white text-xs font-bold">?</div>
-              <span>Not Started</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-green-500 rounded-full animate-pulse flex items-center justify-center text-white text-xs font-bold">5</div>
-              <span>Live Game</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">5</div>
-              <span>Final</span>
+        {/* NEW: Week Selector */}
+        {(availableWeeks.length > 0 || currentWeekNum > 1) && <WeekSelector />}
+
+        {/* Live Game Status Key - Only show for current week */}
+        {viewMode === 'current' && (
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 mb-6">
+            <h3 className="text-sm font-semibold text-white/90 mb-3 text-center">Game Status Legend</h3>
+            <div className="flex items-center justify-center gap-6 text-xs text-white/70">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-gray-500 rounded-full flex items-center justify-center text-white text-xs font-bold">?</div>
+                <span>Not Started</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-green-500 rounded-full animate-pulse flex items-center justify-center text-white text-xs font-bold">5</div>
+                <span>Live Game</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">5</div>
+                <span>Final</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Recent Moves Widget */}
-        <RecentMovesWidget leagueId={leagueId} />
+        {/* Recent Moves Widget - Only show for current week */}
+        {viewMode === 'current' && <RecentMovesWidget leagueId={leagueId} />}
 
         {/* Condensed Leaderboard Summary */}
-        {sortedMembers.length > 0 && (
+        {displayData.length > 0 && (
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 mb-8">
-            <h2 className="text-lg font-bold text-white mb-4 text-center">Quick Standings</h2>
+            <h2 className="text-lg font-bold text-white mb-4 text-center">
+              {viewMode === 'current' ? 'Quick Standings' : `Week ${selectedWeek} Final Results`}
+            </h2>
             <div className="space-y-2">
-              {sortedMembers.map((member, idx) => {
+              {displayData.map((member, idx) => {
                 const getRankColor = (position) => {
                   if (position === 0) return "text-yellow-400"; // Gold
                   if (position === 1) return "text-gray-300"; // Silver
@@ -1326,10 +1509,13 @@ function MyLeague() {
                 const isPlayoffLine = idx === playoffSpots;
                 const hasLiveGames = getMemberLiveStatus(member);
 
+                // Use rank from historical data or calculate for current
+                const displayRank = viewMode === 'historical' ? member.rank : idx + 1;
+
                 return (
                   <div key={`summary-${member.id}`}>
                     {/* Playoff Line Separator */}
-                    {isPlayoffLine && (
+                    {isPlayoffLine && viewMode === 'current' && (
                       <div className="flex items-center gap-3 py-3">
                         <div className="flex-1 h-px bg-gradient-to-r from-transparent via-red-400 to-transparent"></div>
                         <span className="text-red-400 text-xs font-semibold uppercase tracking-wider px-3 py-1 bg-red-400/10 rounded-full border border-red-400/30">
@@ -1340,25 +1526,25 @@ function MyLeague() {
                     )}
 
                     <div className={`flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/10 transition-colors duration-200 ${
-                      idx < playoffSpots ? 'bg-green-400/10 border border-green-400/20' : 'bg-white/5'
+                      viewMode === 'current' && idx < playoffSpots ? 'bg-green-400/10 border border-green-400/20' : 'bg-white/5'
                     }`}>
                       {/* Rank and Team Name */}
                       <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${getRankColor(idx)}`}>
-                          {idx + 1}
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${getRankColor(displayRank - 1)}`}>
+                          {displayRank}
                         </div>
                         <span className="text-white font-medium truncate">
                           {member.teamName || "Unnamed Team"}
                         </span>
-                        {/* Live Games Indicator */}
-                        {hasLiveGames && (
+                        {/* Live Games Indicator - Only for current view */}
+                        {hasLiveGames && viewMode === 'current' && (
                           <div className="flex items-center gap-1">
                             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                             <span className="text-xs text-green-400 font-medium">LIVE</span>
                           </div>
                         )}
-                        {/* Playoff indicator */}
-                        {idx < playoffSpots && (
+                        {/* Playoff indicator - Only for current view */}
+                        {viewMode === 'current' && idx < playoffSpots && (
                           <div className="text-green-400 text-xs">🏆</div>
                         )}
                       </div>
@@ -1375,34 +1561,52 @@ function MyLeague() {
           </div>
         )}
 
-        {/* Scoring Modal */}
-        <div className="text-center mb-6">
-          <button
-            onClick={() => setShowScoringModal(true)}
-            className="text-white/80 hover:text-white text-lg font-medium transition-colors duration-200 underline underline-offset-2 hover:underline-offset-4"
-          >
-            How does scoring work?
-          </button>
-        </div>
-
+        {/* Scoring Modal - Only show for current week */}
+        {viewMode === 'current' && (
+          <div className="text-center mb-6">
+            <button
+              onClick={() => setShowScoringModal(true)}
+              className="text-white/80 hover:text-white text-lg font-medium transition-colors duration-200 underline underline-offset-2 hover:underline-offset-4"
+            >
+              How does scoring work?
+            </button>
+          </div>
+        )}
 
         {/* Standings Cards */}
-        {sortedMembers.length === 0 ? (
+        {displayData.length === 0 ? (
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-12 border border-white/20 text-center">
             <div className="text-4xl mb-4">👥</div>
             <p className="text-white/80 text-lg">
-              No members found in this league.
+              {viewMode === 'current' 
+                ? "No members found in this league."
+                : `No standings data available for Week ${selectedWeek}.`
+              }
             </p>
           </div>
         ) : (
           <div className="space-y-4">
-            {sortedMembers.map((member, idx) => {
-              const lineup = member.lineup || {};
-              const starters = Array.isArray(lineup.starters) ? lineup.starters : [];
-              const bench = Array.isArray(lineup.bench) ? lineup.bench : [];
-              const allTeamsOwned = [...starters, ...bench].filter(team => 
-                typeof team === 'string' && team.trim() !== ''
-              );
+            {displayData.map((member, idx) => {
+              // For historical view, get lineup from snapshot data
+              let lineup, starters, bench, allTeamsOwned;
+              
+              if (viewMode === 'historical') {
+                // Historical data doesn't include lineup info in standings snapshot
+                // We'll show minimal info for historical views
+                lineup = { starters: [], bench: [] };
+                starters = [];
+                bench = [];
+                allTeamsOwned = [];
+              } else {
+                // Current view - use live member data
+                lineup = member.lineup || {};
+                starters = Array.isArray(lineup.starters) ? lineup.starters : [];
+                bench = Array.isArray(lineup.bench) ? lineup.bench : [];
+                allTeamsOwned = [...starters, ...bench].filter(team => 
+                  typeof team === 'string' && team.trim() !== ''
+                );
+              }
+              
               const hasLiveGames = getMemberLiveStatus(member);
 
               // Determine rank styling
@@ -1433,14 +1637,16 @@ function MyLeague() {
                 }; // Default
               };
 
-              const rankStyle = getRankStyle(idx);
+              // Use rank from historical data or calculate for current
+              const displayRank = viewMode === 'historical' ? member.rank : idx + 1;
+              const rankStyle = getRankStyle(displayRank - 1);
 
               return (
                 <div key={member.id} className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 hover:bg-white/15 transition-all duration-300">
                   {/* Header: Rank, Team Name, Points */}
                   <div className="flex items-center mb-4">
                     {/* User Avatar with Rank */}
-                    <UserAvatar member={member} size={56} rankStyle={rankStyle} rank={idx + 1} />
+                    <UserAvatar member={member} size={56} rankStyle={rankStyle} rank={displayRank} />
 
                     {/* Team Info */}
                     <div className="flex-1 min-w-0 ml-4">
@@ -1448,19 +1654,13 @@ function MyLeague() {
                         <h3 className="text-base font-bold text-white truncate">
                           {member.teamName || "Unnamed Team"}
                         </h3>
-                        {/* Enhanced Live Games Indicator for Manager */}
-                        {hasLiveGames && (
+                        {/* Enhanced Live Games Indicator for Manager - Only current view */}
+                        {hasLiveGames && viewMode === 'current' && (
                           <div className="flex items-center gap-1 bg-green-500/20 px-2 py-1 rounded-full border border-green-400/30">
                             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                             <span className="text-xs text-green-300 font-medium">LIVE</span>
                           </div>
                         )}
-                        {/* Double Play Indicator
-                        {member.doublePlay && (
-                          <div className="flex items-center gap-1 bg-purple-500/20 px-2 py-1 rounded-full border border-purple-400/30">
-                            <span className="text-xs text-purple-300 font-medium">6 GAMES COUNTED</span>
-                          </div>
-                        )} */}
                       </div>
                       <p className="text-white/70">
                         {member.firstName || "Unknown Manager"}
@@ -1472,81 +1672,115 @@ function MyLeague() {
                       <div className="text-2xl font-black text-blue-400 leading-none">
                         {member.points ?? 0}
                       </div>
-                      <div className="text-xs text-white/60 mt-1">
-                        {member.weeklyPoints ?? 0} Pts in Wk {currentWeek}
-                      </div>
-                      <div className="text-xs text-white/60 mt-1">
-                        {member.freeAgentMoves ?? 0} FA moves
-                      </div>
-                                            {/* Bonus Points Display */}
-                      {member.bonusPoints !== undefined && member.bonusPoints !== null && (
-                        <div className="text-xs text-purple-400 mt-1 font-medium">
-                          {member.bonusPoints > 0 ? '+' : ''}{member.bonusPoints} from double play
-                        </div>
+                      {viewMode === 'current' ? (
+                        <>
+                          <div className="text-xs text-white/60 mt-1">
+                            {member.weeklyPoints ?? 0} Pts in Wk {currentWeekNum}
+                          </div>
+                          <div className="text-xs text-white/60 mt-1">
+                            {member.freeAgentMoves ?? 0} FA moves
+                          </div>
+                          {/* Bonus Points Display */}
+                          {member.bonusPoints !== undefined && member.bonusPoints !== null && (
+                            <div className="text-xs text-purple-400 mt-1 font-medium">
+                              {member.bonusPoints > 0 ? '+' : ''}{member.bonusPoints} from double play
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-xs text-white/60 mt-1">
+                            {member.weeklyPoints ?? 0} Pts in Week {selectedWeek}
+                          </div>
+                          <div className="text-xs text-orange-400 mt-1 font-medium">
+                            Final Standing
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>
 
-                  {/* Team Roster - Single Line with Proper Header Spacing */}
-                  <div className="mt-6">
-                    {/* Headers Row */}
-                    <div className="flex gap-1 mb-3 relative">
-                      {/* Starters Header */}
-                      <div className="text-xs font-semibold text-green-400 uppercase tracking-wider flex items-center gap-1">
-                        <Users size={12} />
-                        Starters
+                  {/* Team Roster - Only show for current view */}
+                  {viewMode === 'current' && (
+                    <div className="mt-6">
+                      {/* Headers Row */}
+                      <div className="flex gap-1 mb-3 relative">
+                        {/* Starters Header */}
+                        <div className="text-xs font-semibold text-green-400 uppercase tracking-wider flex items-center gap-1">
+                          <Users size={12} />
+                          Starters
+                        </div>
+                        
+                        {/* Spacer to align bench header with 6th position */}
+                        <div style={{ width: `${5 * 36 - 80}px` }}></div>
+                        
+                        {/* Bench Header - aligned with 6th team position */}
+                        <div className="text-xs font-semibold text-orange-400 uppercase tracking-wider flex items-center gap-1">
+                          <Star size={12} />
+                          Bench
+                        </div>
                       </div>
                       
-                      {/* Spacer to align bench header with 6th position */}
-                      <div style={{ width: `${5 * 36 - 80}px` }}></div>
-                      
-                      {/* Bench Header - aligned with 6th team position */}
-                      <div className="text-xs font-semibold text-orange-400 uppercase tracking-wider flex items-center gap-1">
-                        <Star size={12} />
-                        Bench
+                      {/* Teams Row */}
+                      <div className="flex gap-1 justify-start flex-wrap">
+                        {/* Starters */}
+                        {starters.slice(0, 5).map((teamName, teamIdx) => (
+                          <TeamLogo 
+                            key={`starter-${teamIdx}`}
+                            teamName={teamName} 
+                            size={34} 
+                            clickable={true} 
+                          />
+                        ))}
+                        
+                        {/* Empty starter slots */}
+                        {Array.from({ length: Math.max(0, 5 - starters.length) }).map((_, emptyIdx) => (
+                          <div key={`empty-starter-${emptyIdx}`} className="w-[34px] h-[34px] rounded-full border-2 border-dashed border-green-400/50 flex items-center justify-center bg-green-400/10 backdrop-blur-sm flex-shrink-0">
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-400/50" />
+                          </div>
+                        ))}
+
+                        {/* Bench */}
+                        {bench.slice(0, 2).map((teamName, teamIdx) => (
+                          <TeamLogo 
+                            key={`bench-${teamIdx}`}
+                            teamName={teamName} 
+                            size={34} 
+                            clickable={true} 
+                          />
+                        ))}
+                        
+                        {/* Empty bench slots */}
+                        {Array.from({ length: Math.max(0, 2 - bench.length) }).map((_, emptyIdx) => (
+                          <div key={`empty-bench-${emptyIdx}`} className="w-[34px] h-[34px] rounded-full border-2 border-dashed border-orange-400/50 flex items-center justify-center bg-orange-400/10 backdrop-blur-sm flex-shrink-0">
+                            <div className="w-1.5 h-1.5 rounded-full bg-orange-400/50" />
+                          </div>
+                        ))}
                       </div>
                     </div>
-                    
-                    {/* Teams Row */}
-                    <div className="flex gap-1 justify-start flex-wrap">
-                      {/* Starters */}
-                      {starters.slice(0, 5).map((teamName, teamIdx) => (
-                        <TeamLogo 
-                          key={`starter-${teamIdx}`}
-                          teamName={teamName} 
-                          size={34} 
-                          clickable={true} 
-                        />
-                      ))}
-                      
-                      {/* Empty starter slots */}
-                      {Array.from({ length: Math.max(0, 5 - starters.length) }).map((_, emptyIdx) => (
-                        <div key={`empty-starter-${emptyIdx}`} className="w-[34px] h-[34px] rounded-full border-2 border-dashed border-green-400/50 flex items-center justify-center bg-green-400/10 backdrop-blur-sm flex-shrink-0">
-                          <div className="w-1.5 h-1.5 rounded-full bg-green-400/50" />
-                        </div>
-                      ))}
+                  )}
 
-                      {/* Bench */}
-                      {bench.slice(0, 2).map((teamName, teamIdx) => (
-                        <TeamLogo 
-                          key={`bench-${teamIdx}`}
-                          teamName={teamName} 
-                          size={34} 
-                          clickable={true} 
-                        />
-                      ))}
-                      
-                      {/* Empty bench slots */}
-                      {Array.from({ length: Math.max(0, 2 - bench.length) }).map((_, emptyIdx) => (
-                        <div key={`empty-bench-${emptyIdx}`} className="w-[34px] h-[34px] rounded-full border-2 border-dashed border-orange-400/50 flex items-center justify-center bg-orange-400/10 backdrop-blur-sm flex-shrink-0">
-                          <div className="w-1.5 h-1.5 rounded-full bg-orange-400/50" />
+                  {/* Historical Week Summary - Only show for historical view */}
+                  {viewMode === 'historical' && (
+                    <div className="mt-6 bg-white/5 rounded-xl p-4">
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-blue-400 mb-2">
+                          Week {selectedWeek} Final Result
                         </div>
-                      ))}
+                        <div className="text-sm text-white/70">
+                          Rank: {member.rank} • Points: {member.points} • Weekly: {member.weeklyPoints}
+                        </div>
+                        {member.snapshotAt && (
+                          <div className="text-xs text-white/50 mt-2">
+                            Finalized: {new Date(member.snapshotAt.toDate()).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Smack Talk Speech Bubble - Only show if exists */}
-                  {member.smackTalk && member.smackTalk.trim() && (
+                  {/* Smack Talk Speech Bubble - Only show if exists and for current view */}
+                  {member.smackTalk && member.smackTalk.trim() && viewMode === 'current' && (
                     <div className="mt-4 flex justify-start">
                       <div className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 py-2 rounded-2xl text-sm font-medium max-w-[80%] relative shadow-lg">
                         💬 {member.smackTalk}
