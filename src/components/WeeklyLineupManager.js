@@ -356,15 +356,25 @@ const canMoveTeam = async (teamName, week, currentTime = new Date()) => {
 
 /* ---------- Captain Helper Functions ---------- */
 
-const canBeCaptain = (teamName, starters, bench) => {
-  if (!teamName) return false;
+const canBeCaptain = (team, starters, bench) => {
+  if (!team) return false;
+  
+  const normalizedCaptain = typeof team === 'string' ? team : weeklyLineupUtils.normalizeTeamName(team);
+  console.log("Checking captain candidate:", team, "normalized:", normalizedCaptain);
   
   const allTeams = [
-    ...starters.filter(team => team !== null).map(team => team.school || team.name),
-    ...bench.filter(team => team !== null).map(team => team.school || team.name)
+    ...starters.filter(team => team !== null).map(team => 
+      typeof team === 'string' ? team : weeklyLineupUtils.normalizeTeamName(team)
+    ),
+    ...bench.filter(team => team !== null).map(team => 
+      typeof team === 'string' ? team : weeklyLineupUtils.normalizeTeamName(team)
+    )
   ];
   
-  return allTeams.includes(teamName);
+  console.log("All normalized team names in lineup:", allTeams);
+  console.log("Does lineup include captain?", allTeams.includes(normalizedCaptain));
+  
+  return allTeams.includes(normalizedCaptain);
 };
 
 const calculateCaptainPoints = (basePoints, isCaptain = false) => {
@@ -680,13 +690,25 @@ const WeeklyLineupManager = ({
 
   const saveLineup = async (week, starters, bench, captain = null) => {
     try {
+      console.log("saveLineup called with captain:", captain);
+      
       const normalizedStarters = starters.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null);
       const normalizedBench = bench.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null);
+      const normalizedCaptain = captain;      
+      console.log("normalized captain:", normalizedCaptain);
 
       if (week === currentWeek) {
         const memberRef = doc(db, "leagues", leagueId, "members", userId);
-        await updateDoc(memberRef, { lineup: { starters: normalizedStarters, bench: normalizedBench } });
-      } else {
+        await updateDoc(memberRef, { 
+          lineup: { 
+            starters: normalizedStarters, 
+            bench: normalizedBench,
+            captain: normalizedCaptain 
+          } 
+        });
+      }
+      
+      else {
         console.warn(`Attempted to save non-current week ${week}. Current week is ${currentWeek}`);
       }
 
@@ -695,7 +717,7 @@ const WeeklyLineupManager = ({
       const updatedLineup = {
         starters: normalizedStarters,
         bench: normalizedBench,
-        captain: captain,
+        captain: normalizedCaptain,
         lockedTeams: weeklyLineups[weekKey]?.lockedTeams || [],
         teamLockTimes: weeklyLineups[weekKey]?.teamLockTimes || {},
         lockedAt: null
@@ -876,12 +898,23 @@ const WeeklyLineupContent = ({
     Object.values(allTeams).find(team => weeklyLineupUtils.normalizeTeamName(team) === normalizedName);
 
   const handleCaptainSelect = (teamName) => {
-    if (!canBeCaptain(teamName, starters, bench)) {
+    // Find the actual team object from starters or bench
+    const teamObject = [...starters, ...bench]
+      .filter(team => team !== null)
+      .find(team => (team.school || team.name) === teamName);
+      
+    if (!teamObject) {
+      alert("Team not found in lineup");
+      return;
+    }
+
+    if (!canBeCaptain(teamObject, starters, bench)) {
       alert("Captain must be selected from your current lineup");
       return;
     }
 
-    const newCaptain = captain === teamName ? null : teamName;
+    const normalizedTeamName = weeklyLineupUtils.normalizeTeamName(teamObject);
+    const newCaptain = captain === normalizedTeamName ? null : normalizedTeamName;
     setCaptain(newCaptain);
     setHasChanges(true);
   };
@@ -890,7 +923,12 @@ const WeeklyLineupContent = ({
     try {
       setIsSaving(true);
       
+      console.log("saveLineupChanges called with:");
+      console.log("newCaptain:", newCaptain);
+      console.log("current captain state:", captain);
+      
       const validatedCaptain = newCaptain && canBeCaptain(newCaptain, newStarters, newBench) ? newCaptain : null;
+      console.log("validatedCaptain after validation:", validatedCaptain);
       
       await onSave(newStarters, newBench, validatedCaptain);
       setStarters(newStarters);
@@ -1120,16 +1158,22 @@ const WeeklyLineupContent = ({
     const baseWeeklyPts = (team.currentSeason?.weeklyPoints?.[`week${week}`] || 0);
 
     const teamName = team.school || team.name;
-    const isCaptain = captain === teamName;
+    const normalizedTeamName = weeklyLineupUtils.normalizeTeamName(team);
+    const isCaptain = captain && captain === normalizedTeamName;
+    console.log("Captain check:", { captain, normalizedTeamName, isCaptain, teamName });
     const gamePointsCalc = { finalPoints: baseGamePoints, bonus: 0, isCaptain: false };
     const weeklyPointsCalc = calculateCaptainPoints(baseWeeklyPts, isCaptain);
     
     const displaySeasonPoints = baseGamePoints;
 
     return (
-      <div className={`bg-white/6 rounded-xl border overflow-hidden ${
-        lockStatus.locked ? 'border-red-400/50 bg-red-500/10' : 'border-white/10'
-      } ${isCaptain ? 'ring-2 ring-yellow-400/50' : ''}`}>
+        <div className={`rounded-xl border overflow-hidden ${
+          isCaptain 
+            ? 'bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 border-yellow-400/50 ring-2 ring-yellow-400/50 shadow-lg shadow-yellow-400/20' 
+            : lockStatus.locked 
+              ? 'border-red-400/50 bg-red-500/10' 
+              : 'bg-white/6 border-white/10'
+        }`}>
         <div className="p-3">
           <div className="grid grid-cols-[44px,1fr,auto] gap-3 items-center">
             {/* LEFT: Logo + action toggle */}
@@ -1395,7 +1439,13 @@ const WeeklyLineupContent = ({
           <div className="flex items-center gap-3">
             <Crown className="text-yellow-400" size={20} />
             <div>
-              <span className="text-yellow-200 font-semibold">Captain: {captain}</span>
+              <span className="text-yellow-200 font-semibold">
+                Captain: {
+                  [...starters, ...bench]
+                    .filter(team => team !== null)
+                    .find(team => weeklyLineupUtils.normalizeTeamName(team) === captain)?.school || captain
+                }
+              </span>
               <div className="text-yellow-300/80 text-sm">This team will earn double points (positive or negative)</div>
             </div>
           </div>

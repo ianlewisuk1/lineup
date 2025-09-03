@@ -282,57 +282,6 @@
     return undefined;
   }
 
-  /**
-   * Process team locking for a position group (starters or bench)
-   */
-  function processTeamLockingFixed(currentTeams, existingTeamData, gameStartTimes, now, positionType, userId) {
-    const processed = [];
-    
-    for (let i = 0; i < currentTeams.length; i++) {
-      const currentTeam = currentTeams[i];
-      const existingTeamEntry = existingTeamData[i] || {};
-      
-      if (!currentTeam) {
-        // Empty slot
-        processed.push({ team: null, lockedAt: null });
-        continue;
-      }
-      
-      // Check if this team is already locked
-      if (existingTeamEntry.lockedAt) {
-        // Keep existing locked team (can't change once locked)
-        processed.push(existingTeamEntry);
-        console.log(`🔒 ${currentTeam} already locked at ${existingTeamEntry.lockedAt}`);
-        continue;
-      }
-      
-      // Check if this team's earliest game has started
-      const earliestGameTime = gameStartTimes.get(currentTeam);
-      
-      if (earliestGameTime && now >= earliestGameTime) {
-        // Lock this team - their earliest game has started
-        const lockedAt = earliestGameTime.toISOString();
-        processed.push({ team: currentTeam, lockedAt });
-        console.log(`🔒 LOCKING ${currentTeam} for user ${userId} - earliest game started at ${lockedAt}`);
-      } else if (earliestGameTime) {
-        // Team is still unlocked - update to current roster choice
-        processed.push({ team: currentTeam, lockedAt: null });
-        console.log(`⏰ ${currentTeam} unlocked - earliest game at ${earliestGameTime.toISOString()} (future)`);
-        
-        // Log if this is a roster change for an unlocked team
-        if (existingTeamEntry.team && existingTeamEntry.team !== currentTeam) {
-          console.log(`🔄 ${positionType}[${i}]: ${existingTeamEntry.team} → ${currentTeam} (unlocked)`);
-        }
-      } else {
-        // No game found for this team
-        processed.push({ team: currentTeam, lockedAt: null });
-        console.log(`❓ ${currentTeam} - no games found in schedule`);
-      }
-    }
-    
-    return processed;
-  }
-
   /** Safer ESPN status parsing */
   function parseESPNEvent(espnEvent) {
     const comp = espnEvent?.competitions?.[0];
@@ -1284,372 +1233,8 @@
   });
 
   /* -------------------------------------------------------------------------- */
-  /*                    Auto-Migration: Member Lineups to Weekly                */
-  /* -------------------------------------------------------------------------- */
-
-  /**
-   * Scheduled function to auto-migrate member lineups to weekly collection
-   * when week lock times are reached
-   */
-  exports.autoMigrateLineupsTeamLevelFixed = onSchedule(
-    { schedule: '*/15 * * * *', timeZone: 'America/New_York' },
-    async () => {
-      try {
-        console.log('🔄 Starting FIXED team-level auto-migration check...');
-        
-        const db = admin.firestore();
-        const now = new Date();
-        
-        // Get current season info
-        const seasonRef = db.collection('config').doc('season');
-        const seasonSnap = await seasonRef.get();
-        const seasonData = seasonSnap.data();
-        
-        if (!seasonData) {
-          console.log('❌ No season data found');
-          return;
-        }
-        
-        // Parse current week
-        const currentWeek = seasonData.currentWeek || "Week 1";
-        const currentWeekString = String(currentWeek);
-        const currentWeekMatch = currentWeekString.match(/\d+/);
-        const currentWeekNum = currentWeekMatch ? parseInt(currentWeekMatch[0]) : 1;
-        
-        console.log(`📅 Current week: ${currentWeekNum}`);
-        
-        // Check current week and previous week
-        const weeksToCheck = [];
-        for (let week = Math.max(1, currentWeekNum - 1); week <= currentWeekNum; week++) {
-          weeksToCheck.push(week);
-        }
-        
-        for (const week of weeksToCheck) {
-          console.log(`🔍 Checking week ${week} for team-level migration...`);
-          
-          // Get all games for this week with their start times
-          const gamesSnap = await db
-            .collection('schedule').doc('2025')
-            .collection('weeks').doc(week.toString())
-            .collection('games')
-            .get();
-          
-          // FIXED: Use earliest game time for teams with multiple games
-          const gameStartTimes = new Map(); // team -> earliest game start time
-          
-          gamesSnap.forEach(gameDoc => {
-            const game = gameDoc.data();
-            if (game.date && game.homeTeam && game.awayTeam) {
-              const gameStartTime = new Date(game.date);
-              
-              // Check home team
-              const currentHomeTime = gameStartTimes.get(game.homeTeam);
-              if (!currentHomeTime || gameStartTime < currentHomeTime) {
-                gameStartTimes.set(game.homeTeam, gameStartTime);
-                console.log(`🏠 ${game.homeTeam}: Updated earliest game to ${gameStartTime.toISOString()}`);
-              }
-              
-              // Check away team  
-              const currentAwayTime = gameStartTimes.get(game.awayTeam);
-              if (!currentAwayTime || gameStartTime < currentAwayTime) {
-                gameStartTimes.set(game.awayTeam, gameStartTime);
-                console.log(`🛫 ${game.awayTeam}: Updated earliest game to ${gameStartTime.toISOString()}`);
-              }
-            }
-          });
-          
-          if (gameStartTimes.size === 0) {
-            console.log(`⏭️ Week ${week}: No games found, skipping`);
-            continue;
-          }
-          
-          console.log(`📊 Game start times for week ${week}:`);
-          gameStartTimes.forEach((time, team) => {
-            const isPast = now >= time;
-            console.log(`  ${team}: ${time.toISOString()} ${isPast ? '(PAST - SHOULD LOCK)' : '(FUTURE - UNLOCKED)'}`);
-          });
-          
-          // Get all leagues and process team-level locks
-          const leaguesSnap = await db.collection('leagues').get();
-          
-          for (const leagueDoc of leaguesSnap.docs) {
-            const leagueId = leagueDoc.id;
-            await migrateLeagueWeekTeamLevelFixed(db, leagueId, week, gameStartTimes, now);
-          }
-        }
-        
-        console.log('✅ FIXED team-level auto-migration check completed');
-        
-      } catch (error) {
-        console.error('❌ FIXED team-level auto-migration failed:', error);
-      }
-    }
-  );
-
-  /**
-   * Manual trigger for team-level migration testing
-   */
-  exports.triggerTeamLevelMigrationFixed = onRequest(async (req, res) => {
-    try {
-      const week = parseInt(req.query.week) || null;
-      const leagueId = req.query.leagueId || null;
-      
-      if (!week) {
-        return res.status(400).json({ error: 'Week parameter required' });
-      }
-      
-      console.log(`🔧 Manual FIXED team-level migration trigger: Week ${week}, League: ${leagueId || 'all'}`);
-      
-      const db = admin.firestore();
-      const now = new Date();
-      
-      // Get game start times for this week with FIXED logic
-      const gamesSnap = await db
-        .collection('schedule').doc('2025')
-        .collection('weeks').doc(week.toString())
-        .collection('games')
-        .get();
-      
-      // FIXED: Use earliest game time for teams with multiple games
-      const gameStartTimes = new Map();
-      
-      gamesSnap.forEach(gameDoc => {
-        const game = gameDoc.data();
-        if (game.date && game.homeTeam && game.awayTeam) {
-          const gameStartTime = new Date(game.date);
-          
-          // Check home team - use earliest game
-          const currentHomeTime = gameStartTimes.get(game.homeTeam);
-          if (!currentHomeTime || gameStartTime < currentHomeTime) {
-            gameStartTimes.set(game.homeTeam, gameStartTime);
-          }
-          
-          // Check away team - use earliest game
-          const currentAwayTime = gameStartTimes.get(game.awayTeam);
-          if (!currentAwayTime || gameStartTime < currentAwayTime) {
-            gameStartTimes.set(game.awayTeam, gameStartTime);
-          }
-        }
-      });
-      
-      console.log(`📊 FIXED Game start times (earliest for each team):`);
-      gameStartTimes.forEach((time, team) => {
-        const isPast = now >= time;
-        console.log(`  ${team}: ${time.toISOString()} ${isPast ? '(SHOULD LOCK)' : '(UNLOCKED)'}`);
-      });
-      
-      if (gameStartTimes.size === 0) {
-        return res.status(400).json({ error: `No games found for week ${week}` });
-      }
-      
-      if (leagueId) {
-        // Migrate specific league
-        await migrateLeagueWeekTeamLevelFixed(db, leagueId, week, gameStartTimes, now);
-        res.json({ success: true, message: `FIXED team-level migration completed for league ${leagueId}, week ${week}` });
-      } else {
-        // Migrate all leagues
-        const leaguesSnap = await db.collection('leagues').get();
-        
-        for (const leagueDoc of leaguesSnap.docs) {
-          await migrateLeagueWeekTeamLevelFixed(db, leagueDoc.id, week, gameStartTimes, now);
-        }
-        
-        res.json({ success: true, message: `FIXED team-level migration completed for all leagues, week ${week}` });
-      }
-      
-    } catch (error) {
-      console.error('❌ Manual FIXED team-level migration failed:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  /* -------------------------------------------------------------------------- */
   /*                     Auto-Migration Helper Functions                         */
   /* -------------------------------------------------------------------------- */
-
-  /**
-   * Get lock time for a specific week
-   */
-  async function getWeekLockTime(weekNum) {
-    try {
-      const db = admin.firestore();
-      const gamesSnap = await db
-        .collection('schedule').doc('2025')
-        .collection('weeks').doc(weekNum.toString())
-        .collection('games')
-        .get();
-      
-      let firstGameTime = null;
-      
-      gamesSnap.forEach(gameDoc => {
-        const gameData = gameDoc.data();
-        if (gameData.date) {
-          const gameTime = new Date(gameData.date);
-          if (!firstGameTime || gameTime < firstGameTime) {
-            firstGameTime = gameTime;
-          }
-        }
-      });
-      
-      if (firstGameTime) {
-        // Return 1 hour before first game
-        return new Date(firstGameTime.getTime() - (60 * 60 * 1000));
-      }
-      
-      return null;
-    } catch (error) {
-      console.error(`Error getting lock time for week ${weekNum}:`, error);
-      return null;
-    }
-  }
-
-  function validateCaptainAfterLineupChange(currentCaptain, newLineup) {
-    if (!currentCaptain) return null;
-    
-    const allTeams = [
-      ...(newLineup.starters || []),
-      ...(newLineup.bench || [])
-    ].filter(team => team !== null);
-    
-    return allTeams.includes(currentCaptain) ? currentCaptain : null;
-  }
-
-  async function migrateLeagueWeekTeamLevelFixed(db, leagueId, week, gameStartTimes, now) {
-  try {
-    console.log(`📋 FIXED team-level migration for league ${leagueId}, week ${week}`);
-    
-    // Get all members in this league
-    const membersSnap = await db
-      .collection('leagues').doc(leagueId)
-      .collection('members')
-      .get();
-    
-    const batch = db.batch();
-    let updatedCount = 0;
-    
-    for (const memberDoc of membersSnap.docs) {
-      const userId = memberDoc.id;
-      const memberData = memberDoc.data();
-      
-      // Get current lineup
-      const currentLineup = memberData.lineup || {
-        starters: Array(5).fill(null),
-        bench: Array(2).fill(null)
-      };
-      
-      // Get existing weekly data
-      const weeklyLineupsRef = db
-        .collection('leagues').doc(leagueId)
-        .collection('weeklyLineups').doc(userId);
-      
-      const weeklyLineupsSnap = await weeklyLineupsRef.get();
-      const existingWeeklyData = weeklyLineupsSnap.exists ? weeklyLineupsSnap.data() : {};
-      const weekKey = `week${week}`;
-      const existingWeekData = existingWeeklyData[weekKey] || {};
-      
-      // Check if current lineup differs from stored lineup (ignoring lock status)
-      const existingStarters = existingWeekData.starters || Array(5).fill(null);
-      const existingBench = existingWeekData.bench || Array(2).fill(null);
-      
-      // Compare lineups (team names only)
-      const currentStarterNames = currentLineup.starters || Array(5).fill(null);
-      const currentBenchNames = currentLineup.bench || Array(2).fill(null);
-      
-      const lineupsChanged = JSON.stringify(currentStarterNames) !== JSON.stringify(existingStarters) ||
-                          JSON.stringify(currentBenchNames) !== JSON.stringify(existingBench);
-      
-      // Only update if lineups changed OR if this is the first migration
-      if (lineupsChanged || !existingWeekData.lastUpdated) {
-        // FIXED: Preserve existing captain with proper validation
-        const existingCaptain = existingWeekData.captain || null;
-        let validatedCaptain = existingCaptain; // Default to preserving existing captain
-        
-        // Only validate/clear captain if we actually have one set
-        if (existingCaptain) {
-          // Get all current team names (normalized) for comparison
-          const allCurrentTeams = [
-            ...currentStarterNames.filter(team => team !== null),
-            ...currentBenchNames.filter(team => team !== null)
-          ];
-          
-          // Check if captain (as display name) corresponds to any current team
-          // We need to fetch team data to properly compare display names to normalized names
-          let captainStillInLineup = false;
-          
-          try {
-            // Simple check: if the captain name matches any of the current normalized names directly
-            if (allCurrentTeams.includes(existingCaptain)) {
-              captainStillInLineup = true;
-            } else {
-              // More thorough check: fetch team documents to compare display names
-              for (const normalizedTeamName of allCurrentTeams) {
-                const teamRef = db.collection('teams').doc(normalizedTeamName);
-                const teamSnap = await teamRef.get();
-                if (teamSnap.exists) {
-                  const teamData = teamSnap.data();
-                  const displayName = teamData.school || teamData.name;
-                  if (displayName === existingCaptain) {
-                    captainStillInLineup = true;
-                    break;
-                  }
-                }
-              }
-            }
-          } catch (error) {
-            console.warn(`Error validating captain for user ${userId}:`, error);
-            // On error, preserve the captain rather than clearing it
-            captainStillInLineup = true;
-          }
-          
-          // Only clear captain if they're genuinely not in the lineup anymore
-          if (!captainStillInLineup) {
-            validatedCaptain = null;
-            console.log(`🔄 Clearing invalid captain for user ${userId}, week ${week}: ${existingCaptain} not found in current lineup`);
-          }
-        }
-        
-        // Create updated data that preserves the simple array structure
-        const weeklyLineupData = {
-          starters: currentStarterNames,  // Keep as simple array of strings
-          bench: currentBenchNames,       // Keep as simple array of strings
-          captain: validatedCaptain,      // Preserve valid captain, only clear if genuinely invalid
-          lastUpdated: admin.firestore.FieldValue.serverTimestamp()
-        };
-        
-        // Add migration timestamp if first time
-        if (!existingWeekData.migratedAt) {
-          weeklyLineupData.migratedAt = admin.firestore.FieldValue.serverTimestamp();
-        }
-        
-        // Update the weekly lineups document
-        batch.set(weeklyLineupsRef, {
-          ...existingWeeklyData,
-          [weekKey]: weeklyLineupData
-        });
-        
-        updatedCount++;
-        
-        // Log captain changes for debugging
-        if (validatedCaptain !== existingCaptain) {
-          console.log(`🔄 Captain change for user ${userId}, week ${week}: ${existingCaptain || 'none'} → ${validatedCaptain || 'none'}`);
-        }
-        
-        console.log(`📦 Updated lineup for user ${userId}, week ${week}`);
-      }
-    }
-    
-    // Execute batch
-    if (updatedCount > 0) {
-      await batch.commit();
-      console.log(`✅ Updated ${updatedCount} lineups for league ${leagueId}, week ${week}`);
-    } else {
-      console.log(`📋 No updates needed for league ${leagueId}, week ${week}`);
-    }
-    
-  } catch (error) {
-    console.error(`❌ Error in migration for league ${leagueId}, week ${week}:`, error);
-  }
-  } 
 
   /**
    * Update team record when game completes
@@ -2164,20 +1749,8 @@
             continue;
           }
           
-          // NEW: Get captain information for current week
-          let captainTeam = null;
-          try {
-            const weeklyLineupsRef = db.collection('leagues').doc(leagueId).collection('weeklyLineups').doc(userId);
-            const weeklyLineupsSnap = await weeklyLineupsRef.get();
-            
-            if (weeklyLineupsSnap.exists) {
-              const weeklyData = weeklyLineupsSnap.data();
-              const weekKey = `week${currentWeek}`;
-              captainTeam = weeklyData[weekKey]?.captain || null;
-            }
-          } catch (error) {
-            console.warn(`Could not fetch captain for user ${userId}:`, error);
-          }
+          // Get captain directly from member document
+          const captainTeam = memberData.captain || null;
           
           console.log(`📝 Member ${userId} has ${starterTeams.length} starters: [${starterTeams.join(', ')}]${captainTeam ? ` - Captain: ${captainTeam}` : ''}`);
           
@@ -4042,25 +3615,22 @@ exports.advanceWeekAndSnapshot = onRequest(async (req, res) => {
     
     console.log(`Starting week advancement from week ${currentWeek}...`);
     
-    // Get all leagues and snapshot their standings
+    // Reset all leagues for new week
     const leaguesSnap = await db.collection('leagues').get();
     let leaguesProcessed = 0;
     let membersReset = 0;
-    let teamsReset = 0;
     
     for (const leagueDoc of leaguesSnap.docs) {
       const leagueId = leagueDoc.id;
       console.log(`Processing league: ${leagueId}`);
       
-      const result = await snapshotAndResetLeague(db, leagueId, currentWeek);
+      const result = await resetLeagueForNewWeek(db, leagueId);
       membersReset += result.membersReset;
-      teamsReset += result.teamsReset;
       leaguesProcessed++;
     }
     
     // Reset team weekly points for all teams
-    const additionalTeamsReset = await resetAllTeamWeeklyPoints(db, currentWeek);
-    teamsReset += additionalTeamsReset;
+    const teamsReset = await resetAllTeamWeeklyPoints(db, currentWeek);
     
     // Advance the global week
     await seasonRef.update({
@@ -4091,12 +3661,9 @@ exports.advanceWeekAndSnapshot = onRequest(async (req, res) => {
   }
 });
 
-/**
- * Snapshot standings and reset weekly data for a specific league
- */
-async function snapshotAndResetLeague(db, leagueId, week) {
+async function resetLeagueForNewWeek(db, leagueId) {
   try {
-    console.log(`Snapshotting and resetting league ${leagueId}, week ${week}`);
+    console.log(`Resetting league ${leagueId} for new week`);
     
     // Get all members in this league
     const membersSnap = await db
@@ -4105,100 +3672,28 @@ async function snapshotAndResetLeague(db, leagueId, week) {
       .get();
     
     if (membersSnap.empty) {
-      console.log(`No members found in league ${leagueId}`);
-      return { membersReset: 0, teamsReset: 0 };
+      return { membersReset: 0 };
     }
     
-    const memberStandings = [];
     const batch = db.batch();
     let membersReset = 0;
     
-    // Collect member data and prepare for reset
+    // Reset each member's weekly points
     for (const memberDoc of membersSnap.docs) {
-      const memberData = memberDoc.data();
-      const userId = memberDoc.id;
-      
-      // Get user's display name
-      let firstName = "Unknown";
-      try {
-        const userDoc = await db.collection('users').doc(userId).get();
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          firstName = userData.firstName || userData.displayName || "Unknown";
-        }
-      } catch (error) {
-        console.warn(`Could not fetch user data for ${userId}:`, error);
-      }
-      
-      memberStandings.push({
-        userId,
-        points: memberData.points || 0,
-        weeklyPoints: memberData.weeklyPoints || 0,
-        teamName: memberData.teamName || "Unnamed Team",
-        firstName: firstName,
-        freeAgentMoves: memberData.freeAgentMoves || 0,
-        bonusPoints: memberData.bonusPoints || 0,
-        smackTalk: memberData.smackTalk || "",
-        teamAvatar: memberData.teamAvatar || null
-      });
-      
-      // Reset member's weekly data for new week
       batch.update(memberDoc.ref, {
-        weeklyPoints: 0,  // Reset weekly points for new week
-        weeklyPointsHistory: admin.firestore.FieldValue.arrayUnion(
-          `Week ${week}: ${memberData.points || 0} total pts, ${memberData.weeklyPoints || 0} weekly pts`
-        ),
+        weeklyPoints: 0,  // Reset for new week
         lastWeeklyReset: admin.firestore.FieldValue.serverTimestamp()
       });
-      
       membersReset++;
     }
     
-    // Sort by total points (descending) to determine final ranks for snapshot
-    memberStandings.sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
-      return (b.weeklyPoints || 0) - (a.weeklyPoints || 0);
-    });
-    
-    // Add ranks
-    memberStandings.forEach((member, index) => {
-      member.rank = index + 1;
-    });
-    
-    // Save historical snapshots for each user
-    for (const member of memberStandings) {
-      const weeklyStandingsRef = db
-        .collection('leagues').doc(leagueId)
-        .collection('weeklyStandings').doc(member.userId);
-      
-      batch.set(weeklyStandingsRef, {
-        [`week${week}`]: {
-          rank: member.rank,
-          points: member.points,
-          weeklyPoints: member.weeklyPoints,
-          teamName: member.teamName,
-          firstName: member.firstName,
-          freeAgentMoves: member.freeAgentMoves,
-          bonusPoints: member.bonusPoints,
-          smackTalk: member.smackTalk,
-          teamAvatar: member.teamAvatar,
-          snapshotAt: admin.firestore.FieldValue.serverTimestamp()
-        }
-      }, { merge: true });
-    }
-    
-    // Execute all member updates
     await batch.commit();
+    console.log(`Reset ${membersReset} members in league ${leagueId}`);
     
-    console.log(`League ${leagueId} - Week ${week} final standings:`);
-    memberStandings.forEach(member => {
-      console.log(`  ${member.rank}. ${member.teamName} (${member.firstName}) - ${member.points} pts (${member.weeklyPoints} weekly)`);
-    });
-    
-    return { membersReset, teamsReset: 0 };
+    return { membersReset };
     
   } catch (error) {
-    console.error(`Error processing league ${leagueId}, week ${week}:`, error);
+    console.error(`Error resetting league ${leagueId}:`, error);
     throw error;
   }
 }
@@ -4354,203 +3849,6 @@ exports.testWeek2Ingestion = onRequest(async (req, res) => {
     res.status(500).json({ 
       error: error.message,
       stack: error.stack
-    });
-  }
-});
-
-exports.debugCaptainMigration = onRequest(async (req, res) => {
-  try {
-    const db = admin.firestore();
-    const leagueId = req.query.leagueId || 'cGOwzgjI9PDRzBmJKRhu';
-    const userId = req.query.userId || 'BOBnEJNfMyORVdcE5NwQqRXJJn2';
-    const week = parseInt(req.query.week) || 1;
-    
-    console.log(`🔍 Debug captain migration: league=${leagueId}, user=${userId}, week=${week}`);
-    
-    // Get current member lineup - FIXED: Use correct Firestore API
-    const memberRef = db.collection('leagues').doc(leagueId).collection('members').doc(userId);
-    const memberSnap = await memberRef.get();
-    
-    if (!memberSnap.exists) {  // FIXED: Use .exists property, not .exists()
-      return res.status(404).json({ error: 'Member not found' });
-    }
-    
-    const memberData = memberSnap.data();
-    console.log('Current member lineup:', memberData.lineup);
-    
-    // Get existing weekly data
-    const weeklyLineupsRef = db.collection('leagues').doc(leagueId).collection('weeklyLineups').doc(userId);
-    const weeklySnap = await weeklyLineupsRef.get();
-    const existingWeeklyData = weeklySnap.exists ? weeklySnap.data() : {};  // FIXED: Use .exists property
-    const weekKey = `week${week}`;
-    const existingWeekData = existingWeeklyData[weekKey] || {};
-    
-    console.log(`Existing week ${week} data:`, existingWeekData);
-    
-    // Test the captain validation logic
-    const mockNewLineup = {
-      starters: memberData.lineup?.starters || [],
-      bench: memberData.lineup?.bench || []
-    };
-    
-    const existingCaptain = existingWeekData.captain || null;
-    const validatedCaptain = validateCaptainAfterLineupChange(existingCaptain, mockNewLineup);
-    
-    console.log('Captain validation test:', {
-      existingCaptain,
-      validatedCaptain,
-      lineup: mockNewLineup
-    });
-    
-    // Test creating the data structure
-    const testWeeklyLineupData = {
-      starters: memberData.lineup?.starters?.map(team => ({ team, lockedAt: null })) || [],
-      bench: memberData.lineup?.bench?.map(team => ({ team, lockedAt: null })) || [],
-      captain: validatedCaptain,
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp()
-    };
-    
-    res.json({
-      success: true,
-      debug: {
-        leagueId,
-        userId,
-        week,
-        currentMemberLineup: memberData.lineup,
-        existingWeeklyData: existingWeekData,
-        captainValidation: {
-          existing: existingCaptain,
-          validated: validatedCaptain,
-          changed: validatedCaptain !== existingCaptain
-        },
-        testDataStructure: testWeeklyLineupData
-      }
-    });
-    
-  } catch (error) {
-    console.error('Debug captain migration failed:', error);
-    res.status(500).json({ error: error.message, stack: error.stack });
-  }
-});
-
-// Add this one-time migration function to your functions/index.js
-
-exports.addCaptainFieldToAllLineups = onRequest(async (req, res) => {
-  try {
-    const db = admin.firestore();
-    const leagueId = req.query.leagueId;
-    const dryRun = req.query.dryRun === 'true'; // Set to true to see what would be updated without making changes
-    
-    if (!leagueId) {
-      return res.status(400).json({ error: 'leagueId parameter required' });
-    }
-    
-    console.log(`🔄 Starting captain field migration for league: ${leagueId}`);
-    console.log(`Dry run mode: ${dryRun}`);
-    
-    let totalUsersProcessed = 0;
-    let totalWeeksUpdated = 0;
-    let usersAlreadyHaveCaptain = 0;
-    const updatesSummary = [];
-    
-    // Get all weekly lineup documents for this league
-    const weeklyLineupsSnap = await db
-      .collection('leagues').doc(leagueId)
-      .collection('weeklyLineups')
-      .get();
-    
-    if (weeklyLineupsSnap.empty) {
-      return res.json({
-        success: true,
-        message: 'No weekly lineups found in this league',
-        leagueId,
-        totalUsersProcessed: 0
-      });
-    }
-    
-    console.log(`Found ${weeklyLineupsSnap.size} users with weekly lineup data`);
-    
-    for (const userDoc of weeklyLineupsSnap.docs) {
-      const userId = userDoc.id;
-      const userData = userDoc.data();
-      
-      console.log(`Processing user: ${userId}`);
-      
-      let userNeedsUpdate = false;
-      const userUpdates = {};
-      let userWeeksUpdated = 0;
-      
-      // Check each week in the user's data
-      Object.keys(userData).forEach(weekKey => {
-        if (weekKey.startsWith('week') && userData[weekKey] && typeof userData[weekKey] === 'object') {
-          const weekData = userData[weekKey];
-          
-          // Check if captain field is missing
-          if (!weekData.hasOwnProperty('captain')) {
-            console.log(`  ${weekKey}: Adding captain field`);
-            userUpdates[`${weekKey}.captain`] = null;
-            userNeedsUpdate = true;
-            userWeeksUpdated++;
-          } else {
-            console.log(`  ${weekKey}: Captain field already exists (${weekData.captain})`);
-          }
-        }
-      });
-      
-      if (userNeedsUpdate) {
-        if (!dryRun) {
-          // Actually update the document
-          await userDoc.ref.update({
-            ...userUpdates,
-            lastCaptainMigration: admin.firestore.FieldValue.serverTimestamp()
-          });
-          console.log(`✅ Updated user ${userId}: ${userWeeksUpdated} weeks`);
-        } else {
-          console.log(`[DRY RUN] Would update user ${userId}: ${userWeeksUpdated} weeks`);
-        }
-        
-        totalWeeksUpdated += userWeeksUpdated;
-        updatesSummary.push({
-          userId,
-          weeksUpdated: userWeeksUpdated,
-          updates: Object.keys(userUpdates)
-        });
-      } else {
-        console.log(`User ${userId}: All weeks already have captain field`);
-        usersAlreadyHaveCaptain++;
-      }
-      
-      totalUsersProcessed++;
-    }
-    
-    console.log(`✅ Captain field migration complete:`);
-    console.log(`  Users processed: ${totalUsersProcessed}`);
-    console.log(`  Users already had captain: ${usersAlreadyHaveCaptain}`);
-    console.log(`  Users updated: ${updatesSummary.length}`);
-    console.log(`  Total weeks updated: ${totalWeeksUpdated}`);
-    
-    res.json({
-      success: true,
-      leagueId,
-      dryRun,
-      summary: {
-        totalUsersProcessed,
-        usersAlreadyHaveCaptain,
-        usersUpdated: updatesSummary.length,
-        totalWeeksUpdated
-      },
-      updateDetails: updatesSummary,
-      message: dryRun 
-        ? `DRY RUN: Would update ${updatesSummary.length} users, ${totalWeeksUpdated} weeks total`
-        : `Updated captain field for ${updatesSummary.length} users, ${totalWeeksUpdated} weeks total`
-    });
-    
-  } catch (error) {
-    console.error('Captain field migration failed:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message,
-      stack: error.stack 
     });
   }
 });
