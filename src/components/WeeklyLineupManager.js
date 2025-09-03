@@ -1,11 +1,11 @@
-// WeeklyLineupManager.js — STEP 1: Enhanced Game Display Only (scores + live indicator)
+// WeeklyLineupManager.js — Enhanced with Captain Selection Feature
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { doc, getDoc, updateDoc, collection, getDocs, addDoc, increment } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 import { weeklyLineupUtils } from '../utils/weeklyLineupUtils';
-import { ChevronLeft, ChevronRight, Lock, Clock, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock, Clock, CheckCircle, ChevronDown, ChevronUp, Crown } from 'lucide-react';
 
 /**
  * Get game information for a specific team in a specific week
@@ -30,7 +30,6 @@ const getTeamGameInfo = async (teamName, week) => {
           awayTeam: gameData.awayTeam,
           gameComplete: gameData.gameComplete || false,
           venue: gameData.venue || null,
-          // NEW: Add live scoring fields for enhanced display
           homeScore: gameData.homeScore || 0,
           awayScore: gameData.awayScore || 0,
           gameStatus: gameData.gameStatus || 'scheduled',
@@ -43,7 +42,6 @@ const getTeamGameInfo = async (teamName, week) => {
 
     if (teamGames.length === 0) return null;
 
-    // Sort by date and return first game (for teams with multiple games in Week 1)
     teamGames.sort((a, b) => a.date - b.date);
     return teamGames[0];
   } catch (error) {
@@ -52,32 +50,16 @@ const getTeamGameInfo = async (teamName, week) => {
   }
 };
 
-/**
- * NEW: Get spread display for a specific game from team's perspective
- * @param {Object} gameInfo - Game information object
- * @param {string} teamName - Name of the team we're displaying for
- * @returns {string|null} Spread display string
- */
 const getGameSpreadDisplay = (gameInfo, teamName) => {
   if (!gameInfo || typeof gameInfo.homeSpread !== 'number') return null;
   
   const isHome = gameInfo.homeTeam === teamName;
-  
-  // homeSpread is from HOME team's perspective
-  // If we're showing away team, flip the sign
   const teamSpread = isHome ? gameInfo.homeSpread : -gameInfo.homeSpread;
   
-  // Format the spread
   if (teamSpread === 0) return 'PICK';
   return teamSpread > 0 ? `+${teamSpread}` : `${teamSpread}`;
 };
 
-/**
- * NEW: Get enhanced game display info with live status and scores
- * @param {Object} gameInfo - Game information object
- * @param {string} teamName - Name of the team we're displaying for
- * @returns {Object} Enhanced display information
- */
 const getGameDisplayInfo = (gameInfo, teamName) => {
   if (!gameInfo) {
     return { 
@@ -93,7 +75,6 @@ const getGameDisplayInfo = (gameInfo, teamName) => {
   const opponentScore = isHome ? gameInfo.awayScore : gameInfo.homeScore;
   const opponent = isHome ? gameInfo.awayTeam : gameInfo.homeTeam;
 
-  // COMPLETED GAMES: Show score + W/L
   if (gameInfo.gameComplete) {
     const won = myScore > opponentScore;
     return {
@@ -105,12 +86,10 @@ const getGameDisplayInfo = (gameInfo, teamName) => {
     };
   }
 
-  // LIVE GAMES: Show score + quarter + LIVE indicator
   if (gameInfo.gameStatus === 'in_progress' || gameInfo.gameStatus === 'live') {
     const won = myScore > opponentScore;
     const tied = myScore === opponentScore;
     
-    // Format period display
     let periodDisplay = '';
     if (gameInfo.period) {
       const quarter = gameInfo.period;
@@ -119,24 +98,22 @@ const getGameDisplayInfo = (gameInfo, teamName) => {
       } else if (quarter === 5) {
         periodDisplay = ' OT';
       } else {
-        periodDisplay = ` ${quarter - 4}OT`; // 2OT, 3OT, etc.
+        periodDisplay = ` ${quarter - 4}OT`;
       }
     }
     
-    // Add clock if available and meaningful
     let clockDisplay = '';
     if (gameInfo.clock && gameInfo.clock !== '0:00' && gameInfo.clock !== '00:00') {
       clockDisplay = ` ${gameInfo.clock}`;
     }
     
-    // Determine win/loss/tie indicator for live games
     let resultIndicator = '';
     if (tied) {
-      resultIndicator = ' T'; // Tied
+      resultIndicator = ' T';
     } else if (won) {
-      resultIndicator = ' W'; // Winning
+      resultIndicator = ' W';
     } else {
-      resultIndicator = ' L'; // Losing
+      resultIndicator = ' L';
     }
     
     return {
@@ -150,7 +127,6 @@ const getGameDisplayInfo = (gameInfo, teamName) => {
     };
   }
 
-  // UPCOMING GAMES: Show date/time (existing behavior)
   const gameTime = formatGameTimeChip(gameInfo.date);
   return {
     type: 'upcoming',
@@ -161,13 +137,6 @@ const getGameDisplayInfo = (gameInfo, teamName) => {
   };
 };
 
-/**
- * Check if a specific team is locked (game started or completed)
- * @param {string} teamName - The team name to check
- * @param {number} week - The week number
- * @param {Date} currentTime - Current time (defaults to now)
- * @returns {Promise<Object>} Lock status object
- */
 const isTeamLocked = async (teamName, week, currentTime = window.TEST_CURRENT_TIME || new Date()) => {
   try {
     const gameInfo = await getTeamGameInfo(teamName, week);
@@ -181,7 +150,6 @@ const isTeamLocked = async (teamName, week, currentTime = window.TEST_CURRENT_TI
       };
     }
 
-    // Check if game is completed
     if (gameInfo.gameComplete) {
       return {
         locked: true,
@@ -191,22 +159,19 @@ const isTeamLocked = async (teamName, week, currentTime = window.TEST_CURRENT_TI
       };
     }
 
-    // FIX: Ensure date is a proper Date object
     const gameDate = gameInfo.date instanceof Date ? gameInfo.date : new Date(gameInfo.date);
     
-    // Check if date conversion worked
     if (isNaN(gameDate.getTime())) {
       console.error(`Invalid date for ${teamName}:`, gameInfo.date);
       return {
-        locked: false,  // FIXED: Don't lock on invalid date
+        locked: false,
         reason: 'invalid_date',
         message: `${teamName} lock status unavailable - invalid date`,
         gameInfo
       };
     }
 
-    // Check if game has started (1 hour buffer before kickoff)
-    const lockTime = new Date(gameDate.getTime() - (60 * 60 * 1000)); // 1 hour before
+    const lockTime = new Date(gameDate.getTime() - (60 * 60 * 1000));
     if (currentTime >= lockTime) {
       return {
         locked: true,
@@ -214,7 +179,7 @@ const isTeamLocked = async (teamName, week, currentTime = window.TEST_CURRENT_TI
         message: `${teamName} is locked - ${gameDate <= currentTime ? 'game started' : 'lineup locked'}`,
         gameInfo,
         lockTime,
-        gameDate  // Add this for debugging
+        gameDate
       };
     }
 
@@ -224,11 +189,10 @@ const isTeamLocked = async (teamName, week, currentTime = window.TEST_CURRENT_TI
       message: null,
       gameInfo,
       lockTime,
-      gameDate  // Add this for debugging
+      gameDate
     };
   } catch (error) {
     console.error(`Error checking lock status for ${teamName}:`, error);
-    // FIXED: Default to unlocked on error instead of locked
     return {
       locked: false,
       reason: 'error',
@@ -238,11 +202,6 @@ const isTeamLocked = async (teamName, week, currentTime = window.TEST_CURRENT_TI
   }
 };
 
-/**
- * Get all teams with multiple games in a specific week (primarily Week 1)
- * @param {number} week - The week number to check
- * @returns {Promise<Array>} Array of team names with multiple games
- */
 const getTeamsWithMultipleGames = async (week) => {
   try {
     const gamesSnap = await getDocs(
@@ -269,32 +228,23 @@ const getTeamsWithMultipleGames = async (week) => {
   }
 };
 
-/**
- * Enhanced team data structure with live game data preparation
- * This extends the existing team object with placeholders for live scoring
- * @param {Object} team - The team object to enhance
- * @returns {Object|null} Enhanced team object or null
- */
 const enhanceTeamWithLiveData = (team) => {
   if (!team) return null;
 
   return {
     ...team,
-    // Preserve existing data
     currentSeason: {
       ...team.currentSeason,
-      // Add live game data structure (initially empty, populated by future live score system)
       liveGame: team.currentSeason?.liveGame || {
-        gameStatus: null,        // "scheduled", "in_progress", "final"
-        homeScore: null,         // Current home team score
-        awayScore: null,         // Current away team score
-        quarter: null,           // Current quarter/period
-        timeRemaining: null,     // Time remaining in current quarter
-        lastUpdated: null,       // When live data was last updated
-        possession: null         // Which team has possession (future)
+        gameStatus: null,
+        homeScore: null,
+        awayScore: null,
+        quarter: null,
+        timeRemaining: null,
+        lastUpdated: null,
+        possession: null
       }
     },
-    // Add lock status (will be populated by lock detection functions)
     lockStatus: {
       locked: false,
       reason: null,
@@ -304,12 +254,6 @@ const enhanceTeamWithLiveData = (team) => {
   };
 };
 
-/**
- * Check if user has teams with multiple games in their starting lineup
- * @param {Array} starters - Array of starting lineup teams
- * @param {number} week - Week number to check
- * @returns {Promise<Object>} Information about dual-game teams in starters
- */
 const checkDualGameTeamsInStarters = async (starters, week) => {
   try {
     if (week !== 1) {
@@ -336,15 +280,6 @@ const checkDualGameTeamsInStarters = async (starters, week) => {
   }
 };
 
-/* ---------- Individual Team Locking Functions ---------- */
-
-/**
- * Enhanced lineup status calculation with individual team locking
- * @param {Object} weeklyLineups - User's weekly lineups object
- * @param {number} week - Week number
- * @param {Date} currentTime - Current time (defaults to now)
- * @returns {Promise<Object>} Lineup status with individual team details
- */
 const getLineupStatus = async (weeklyLineups, week, currentTime = new Date()) => {
   const weekKey = `week${week}`;
   const lineup = weeklyLineups[weekKey];
@@ -359,7 +294,6 @@ const getLineupStatus = async (weeklyLineups, week, currentTime = new Date()) =>
     };
   }
   
-  // Get all teams in the lineup (starters + bench)
   const allTeams = [...lineup.starters, ...lineup.bench].filter(team => team !== null);
   
   if (allTeams.length === 0) {
@@ -372,7 +306,6 @@ const getLineupStatus = async (weeklyLineups, week, currentTime = new Date()) =>
     };
   }
   
-  // Check lock status for each team
   const teamStatuses = await Promise.all(
     allTeams.map(async (teamName) => {
       const lockInfo = await isTeamLocked(teamName, week, currentTime);
@@ -387,7 +320,6 @@ const getLineupStatus = async (weeklyLineups, week, currentTime = new Date()) =>
   const lockedTeams = teamStatuses.filter(t => t.locked).map(t => t.teamName);
   const unlockedTeams = teamStatuses.filter(t => !t.locked).map(t => t.teamName);
   
-  // Determine overall status
   let status, message;
   
   if (lockedTeams.length === 0) {
@@ -407,17 +339,10 @@ const getLineupStatus = async (weeklyLineups, week, currentTime = new Date()) =>
     lockedTeams,
     unlockedTeams,
     totalTeams: allTeams.length,
-    teamStatuses // Full details for each team
+    teamStatuses
   };
 };
 
-/**
- * Check if a team can be moved/added to lineup
- * @param {string} teamName - Team name to check
- * @param {number} week - Week number
- * @param {Date} currentTime - Current time (defaults to now)
- * @returns {Promise<Object>} Move validation result
- */
 const canMoveTeam = async (teamName, week, currentTime = new Date()) => {
   const lockInfo = await isTeamLocked(teamName, week, currentTime);
   
@@ -429,12 +354,37 @@ const canMoveTeam = async (teamName, week, currentTime = new Date()) => {
   };
 };
 
-/* ---------- Shared helpers (module scope) ---------- */
+/* ---------- Captain Helper Functions ---------- */
+
+const canBeCaptain = (teamName, starters, bench) => {
+  if (!teamName) return false;
+  
+  const allTeams = [
+    ...starters.filter(team => team !== null).map(team => team.school || team.name),
+    ...bench.filter(team => team !== null).map(team => team.school || team.name)
+  ];
+  
+  return allTeams.includes(teamName);
+};
+
+const calculateCaptainPoints = (basePoints, isCaptain = false) => {
+  const finalPoints = isCaptain ? basePoints * 2 : basePoints;
+  const bonus = isCaptain ? basePoints : 0;
+  
+  return {
+    basePoints,
+    finalPoints,
+    bonus,
+    isCaptain
+  };
+};
+
+/* ---------- Shared helpers ---------- */
 const toJSDate = (v) => {
   if (!v) return null;
-  if (typeof v?.toDate === 'function') return v.toDate(); // Firestore Timestamp
-  if (typeof v === 'number') return new Date(v);          // epoch ms
-  const d = new Date(v);                                  // ISO/string
+  if (typeof v?.toDate === 'function') return v.toDate();
+  if (typeof v === 'number') return new Date(v);
+  const d = new Date(v);
   return isNaN(d) ? null : d;
 };
 
@@ -478,7 +428,7 @@ const WeeklyLineupManager = ({
   userId,
   allTeams,
   currentWeek,
-  onTeamClick,   // kept for API parity
+  onTeamClick,
   TeamLogo,
   userDisplayName
 }) => {
@@ -492,7 +442,6 @@ const WeeklyLineupManager = ({
     try {
       console.log("Starting Texas A&M normalization fix...");
       
-      // 1. Fix the member's current lineup
       const memberRef = doc(db, "leagues", leagueId, "members", userId);
       const memberSnap = await getDoc(memberRef);
       
@@ -503,20 +452,18 @@ const WeeklyLineupManager = ({
         if (currentLineup) {
           let needsUpdate = false;
           
-          // Fix starters
           const fixedStarters = currentLineup.starters.map(teamName => {
-            if (teamName === "texas-am") {  // Old normalization
+            if (teamName === "texas-am") {
               needsUpdate = true;
-              return "texas-a-m";  // New normalization
+              return "texas-a-m";
             }
             return teamName;
           });
           
-          // Fix bench
           const fixedBench = currentLineup.bench.map(teamName => {
-            if (teamName === "texas-am") {  // Old normalization
+            if (teamName === "texas-am") {
               needsUpdate = true;
-              return "texas-a-m";  // New normalization
+              return "texas-a-m";
             }
             return teamName;
           });
@@ -533,7 +480,6 @@ const WeeklyLineupManager = ({
         }
       }
       
-      // 2. Fix weeklyLineups document
       const weeklyLineupsRef = doc(db, "leagues", leagueId, "weeklyLineups", userId);
       const weeklyLineupsSnap = await getDoc(weeklyLineupsRef);
       
@@ -542,11 +488,9 @@ const WeeklyLineupManager = ({
         let needsWeeklyUpdate = false;
         const updatedWeeklyData = {};
         
-        // Check all weeks
         Object.keys(weeklyData).forEach(weekKey => {
           const weekLineup = weeklyData[weekKey];
           
-          // Fix starters for this week
           const fixedStarters = weekLineup.starters?.map(teamName => {
             if (teamName === "texas-am") {
               needsWeeklyUpdate = true;
@@ -555,7 +499,6 @@ const WeeklyLineupManager = ({
             return teamName;
           }) || [];
           
-          // Fix bench for this week
           const fixedBench = weekLineup.bench?.map(teamName => {
             if (teamName === "texas-am") {
               needsWeeklyUpdate = true;
@@ -579,7 +522,6 @@ const WeeklyLineupManager = ({
       
       console.log("🎉 Texas A&M normalization fix completed!");
       
-      // Reload the component data
       await initializeWeeklyLineups();
       
     } catch (error) {
@@ -587,12 +529,10 @@ const WeeklyLineupManager = ({
     }
   };
 
-  // ENHANCED DEBUG - Replace the existing debug useEffect with this
   useEffect(() => {
     console.log("🔍 Debug: allTeams prop:", allTeams ? Object.keys(allTeams).length : "undefined/null");
     
     if (allTeams && Object.keys(allTeams).length > 0) {
-      // Find Texas A&M in allTeams
       const texasAM = Object.values(allTeams).find(team => 
         team.school && team.school.toLowerCase().includes('texas') && team.school.toLowerCase().includes('a')
       );
@@ -604,7 +544,6 @@ const WeeklyLineupManager = ({
         console.log("❌ Texas A&M not found in allTeams");
         console.log("🔍 First 10 team names:", Object.values(allTeams).slice(0, 10).map(t => t.school));
         
-        // Check if any team has "A&M" in the name
         const texasTeams = Object.values(allTeams).filter(team => 
           team.school && team.school.toLowerCase().includes('texas')
         );
@@ -620,11 +559,10 @@ const WeeklyLineupManager = ({
   }, [leagueId, userId]);
 
   useEffect(() => {
-    // Only run once when component first loads
     if (leagueId && userId) {
       fixTexasAMNormalization();
     }
-  }, []); // Empty dependency array = run once
+  }, []);
 
   const initializeWeeklyLineups = async () => {
     try {
@@ -644,40 +582,35 @@ const WeeklyLineupManager = ({
       weeks.forEach(week => {
         const weekKey = `week${week}`;
         
-        // Helper function to create enhanced lineup structure
         const createEnhancedLineup = (existingLineup = null) => {
           const baseLineup = existingLineup || {
             starters: Array(5).fill(null),
             bench: Array(2).fill(null),
+            captain: null,
             lockedAt: null
           };
           
-          // Add new individual team lock tracking if not present
           return {
             starters: baseLineup.starters || Array(5).fill(null),
             bench: baseLineup.bench || Array(2).fill(null),
-            
-            // Individual team lock tracking
-            lockedTeams: baseLineup.lockedTeams || [],        // Array of locked team names
-            teamLockTimes: baseLineup.teamLockTimes || {},    // Team name -> lock time mapping
-            
-            // Keep for backward compatibility
+            captain: baseLineup.captain || null,
+            lockedTeams: baseLineup.lockedTeams || [],
+            teamLockTimes: baseLineup.teamLockTimes || {},
             lockedAt: baseLineup.lockedAt || null
           };
         };
         
         if (week === currentWeek && currentLineup) {
-          // Current week - use member's current lineup with enhanced structure
+          const existingWeekData = existingWeeklyData[weekKey] || {};
           lineupData[weekKey] = createEnhancedLineup({
             starters: currentLineup.starters || Array(5).fill(null),
             bench: currentLineup.bench || Array(2).fill(null),
+            captain: existingWeekData.captain || null,
             lockedAt: null
           });
         } else if (existingWeeklyData[weekKey]) {
-          // Existing weekly data - enhance with new fields if missing
           lineupData[weekKey] = createEnhancedLineup(existingWeeklyData[weekKey]);
         } else {
-          // New week - create fresh enhanced lineup
           lineupData[weekKey] = createEnhancedLineup();
         }
       });
@@ -703,7 +636,6 @@ const WeeklyLineupManager = ({
         let firstGameTime = null;
         let lastGameTime = null;
         let allGamesComplete = true;
-        // NEW: Track live games
         let hasLiveGames = false;
 
         gamesSnap.forEach(gameDoc => {
@@ -717,7 +649,6 @@ const WeeklyLineupManager = ({
           }
           if (!gameData.gameComplete) allGamesComplete = false;
           
-          // NEW: Check for live games
           if (gameData.gameStatus === 'in_progress' || gameData.gameStatus === 'live') {
             hasLiveGames = true;
           }
@@ -732,7 +663,7 @@ const WeeklyLineupManager = ({
           if (lastGameTime) unlockTime = new Date(lastGameTime.getTime() + (60 * 60 * 1000));
 
           if (week === currentWeek && now < lockTime) status = 'editable';
-          else if (week === currentWeek && hasLiveGames) status = 'live'; // NEW: Live status
+          else if (week === currentWeek && hasLiveGames) status = 'live';
           else if (week === currentWeek && now >= lockTime && !allGamesComplete) status = 'locked_playing';
           else if (allGamesComplete && week < currentWeek) status = 'completed';
           else if (week > currentWeek) status = 'future';
@@ -747,7 +678,7 @@ const WeeklyLineupManager = ({
     setWeekStatuses(statuses);
   };
 
-  const saveLineup = async (week, starters, bench) => {
+  const saveLineup = async (week, starters, bench, captain = null) => {
     try {
       const normalizedStarters = starters.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null);
       const normalizedBench = bench.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null);
@@ -761,14 +692,19 @@ const WeeklyLineupManager = ({
 
       const weekKey = `week${week}`;
       
-      // Create enhanced lineup structure for the update
       const updatedLineup = {
         starters: normalizedStarters,
         bench: normalizedBench,
+        captain: captain,
         lockedTeams: weeklyLineups[weekKey]?.lockedTeams || [],
         teamLockTimes: weeklyLineups[weekKey]?.teamLockTimes || {},
         lockedAt: null
       };
+
+      const weeklyLineupsRef = doc(db, "leagues", leagueId, "weeklyLineups", userId);
+      await updateDoc(weeklyLineupsRef, {
+        [weekKey]: updatedLineup
+      });
       
       setWeeklyLineups(prev => ({ 
         ...prev, 
@@ -784,7 +720,7 @@ const WeeklyLineupManager = ({
     const status = weekStatuses[week]?.status;
     switch (status) {
       case 'editable':       return <Clock className="text-green-400" size={16} />;
-      case 'live':           return <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse" />; // NEW: Live indicator
+      case 'live':           return <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse" />;
       case 'locked_playing': return <Lock className="text-yellow-400" size={16} />;
       case 'completed':      return <CheckCircle className="text-blue-400" size={16} />;
       case 'future':         return <Lock className="text-gray-400" size={16} />;
@@ -800,7 +736,7 @@ const WeeklyLineupManager = ({
       case 'editable':       
         return `Teams lock 1 hour before their games start`;
       case 'live':           
-        return "Games are live! Check your scores"; // NEW: Live message
+        return "Games are live! Check your scores";
       case 'locked_playing': 
         return "Games in progress - individual teams may be locked";
       case 'completed':      
@@ -886,7 +822,7 @@ const WeeklyLineupManager = ({
           lineup={weeklyLineups[`week${selectedWeek}`]}
           allTeams={allTeams}
           isEditable={true}
-          onSave={(starters, bench) => saveLineup(selectedWeek, starters, bench)}
+          onSave={(starters, bench, captain) => saveLineup(selectedWeek, starters, bench, captain)}
           onTeamClick={onTeamClick}
           TeamLogo={TeamLogo}
           leagueId={leagueId}
@@ -915,6 +851,7 @@ const WeeklyLineupContent = ({
 }) => {
   const [starters, setStarters] = useState(Array(5).fill(null));
   const [bench, setBench] = useState(Array(2).fill(null));
+  const [captain, setCaptain] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [showConfirmCut, setShowConfirmCut] = useState(null);
   const [showReplaceModal, setShowReplaceModal] = useState(null);
@@ -926,9 +863,11 @@ const WeeklyLineupContent = ({
       const resolvedBench   = (lineup.bench || []).map(n => n ? findTeamByNormalizedName(n) : null);
       setStarters(resolvedStarters);
       setBench(resolvedBench);
+      setCaptain(lineup.captain || null);
     } else {
       setStarters(Array(5).fill(null));
       setBench(Array(2).fill(null));
+      setCaptain(null);
     }
     setHasChanges(false);
   }, [lineup, allTeams]);
@@ -936,12 +875,27 @@ const WeeklyLineupContent = ({
   const findTeamByNormalizedName = (normalizedName) =>
     Object.values(allTeams).find(team => weeklyLineupUtils.normalizeTeamName(team) === normalizedName);
 
-  const saveLineupChanges = async (newStarters, newBench) => {
+  const handleCaptainSelect = (teamName) => {
+    if (!canBeCaptain(teamName, starters, bench)) {
+      alert("Captain must be selected from your current lineup");
+      return;
+    }
+
+    const newCaptain = captain === teamName ? null : teamName;
+    setCaptain(newCaptain);
+    setHasChanges(true);
+  };
+
+  const saveLineupChanges = async (newStarters, newBench, newCaptain = captain) => {
     try {
       setIsSaving(true);
-      await onSave(newStarters, newBench);
+      
+      const validatedCaptain = newCaptain && canBeCaptain(newCaptain, newStarters, newBench) ? newCaptain : null;
+      
+      await onSave(newStarters, newBench, validatedCaptain);
       setStarters(newStarters);
       setBench(newBench);
+      setCaptain(validatedCaptain);
       setHasChanges(false);
     } catch (e) {
       console.error("Error saving lineup:", e);
@@ -953,7 +907,6 @@ const WeeklyLineupContent = ({
   const handleTeamMove = async (team, fromSection, fromIndex, toSection, toIndex = null) => {
     if (!isEditable || isSaving) return;
 
-    // Check if team can be moved (individual team locking)
     const teamName = team.school || team.name;
     const moveValidation = await canMoveTeam(teamName, week);
     
@@ -980,7 +933,6 @@ const WeeklyLineupContent = ({
 
     const displaced = (toSection === 'starters') ? newStarters[toIndex] : newBench[toIndex];
     
-    // Check if displaced team is locked
     if (displaced) {
       const displacedTeamName = displaced.school || displaced.name;
       const displacedValidation = await canMoveTeam(displacedTeamName, week);
@@ -1008,7 +960,6 @@ const WeeklyLineupContent = ({
   };
 
   const handleTeamCut = async (team, section, index) => {
-    // Check if team can be cut (individual team locking)
     const teamName = team.school || team.name;
     const moveValidation = await canMoveTeam(teamName, week);
     
@@ -1026,12 +977,15 @@ const WeeklyLineupContent = ({
     const { team, section, index } = showConfirmCut;
     const newStarters = [...starters];
     const newBench = [...bench];
+    const teamName = team.school || team.name;
 
     if (section === 'starters') newStarters[index] = null; else newBench[index] = null;
 
+    const newCaptain = captain === teamName ? null : captain;
+
     try {
       setIsSaving(true);
-      await saveLineupChanges(newStarters, newBench);
+      await saveLineupChanges(newStarters, newBench, newCaptain);
 
       const moveHistoryRef = collection(db, "leagues", leagueId, "moveHistory");
       await addDoc(moveHistoryRef, {
@@ -1058,7 +1012,6 @@ const WeeklyLineupContent = ({
     if (!showReplaceModal || isSaving) return;
     const { movingTeam, fromSection, fromIndex, toSection } = showReplaceModal;
     
-    // Validate both teams can be moved
     const movingTeamName = movingTeam.school || movingTeam.name;
     const movingValidation = await canMoveTeam(movingTeamName, week);
     
@@ -1092,16 +1045,15 @@ const WeeklyLineupContent = ({
   };
 
   const handleSave = async () => {
-    if (hasChanges && isEditable && !isSaving) await saveLineupChanges(starters, bench);
+    if (hasChanges && isEditable && !isSaving) await saveLineupChanges(starters, bench, captain);
   };
 
-  /* ---------- Enhanced Team Card with Live Game Display ---------- */
+  /* ---------- Enhanced Team Card with Captain Selection ---------- */
   const TeamSlot = ({ team, section, index, size = 42 }) => {
     const [showActions, setShowActions] = useState(false);
     const [lockStatus, setLockStatus] = useState({ locked: false, message: null });
-    const [gameDisplayInfo, setGameDisplayInfo] = useState(null); // NEW: Game display state
+    const [gameDisplayInfo, setGameDisplayInfo] = useState(null);
 
-    // Check individual team lock status
     useEffect(() => {
       const checkTeamLock = async () => {
         if (!team) {
@@ -1121,7 +1073,6 @@ const WeeklyLineupContent = ({
       checkTeamLock();
     }, [team, week]);
 
-    // NEW: Load enhanced game display info with spread from game document
     useEffect(() => {
       const loadGameDisplayInfo = async () => {
         if (!team) {
@@ -1133,7 +1084,6 @@ const WeeklyLineupContent = ({
         const gameInfo = await getTeamGameInfo(teamName, week);
         const displayInfo = getGameDisplayInfo(gameInfo, teamName);
         
-        // NEW: Get spread from the actual game document
         if (gameInfo) {
           displayInfo.gameSpread = getGameSpreadDisplay(gameInfo, teamName);
         }
@@ -1162,33 +1112,45 @@ const WeeklyLineupContent = ({
       );
     }
 
-    // Get existing team data
     const opponent = team.currentSeason?.nextOpponent;
     const spread = team.currentSeason?.nextOpponentSpreadDisplay;
     const isHome = team.currentSeason?.nextGameIsHome;
     const record = team.currentSeason?.record || '0-0';
-    const gamePoints = team.currentSeason?.gamePoints || 0;
-    const weeklyPts = (team.currentSeason?.weeklyPoints?.[`week${week}`] || 0);
+    const baseGamePoints = team.currentSeason?.gamePoints || 0;
+    const baseWeeklyPts = (team.currentSeason?.weeklyPoints?.[`week${week}`] || 0);
+
+    const teamName = team.school || team.name;
+    const isCaptain = captain === teamName;
+    const gamePointsCalc = { finalPoints: baseGamePoints, bonus: 0, isCaptain: false };
+    const weeklyPointsCalc = calculateCaptainPoints(baseWeeklyPts, isCaptain);
+    
+    const displaySeasonPoints = baseGamePoints;
 
     return (
       <div className={`bg-white/6 rounded-xl border overflow-hidden ${
         lockStatus.locked ? 'border-red-400/50 bg-red-500/10' : 'border-white/10'
-      }`}>
+      } ${isCaptain ? 'ring-2 ring-yellow-400/50' : ''}`}>
         <div className="p-3">
           <div className="grid grid-cols-[44px,1fr,auto] gap-3 items-center">
             {/* LEFT: Logo + action toggle */}
             <div className="flex flex-col items-center gap-1">
               <div className="relative">
                 <TeamLogo teamName={team.school} size={size} clickable={true} />
-                {/* Lock indicator overlay */}
+                
+                {isCaptain && (
+                  <div className="absolute -top-2 -right-2 bg-yellow-500 rounded-full p-1">
+                    <Crown size={12} className="text-white" />
+                  </div>
+                )}
+                
                 {lockStatus.locked && (
-                  <div className="absolute -top-1 -right-1 bg-red-500 rounded-full p-1">
+                  <div className="absolute -top-1 -left-1 bg-red-500 rounded-full p-1">
                     <Lock size={12} className="text-white" />
                   </div>
                 )}
-                {/* NEW: Flashing green dot for live games */}
+                
                 {gameDisplayInfo?.isLive && (
-                  <div className="absolute -top-2 -right-2 w-4 h-4 bg-green-500 rounded-full animate-ping">
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full animate-ping">
                     <div className="absolute inset-0 bg-green-500 rounded-full animate-pulse"></div>
                   </div>
                 )}
@@ -1206,72 +1168,95 @@ const WeeklyLineupContent = ({
               )}
             </div>
 
-            {/* MIDDLE: Team + game row (enhanced) */}
+            {/* MIDDLE: Team + game row */}
             <div className="min-w-0">
               <div className={`font-semibold text-[15px] leading-tight truncate ${
                 lockStatus.locked ? 'text-red-300' : 'text-white'
               }`}>
                 {team.school}
+                {isCaptain && (
+                  <span className="ml-2 text-xs text-yellow-400 font-bold">CAPTAIN</span>
+                )}
                 {lockStatus.locked && (
                   <span className="ml-2 text-xs text-red-400">LOCKED</span>
                 )}
               </div>
-              {/* NEW: Enhanced game info display */}
               <div className="text-xs text-white/70 truncate">
                 {gameDisplayInfo?.subtext || (opponent ? `${isHome ? 'vs' : '@'} ${opponent}` : 'No next game set')}
               </div>
 
-              {/* NEW: Enhanced chips row with game display */}
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                {/* NEW: Enhanced game status chip */}
                 {gameDisplayInfo && (
                   <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${gameDisplayInfo.chipClass}`}>
                     {gameDisplayInfo.display}
                   </span>
                 )}
                 
-                {/* NEW: Use spread from game document instead of team document */}
                 <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/10 text-yellow-300/90">
                   {gameDisplayInfo?.gameSpread ? `Spread ${gameDisplayInfo.gameSpread}` : 'Line TBD'}
                 </span>
                 
-                {/* Existing record chip */}
                 <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/10 text-blue-300/90">
                   {record}
                 </span>
               </div>
             </div>
 
-            {/* RIGHT: points column (unchanged) */}
+            {/* RIGHT: points column with captain bonus */}
             <div className="text-right leading-tight">
-              <div className="text-green-400 font-bold text-sm">{gamePoints}</div>
-              <div className="text-[11px] text-green-300/80 -mt-0.5">Season Points</div>
-              <div className="text-orange-400 font-bold text-sm mt-1">{weeklyPts}</div>
-              <div className="text-[11px] text-orange-300/80 -mt-0.5">Weekly Points</div>
+              <div className="font-bold text-sm text-green-400">
+                {gamePointsCalc.finalPoints}
+              </div>
+              <div className="text-[11px] text-green-300/80 -mt-0.5">
+                Season Points
+              </div>
+              <div className={`font-bold text-sm mt-1 ${isCaptain ? 'text-yellow-400' : 'text-orange-400'}`}>
+                {weeklyPointsCalc.finalPoints}
+                {isCaptain && weeklyPointsCalc.bonus > 0 && (
+                  <span className="text-[10px] text-yellow-300 ml-1">+{weeklyPointsCalc.bonus}</span>
+                )}
+              </div>
+              <div className="text-[11px] text-orange-300/80 -mt-0.5">
+                Weekly Points{isCaptain ? ' (2x)' : ''}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Actions section - unchanged */}
+        {/* Actions section with captain option */}
         {isEditable && showActions && !lockStatus.locked && (
           <div className="bg-white/6 border-t border-white/10 p-2.5">
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    handleTeamMove(team, section, index, section === 'starters' ? 'bench' : 'starters');
+                    setShowActions(false);
+                  }}
+                  disabled={isSaving}
+                  className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 text-white text-xs rounded-lg transition-colors font-medium"
+                >
+                  {section === 'starters' ? '📋 Move to Bench' : '🚀 Move to Starters'}
+                </button>
+                <button
+                  onClick={() => { handleTeamCut(team, section, index); setShowActions(false); }}
+                  disabled={isSaving}
+                  className="px-3 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-500 text-white text-xs rounded-lg transition-colors font-medium"
+                >
+                  🗑️ Cut
+                </button>
+              </div>
+              
               <button
-                onClick={() => {
-                  handleTeamMove(team, section, index, section === 'starters' ? 'bench' : 'starters');
-                  setShowActions(false);
-                }}
+                onClick={() => { handleCaptainSelect(teamName); setShowActions(false); }}
                 disabled={isSaving}
-                className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 text-white text-xs rounded-lg transition-colors font-medium"
+                className={`w-full px-3 py-2 text-white text-xs rounded-lg transition-colors font-medium ${
+                  isCaptain 
+                    ? 'bg-yellow-600 hover:bg-yellow-700' 
+                    : 'bg-purple-600 hover:bg-purple-700'
+                } disabled:bg-gray-500`}
               >
-                {section === 'starters' ? '📋 Move to Bench' : '🚀 Move to Starters'}
-              </button>
-              <button
-                onClick={() => { handleTeamCut(team, section, index); setShowActions(false); }}
-                disabled={isSaving}
-                className="px-3 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-500 text-white text-xs rounded-lg transition-colors font-medium"
-              >
-                🗑️ Cut
+                {isCaptain ? '👑 Remove Captain' : '👑 Make Captain'}
               </button>
             </div>
           </div>
@@ -1280,7 +1265,6 @@ const WeeklyLineupContent = ({
     );
   };
 
-  /* ------ Modals (portals) - unchanged ------ */
   const ConfirmCutModal = () => {
     const isOpen = !!showConfirmCut;
     useLockBodyScroll(isOpen);
@@ -1304,6 +1288,9 @@ const WeeklyLineupContent = ({
                     <div className="font-medium text-gray-800">{team.school}</div>
                     <div className="text-sm text-gray-600">{team.conference}</div>
                     <div className="text-sm text-gray-600 mt-1">{gamePoints} Season Points • {record}</div>
+                    {captain === (team.school || team.name) && (
+                      <div className="text-sm text-yellow-600 mt-1 font-bold">⚠️ This is your current captain</div>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-3">
@@ -1332,7 +1319,6 @@ const WeeklyLineupContent = ({
           <div className="absolute inset-0 bg-black/60" onClick={() => setShowReplaceModal(null)} />
           <div className="absolute left-0 right-0 bottom-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
             <div className="bg-white rounded-t-2xl border border-gray-200 shadow-2xl max-h-[80vh] h-[72vh] overflow-hidden">
-              {/* Header */}
               <div className="px-5 pt-4 pb-3 border-b border-gray-200">
                 <div className="mx-auto h-1.5 w-12 rounded-full bg-gray-300 mb-3" />
                 <h3 className="text-lg font-bold text-gray-900 text-center">Swap {movingTeam.school}</h3>
@@ -1341,7 +1327,6 @@ const WeeklyLineupContent = ({
                 </p>
               </div>
 
-              {/* Scrollable content */}
               <div className="overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
                 {slots.map((slotTeam, idx) => {
                   const opponent = slotTeam?.currentSeason?.nextOpponent;
@@ -1357,7 +1342,6 @@ const WeeklyLineupContent = ({
                     ? `${slotTeam.school} (${spread || 'TBD'})`
                     : '';
 
-                  // Build clean metadata line (no record)
                   const meta = [
                     opponent ? `${isHome ? 'vs' : '@'} ${opponent}` : null,
                     gameTime
@@ -1392,7 +1376,6 @@ const WeeklyLineupContent = ({
                 })}
               </div>
 
-              {/* Footer */}
               <div className="p-4 border-t border-gray-200">
                 <button onClick={() => setShowReplaceModal(null)} className="w-full py-3 rounded-xl bg-gray-600 text-white font-medium">
                   Cancel
@@ -1407,7 +1390,18 @@ const WeeklyLineupContent = ({
 
   return (
     <div>
-      {/* Individual team lock warning message */}
+      {captain && (
+        <div className="bg-yellow-500/20 border border-yellow-400/30 rounded-xl p-3 mb-4">
+          <div className="flex items-center gap-3">
+            <Crown className="text-yellow-400" size={20} />
+            <div>
+              <span className="text-yellow-200 font-semibold">Captain: {captain}</span>
+              <div className="text-yellow-300/80 text-sm">This team will earn double points (positive or negative)</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {week === currentWeek && (
         <div className="bg-blue-500/20 border border-blue-400/30 rounded-xl p-3 mb-4">
           <div className="flex items-center gap-2 text-blue-200">
@@ -1419,7 +1413,6 @@ const WeeklyLineupContent = ({
         </div>
       )}
 
-      {/* Starters */}
       <div className="mb-5">
         <h4 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
           🏈 Starters (5)
@@ -1431,7 +1424,6 @@ const WeeklyLineupContent = ({
         </div>
       </div>
 
-      {/* Bench */}
       <div className="mb-5">
         <h4 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
           🪑 Bench (2)
@@ -1443,11 +1435,15 @@ const WeeklyLineupContent = ({
         </div>
       </div>
 
-      {/* Save Button */}
       {isEditable && hasChanges && (
         <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-4">
           <div className="flex items-center justify-between">
-            <span className="text-green-200 font-medium">You have unsaved changes</span>
+            <div>
+              <span className="text-green-200 font-medium">You have unsaved changes</span>
+              {captain && (
+                <div className="text-green-300/80 text-sm">Captain: {captain} (2x points)</div>
+              )}
+            </div>
             <button
               onClick={handleSave}
               disabled={isSaving}
@@ -1459,7 +1455,6 @@ const WeeklyLineupContent = ({
         </div>
       )}
 
-      {/* Modals (Portals) */}
       <ConfirmCutModal />
       <ReplaceTeamModal />
     </div>

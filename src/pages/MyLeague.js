@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { db, auth } from "../firebase/firebase";
 import { collection, getDocs, doc, getDoc } from "firebase/firestore";
-import { Trophy, Users, Star, TrendingUp, Settings, ChevronDown, ChevronUp, Calendar } from "lucide-react";
+import { Trophy, Users, Star, TrendingUp, Settings, ChevronDown, ChevronUp, Calendar, Crown } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 import ScoringSystemModal from "../components/ScoringSystemModal";
 import RecentMovesWidget from '../components/RecentMovesWidget';
@@ -280,9 +280,18 @@ function MyLeague() {
           });
           setAllTeams(teamsMap);
 
-        // Fetch league members
+        // Fetch league members with captain data
         const membersRef = collection(db, "leagues", leagueId, "members");
         const snapshot = await getDocs(membersRef);
+        
+        // Get current week number for captain data fetching
+        const getCurrentWeekNumber = () => {
+          if (typeof weekData === 'number') return weekData;
+          if (!weekData || typeof weekData !== 'string') return 1;
+          const weekMatch = weekData.match(/\d+/);
+          return weekMatch ? parseInt(weekMatch[0]) : 1;
+        };
+        const currentWeekNum = getCurrentWeekNumber();
         
         const membersData = await Promise.all(
           snapshot.docs.map(async (memberDoc) => {
@@ -302,9 +311,25 @@ function MyLeague() {
               console.warn("Could not fetch user data:", userError);
             }
 
+            // NEW: Fetch captain data for current week
+            let captain = null;
+            try {
+              const weeklyLineupsRef = doc(db, "leagues", leagueId, "weeklyLineups", memberDoc.id);
+              const weeklyLineupsSnap = await getDoc(weeklyLineupsRef);
+              
+              if (weeklyLineupsSnap.exists()) {
+                const weeklyData = weeklyLineupsSnap.data();
+                const weekKey = `week${currentWeekNum}`;
+                captain = weeklyData[weekKey]?.captain || null;
+              }
+            } catch (captainError) {
+              console.warn(`Could not fetch captain for user ${memberDoc.id}:`, captainError);
+            }
+
             return {
               id: memberDoc.id,
               firstName,
+              captain, // NEW: Add captain to member data
               ...memberData
             };
           })
@@ -322,8 +347,8 @@ function MyLeague() {
     fetchData();
   }, [leagueId]);
 
-// FIXED: Team logo component with schedule-based live game display
-  const TeamLogo = ({ teamName, size = 32, clickable = false }) => {
+// FIXED: Team logo component with schedule-based live game display and captain support
+  const TeamLogo = ({ teamName, size = 32, clickable = false, isCaptain = false }) => {
 
     const normalize = (name) =>
       name
@@ -353,7 +378,7 @@ function MyLeague() {
       height: size,
       borderRadius: "50%",
       overflow: "hidden",
-      border: "2px solid rgba(255, 255, 255, 0.3)",
+      border: isCaptain ? "3px solid #fbbf24" : "2px solid rgba(255, 255, 255, 0.3)", // Gold border for captain
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -361,7 +386,7 @@ function MyLeague() {
       cursor: clickable ? "pointer" : "default",
       transition: "all 0.3s ease",
       flexShrink: 0,
-      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+      boxShadow: isCaptain ? "0 4px 12px rgba(251, 191, 36, 0.3)" : "0 4px 12px rgba(0, 0, 0, 0.1)", // Gold shadow for captain
       transform: "scale(1)",
       position: "relative",
       backdropFilter: "blur(10px)"
@@ -376,7 +401,7 @@ function MyLeague() {
     };
     const currentWeekNum = getCurrentWeekNumber();
     
-    // FIXED: Enhanced game state detection using schedule data first
+    // FIXED: Enhanced game state detection using schedule data first with captain bonus
     const getTeamDisplayState = () => {
       // Only show live status for current week view
       if (viewMode !== 'current') {
@@ -396,17 +421,22 @@ function MyLeague() {
         const hasLiveGame = scheduleGame.hasLiveGame;
         
         // Get weekly points from team document (still use this for display)
-        const weeklyPoints = team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`] || 0;
+        let weeklyPoints = team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`] || 0;
         
-        console.log(`${teamName} schedule status:`, { gameStatus, gameComplete, hasLiveGame, weeklyPoints });
+        // NEW: Apply captain bonus for display (double the points)
+        if (isCaptain && weeklyPoints > 0) {
+          weeklyPoints = weeklyPoints * 2;
+        }
+        
+        console.log(`${teamName} schedule status:`, { gameStatus, gameComplete, hasLiveGame, weeklyPoints, isCaptain });
         
         // Determine status based on schedule data
         if (gameComplete === true || gameStatus === 'final') {
           return { 
             display: weeklyPoints, 
             state: "final", 
-            color: "#3b82f6",
-            bgColor: "#2563eb",
+            color: isCaptain ? "#fbbf24" : "#3b82f6", // Gold for captain, blue for others
+            bgColor: isCaptain ? "#f59e0b" : "#2563eb",
             shouldPulse: false
           };
         }
@@ -416,8 +446,8 @@ function MyLeague() {
           return { 
             display: weeklyPoints, 
             state: "live", 
-            color: "#10b981",
-            bgColor: "#059669",
+            color: isCaptain ? "#fbbf24" : "#10b981", // Gold for captain, green for others
+            bgColor: isCaptain ? "#f59e0b" : "#059669",
             shouldPulse: true
           };
         }
@@ -433,17 +463,22 @@ function MyLeague() {
       }
       
       // Fallback to team document if no schedule data (shouldn't happen for current week)
-      const weeklyPoints = team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`] || 0;
+      let weeklyPoints = team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`] || 0;
       const gameComplete = team?.currentSeason?.gameComplete;
       const gameStatus = team?.currentSeason?.gameStatus;
       const hasLiveGame = team?.currentSeason?.hasLiveGame;
+      
+      // NEW: Apply captain bonus for display (double the points)
+      if (isCaptain && weeklyPoints > 0) {
+        weeklyPoints = weeklyPoints * 2;
+      }
       
       if (gameComplete === true || gameStatus === 'final') {
         return { 
           display: weeklyPoints, 
           state: "final", 
-          color: "#3b82f6",
-          bgColor: "#2563eb",
+          color: isCaptain ? "#fbbf24" : "#3b82f6",
+          bgColor: isCaptain ? "#f59e0b" : "#2563eb",
           shouldPulse: false
         };
       }
@@ -452,8 +487,8 @@ function MyLeague() {
         return { 
           display: weeklyPoints, 
           state: "live", 
-          color: "#10b981",
-          bgColor: "#059669",
+          color: isCaptain ? "#fbbf24" : "#10b981",
+          bgColor: isCaptain ? "#f59e0b" : "#059669",
           shouldPulse: true
         };
       }
@@ -497,6 +532,29 @@ function MyLeague() {
     if (logoUrl) {
       return (
         <div style={{ position: "relative", display: "inline-block" }}>
+          {/* Captain Crown - NEW: Show on captain team */}
+          {isCaptain && clickable && (
+            <div style={{
+              position: "absolute",
+              top: "-12px",
+              right: "-8px",
+              backgroundColor: "#fbbf24",
+              color: "#92400e",
+              borderRadius: "50%",
+              width: "18px",
+              height: "18px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "12px",
+              zIndex: 15,
+              border: "2px solid rgba(255, 255, 255, 0.8)",
+              boxShadow: "0 2px 6px rgba(0, 0, 0, 0.3)"
+            }}>
+              👑
+            </div>
+          )}
+
           {/* Weekly Points Badge - Above logo with enhanced styling */}
           {clickable && (
             <div 
@@ -526,7 +584,7 @@ function MyLeague() {
           )}
 
           {/* Spread Badge - Below logo */}
-          {clickable && spreadDisplay && (
+          {clickable && viewMode === 'current' && (            
             <div style={{
               position: "absolute",
               bottom: "-8px",
@@ -560,16 +618,16 @@ function MyLeague() {
             onMouseEnter={(e) => {
               if (clickable) {
                 e.currentTarget.style.transform = "scale(1.05)";
-                e.currentTarget.style.boxShadow = "0 6px 20px rgba(59, 130, 246, 0.3)";
+                e.currentTarget.style.boxShadow = isCaptain ? "0 6px 20px rgba(251, 191, 36, 0.5)" : "0 6px 20px rgba(59, 130, 246, 0.3)";
               }
             }}
             onMouseLeave={(e) => {
               if (clickable) {
                 e.currentTarget.style.transform = "scale(1)";
-                e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.1)";
+                e.currentTarget.style.boxShadow = isCaptain ? "0 4px 12px rgba(251, 191, 36, 0.3)" : "0 4px 12px rgba(0, 0, 0, 0.1)";
               }
             }}
-            title={clickable ? `Click to view ${teamName} details` : teamName}
+            title={clickable ? `Click to view ${teamName} details${isCaptain ? ' (Captain - 2x Points)' : ''}` : teamName}
           >
             <img 
               src={logoUrl} 
@@ -599,7 +657,7 @@ function MyLeague() {
               fontWeight: '600',
               color: 'white',
               textAlign: 'center',
-              background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)'
+              background: isCaptain ? 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)' : 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)'
             }}>
               {teamName ? teamName.split(' ').map(word => word[0]).join('').slice(0, 3) : '?'}
             </div>
@@ -611,6 +669,29 @@ function MyLeague() {
     // Fallback placeholder with team initials and gradient
     return (
       <div style={{ position: "relative", display: "inline-block" }}>
+        {/* Captain Crown - NEW: Show on captain team */}
+        {isCaptain && clickable && (
+          <div style={{
+            position: "absolute",
+            top: "-12px",
+            right: "-8px",
+            backgroundColor: "#fbbf24",
+            color: "#92400e",
+            borderRadius: "50%",
+            width: "18px",
+            height: "18px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "12px",
+            zIndex: 15,
+            border: "2px solid rgba(255, 255, 255, 0.8)",
+            boxShadow: "0 2px 6px rgba(0, 0, 0, 0.3)"
+          }}>
+            👑
+          </div>
+        )}
+
         {/* Weekly Points Badge - Enhanced for fallback */}
         {clickable && (
           <div 
@@ -670,7 +751,7 @@ function MyLeague() {
         <div 
           style={{
             ...logoStyle,
-            background: "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
+            background: isCaptain ? "linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)" : "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
             color: "white",
             fontSize: size < 30 ? '10px' : '12px',
             fontWeight: '600'
@@ -679,16 +760,16 @@ function MyLeague() {
           onMouseEnter={(e) => {
             if (clickable) {
               e.currentTarget.style.transform = "scale(1.05)";
-              e.currentTarget.style.boxShadow = "0 6px 20px rgba(59, 130, 246, 0.3)";
+              e.currentTarget.style.boxShadow = isCaptain ? "0 6px 20px rgba(251, 191, 36, 0.5)" : "0 6px 20px rgba(59, 130, 246, 0.3)";
             }
           }}
           onMouseLeave={(e) => {
             if (clickable) {
               e.currentTarget.style.transform = "scale(1)";
-              e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.1)";
+              e.currentTarget.style.boxShadow = isCaptain ? "0 4px 12px rgba(251, 191, 36, 0.3)" : "0 4px 12px rgba(0, 0, 0, 0.1)";
             }
           }}
-          title={clickable ? `Click to view ${teamName} details` : teamName}
+          title={clickable ? `Click to view ${teamName} details${isCaptain ? ' (Captain - 2x Points)' : ''}` : teamName}
         >
           {teamName ? teamName.split(' ').map(word => word[0]).join('').slice(0, 3) : '?'}
         </div>
@@ -1482,6 +1563,10 @@ function MyLeague() {
                 <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">5</div>
                 <span>Final</span>
               </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center text-white text-xs font-bold">👑</div>
+                <span>Captain (2x)</span>
+              </div>
             </div>
           </div>
         )}
@@ -1541,6 +1626,13 @@ function MyLeague() {
                           <div className="flex items-center gap-1">
                             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                             <span className="text-xs text-green-400 font-medium">LIVE</span>
+                          </div>
+                        )}
+                        {/* Captain Indicator - Only for current view */}
+                        {member.captain && viewMode === 'current' && (
+                          <div className="flex items-center gap-1">
+                            <div className="text-xs text-yellow-400">👑</div>
+                            <span className="text-xs text-yellow-400 font-medium">{member.captain}</span>
                           </div>
                         )}
                         {/* Playoff indicator - Only for current view */}
@@ -1662,8 +1754,15 @@ function MyLeague() {
                           </div>
                         )}
                       </div>
-                      <p className="text-white/70">
+                      <p className="text-white/70 flex items-center gap-2">
                         {member.firstName || "Unknown Manager"}
+                        {/* Captain Display - Show next to manager name to avoid clipping */}
+                        {member.captain && viewMode === 'current' && (
+                          <div className="flex items-center gap-1 bg-yellow-500/20 px-2 py-1 rounded-full border border-yellow-400/30">
+                            <Crown size={12} className="text-yellow-300" />
+                            <span className="text-xs text-yellow-300 font-medium">{member.captain}</span>
+                          </div>
+                        )}
                       </p>
                     </div>
 
@@ -1729,7 +1828,8 @@ function MyLeague() {
                             key={`starter-${teamIdx}`}
                             teamName={teamName} 
                             size={34} 
-                            clickable={true} 
+                            clickable={true}
+                            isCaptain={member.captain === teamName} // Pass captain status
                           />
                         ))}
                         
@@ -1746,7 +1846,8 @@ function MyLeague() {
                             key={`bench-${teamIdx}`}
                             teamName={teamName} 
                             size={34} 
-                            clickable={true} 
+                            clickable={true}
+                            isCaptain={false} // Bench players can't be captain
                           />
                         ))}
                         
