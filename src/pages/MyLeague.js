@@ -908,7 +908,7 @@ function MyLeague() {
       fetchTeamSchedule();
     }, [team?.name, currentWeek]);
 
-    // Format current week game display
+    // Fixed formatCurrentWeekGame function
     const formatCurrentWeekGame = (game, teamName) => {
       if (!game) return null;
       
@@ -926,9 +926,21 @@ function MyLeague() {
           const won = teamScore > opponentScore;
           const result = won ? "W" : "L";
           
-          // Get spread for completed games
-          const spread = game.homeSpread || "";
-          const spreadDisplay = spread ? ` (${spread})` : "";
+          // For completed games, show the original spread for reference
+          let spreadDisplay = "";
+          if (game.homeSpread && game.homeSpread !== "TBD") {
+            const homeSpread = parseFloat(game.homeSpread);
+            if (!isNaN(homeSpread)) {
+              if (isHome) {
+                // Home team: show their spread directly
+                spreadDisplay = homeSpread > 0 ? ` (+${homeSpread})` : ` (${homeSpread})`;
+              } else {
+                // Away team: flip the spread
+                const awaySpread = -homeSpread;
+                spreadDisplay = awaySpread > 0 ? ` (+${awaySpread})` : ` (${awaySpread})`;
+              }
+            }
+          }
           
           return {
             text: `${result} ${prefix} ${opponent} ${teamScore}-${opponentScore}${spreadDisplay}`,
@@ -938,9 +950,21 @@ function MyLeague() {
         }
       }
       
-      // Game is upcoming
-      const spread = game.homeSpread || "TBD";
-      const spreadDisplay = spread !== "TBD" ? ` (${spread})` : "";
+      // Game is upcoming - fix the spread display logic
+      let spreadDisplay = "";
+      if (game.homeSpread && game.homeSpread !== "TBD") {
+        const homeSpread = parseFloat(game.homeSpread);
+        if (!isNaN(homeSpread)) {
+          if (isHome) {
+            // Home team: show their spread directly
+            spreadDisplay = homeSpread > 0 ? ` (+${homeSpread})` : ` (${homeSpread})`;
+          } else {
+            // Away team: flip the spread sign
+            const awaySpread = -homeSpread;
+            spreadDisplay = awaySpread > 0 ? ` (+${awaySpread})` : ` (${awaySpread})`;
+          }
+        }
+      }
       
       return {
         text: `${prefix} ${opponent}${spreadDisplay}`,
