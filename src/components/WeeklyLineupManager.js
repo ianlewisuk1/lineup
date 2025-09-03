@@ -611,11 +611,10 @@ const WeeklyLineupManager = ({
         };
         
         if (week === currentWeek && currentLineup) {
-          const existingWeekData = existingWeeklyData[weekKey] || {};
           lineupData[weekKey] = createEnhancedLineup({
             starters: currentLineup.starters || Array(5).fill(null),
             bench: currentLineup.bench || Array(2).fill(null),
-            captain: existingWeekData.captain || null,
+            captain: currentLineup.captain || null,  // ← Read from member doc instead
             lockedAt: null
           });
         } else if (existingWeeklyData[weekKey]) {
@@ -706,9 +705,7 @@ const WeeklyLineupManager = ({
             captain: normalizedCaptain 
           } 
         });
-      }
-      
-      else {
+      } else {
         console.warn(`Attempted to save non-current week ${week}. Current week is ${currentWeek}`);
       }
 
@@ -723,11 +720,7 @@ const WeeklyLineupManager = ({
         lockedAt: null
       };
 
-      const weeklyLineupsRef = doc(db, "leagues", leagueId, "weeklyLineups", userId);
-      await updateDoc(weeklyLineupsRef, {
-        [weekKey]: updatedLineup
-      });
-      
+      // Keep this to update your frontend state
       setWeeklyLineups(prev => ({ 
         ...prev, 
         [weekKey]: updatedLineup
