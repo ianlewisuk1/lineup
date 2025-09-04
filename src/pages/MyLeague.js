@@ -311,17 +311,10 @@ function MyLeague() {
               console.warn("Could not fetch user data:", userError);
             }
 
-            // NEW: Fetch captain data for current week
+            // Read captain from member document
             let captain = null;
             try {
-              const weeklyLineupsRef = doc(db, "leagues", leagueId, "weeklyLineups", memberDoc.id);
-              const weeklyLineupsSnap = await getDoc(weeklyLineupsRef);
-              
-              if (weeklyLineupsSnap.exists()) {
-                const weeklyData = weeklyLineupsSnap.data();
-                const weekKey = `week${currentWeekNum}`;
-                captain = weeklyData[weekKey]?.captain || null;
-              }
+              captain = memberData.lineup?.captain || null;
             } catch (captainError) {
               console.warn(`Could not fetch captain for user ${memberDoc.id}:`, captainError);
             }

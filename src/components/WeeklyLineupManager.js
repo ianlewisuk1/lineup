@@ -362,19 +362,15 @@ const canBeCaptain = (team, starters, bench) => {
   const normalizedCaptain = typeof team === 'string' ? team : weeklyLineupUtils.normalizeTeamName(team);
   console.log("Checking captain candidate:", team, "normalized:", normalizedCaptain);
   
-  const allTeams = [
-    ...starters.filter(team => team !== null).map(team => 
-      typeof team === 'string' ? team : weeklyLineupUtils.normalizeTeamName(team)
-    ),
-    ...bench.filter(team => team !== null).map(team => 
-      typeof team === 'string' ? team : weeklyLineupUtils.normalizeTeamName(team)
-    )
-  ];
+  // Only check starters, not bench
+  const starterTeams = starters
+    .filter(team => team !== null)
+    .map(team => typeof team === 'string' ? team : weeklyLineupUtils.normalizeTeamName(team));
   
-  console.log("All normalized team names in lineup:", allTeams);
-  console.log("Does lineup include captain?", allTeams.includes(normalizedCaptain));
+  console.log("Starter team names in lineup:", starterTeams);
+  console.log("Does starters include captain?", starterTeams.includes(normalizedCaptain));
   
-  return allTeams.includes(normalizedCaptain);
+  return starterTeams.includes(normalizedCaptain);
 };
 
 const calculateCaptainPoints = (basePoints, isCaptain = false) => {
@@ -1286,14 +1282,21 @@ const WeeklyLineupContent = ({
               
               <button
                 onClick={() => { handleCaptainSelect(teamName); setShowActions(false); }}
-                disabled={isSaving}
+                disabled={isSaving || section === 'bench'}
                 className={`w-full px-3 py-2 text-white text-xs rounded-lg transition-colors font-medium ${
-                  isCaptain 
-                    ? 'bg-yellow-600 hover:bg-yellow-700' 
-                    : 'bg-purple-600 hover:bg-purple-700'
+                  section === 'bench' 
+                    ? 'bg-gray-500 cursor-not-allowed'
+                    : isCaptain 
+                      ? 'bg-yellow-600 hover:bg-yellow-700' 
+                      : 'bg-purple-600 hover:bg-purple-700'
                 } disabled:bg-gray-500`}
               >
-                {isCaptain ? '👑 Remove Captain' : '👑 Make Captain'}
+                {section === 'bench' 
+                  ? '🪑 Bench (No Captain)' 
+                  : isCaptain 
+                    ? '👑 Remove Captain' 
+                    : '👑 Make Captain'
+                }
               </button>
             </div>
           </div>
