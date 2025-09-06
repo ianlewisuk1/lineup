@@ -165,6 +165,7 @@
     'notredame': 'notredamefighting',
     'southernmiss': 'southernmississippi',
     'appalachianst': 'appalachianstate',
+    'sanjosest': 'sanjosestate',
     
     // CRITICAL: ESPN shortDisplayName → Firestore normalized mappings
     // Based on debug output: ESPN calls them different than Firestore
@@ -1105,38 +1106,32 @@
   });
 
   exports.debugESPNTeamNames = onRequest(async (req, res) => {
-    try {
-      const espnData = await fetchESPNScoreboard({});
-      const events = espnData?.events || [];
-      
-      // Find Miami games
-      const miamiGames = events.filter(event => {
+  try {
+    const searchTeam = req.query.team; // Get team from query parameter
+    const espnData = await fetchESPNScoreboard({});
+    const events = espnData?.events || [];
+    
+    if (searchTeam) {
+      // Search for specific team
+      const teamGames = events.filter(event => {
         const comp = event?.competitions?.[0];
         const competitors = comp?.competitors || [];
         return competitors.some(c => 
-          c?.team?.displayName?.toLowerCase().includes('miami') ||
-          c?.team?.name?.toLowerCase().includes('miami')
-        );
-      });
-      
-      // Find Wisconsin games  
-      const wisconsinGames = events.filter(event => {
-        const comp = event?.competitions?.[0];
-        const competitors = comp?.competitors || [];
-        return competitors.some(c => 
-          c?.team?.displayName?.toLowerCase().includes('wisconsin') ||
-          c?.team?.name?.toLowerCase().includes('wisconsin')
+          c?.team?.displayName?.toLowerCase().includes(searchTeam.toLowerCase()) ||
+          c?.team?.name?.toLowerCase().includes(searchTeam.toLowerCase()) ||
+          c?.team?.shortDisplayName?.toLowerCase().includes(searchTeam.toLowerCase())
         );
       });
       
       const results = [];
       
-      [...miamiGames, ...wisconsinGames].forEach(event => {
+      teamGames.forEach(event => {
         const comp = event?.competitions?.[0];
         const competitors = comp?.competitors || [];
         competitors.forEach(c => {
-          if (c?.team?.displayName?.toLowerCase().includes('miami') || 
-              c?.team?.displayName?.toLowerCase().includes('wisconsin')) {
+          if (c?.team?.displayName?.toLowerCase().includes(searchTeam.toLowerCase()) ||
+              c?.team?.name?.toLowerCase().includes(searchTeam.toLowerCase()) ||
+              c?.team?.shortDisplayName?.toLowerCase().includes(searchTeam.toLowerCase())) {
             results.push({
               displayName: c.team.displayName,
               name: c.team.name,
@@ -1147,11 +1142,44 @@
         });
       });
       
-      res.json({ results });
+      res.json({ 
+        searchedFor: searchTeam,
+        results,
+        totalGamesFound: teamGames.length 
+      });
       
-    } catch (error) {
-      res.status(500).json({ error: error.message });
+    } else {
+      // No specific team - show all unique teams
+      const allTeams = [];
+      const seenTeams = new Set();
+      
+      events.forEach(event => {
+        const comp = event?.competitions?.[0];
+        const competitors = comp?.competitors || [];
+        competitors.forEach(c => {
+          const teamKey = c.team?.displayName;
+          if (teamKey && !seenTeams.has(teamKey)) {
+            seenTeams.add(teamKey);
+            allTeams.push({
+              displayName: c.team.displayName,
+              name: c.team.name,
+              shortDisplayName: c.team.shortDisplayName,
+              normalized: normTeamNameESPN(c.team.displayName)
+            });
+          }
+        });
+      });
+      
+      res.json({ 
+        message: "All unique teams in ESPN feed",
+        totalTeams: allTeams.length,
+        results: allTeams.sort((a, b) => a.displayName.localeCompare(b.displayName))
+      });
     }
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
   });
 
   /**
@@ -1545,7 +1573,7 @@
 
     await bw.commit();
 
-    if (completedTeams.size > 0 || gamesUpdated > 0) {
+    if (gamesUpdated > 0) {
       console.log(`🔄 Recalculating member points`);
       membersUpdated = await recalculateAllMemberPoints(db, week);
     }
@@ -1715,6 +1743,7 @@
 
   /**
    * Recalculate all member points based on their STARTER rosters only
+   * Works dynamically for any week by using the previous week as baseline
    */
   async function recalculateAllMemberPoints(db, currentWeek) {
     try {
@@ -1750,42 +1779,46 @@
           }
           
           // Get captain directly from member document
-          const captainTeam = memberData.captain || null;
+          const captainTeam = memberData.lineup?.captain || null;
           
           console.log(`📝 Member ${userId} has ${starterTeams.length} starters: [${starterTeams.join(', ')}]${captainTeam ? ` - Captain: ${captainTeam}` : ''}`);
           
-          // FIXED: Use historical data + current week only
-          let memberHistoricalTotal = 0;
-          let memberCurrentWeekPoints = 0;
+          // Get previous week baseline from weeklyStandings (dynamic)
+          const previousWeek = currentWeek - 1;
+          let previousWeekBaselinePoints = 0;
           
-          // Get historical points from weeklyStandings snapshots
           try {
             const weeklyStandingsRef = db.collection('leagues').doc(leagueId).collection('weeklyStandings').doc(userId);
             const weeklyStandingsSnap = await weeklyStandingsRef.get();
             
-            if (weeklyStandingsSnap.exists()) {
+            // Use proper Firestore existence check
+            const docExists = weeklyStandingsSnap.exists || (weeklyStandingsSnap.data() !== undefined);
+            console.log(`🔧 DEBUG: weeklyStandings document exists: ${docExists}`);
+            
+            if (docExists) {
               const standingsData = weeklyStandingsSnap.data();
               
-              // Sum up all previous weeks from snapshots
-              for (let week = 1; week < currentWeek; week++) {
-                const weekData = standingsData[`week${week}`];
-                if (weekData && typeof weekData.points === 'number') {
-                  memberHistoricalTotal += weekData.points;
-                  console.log(`  📋 Week ${week} historical: ${weekData.points} pts`);
+              if (standingsData && standingsData[`week${previousWeek}`]) {
+                const previousWeekData = standingsData[`week${previousWeek}`];
+                
+                if (previousWeekData && typeof previousWeekData.points === 'number') {
+                  previousWeekBaselinePoints = previousWeekData.points;
+                  console.log(`📋 Week ${previousWeek} baseline from weeklyStandings: ${previousWeekBaselinePoints} pts`);
+                } else {
+                  console.warn(`No valid Week ${previousWeek} points data for ${userId}`);
                 }
+              } else {
+                console.warn(`No Week ${previousWeek} data found for ${userId}`);
               }
             } else {
-              // Fallback: use current member.points as historical baseline
-              memberHistoricalTotal = memberData.points || 0;
-              console.log(`  📋 Using current points as historical baseline: ${memberHistoricalTotal}`);
+              console.warn(`No weeklyStandings document found for ${userId}`);
             }
           } catch (error) {
-            // Fallback: use current member.points
-            memberHistoricalTotal = memberData.points || 0;
-            console.log(`  📋 Fallback to current points: ${memberHistoricalTotal}`);
+            console.error(`Error getting Week ${previousWeek} baseline for ${userId}:`, error);
           }
           
-          // Calculate ONLY current week activity
+          // Calculate current week activity from team documents
+          let currentWeekPoints = 0;
           for (const teamName of starterTeams) {
             try {
               const slug = slugTeam(teamName);
@@ -1797,13 +1830,13 @@
                 const teamWeeklyPoints = teamData.currentSeason?.weeklyPoints || {};
                 const teamCurrentWeekPoints = teamWeeklyPoints[`week${currentWeek}`] || 0;
                 
-                // CAPTAIN BONUS: Double current week points only
+                // Apply captain bonus: double points for captain team
                 const isCaptain = captainTeam === teamName;
                 const finalWeeklyPoints = isCaptain ? teamCurrentWeekPoints * 2 : teamCurrentWeekPoints;
                 
-                memberCurrentWeekPoints += finalWeeklyPoints;
+                currentWeekPoints += finalWeeklyPoints;
                 
-                console.log(`  📊 ${teamName}: ${teamCurrentWeekPoints} week ${currentWeek} pts${isCaptain ? ' × 2 (CAPTAIN)' : ''} = ${finalWeeklyPoints}`);
+                console.log(`📊 ${teamName}: ${teamCurrentWeekPoints} week ${currentWeek} pts${isCaptain ? ' × 2 (CAPTAIN)' : ''} = ${finalWeeklyPoints}`);
               } else {
                 console.warn(`⚠️ Team not found for member calculation: ${teamName} (${slug})`);
               }
@@ -1812,22 +1845,17 @@
             }
           }
           
-          // FINAL CALCULATION: Historical + Current Week + Bonus Points
-          const bonusPoints = memberData.bonusPoints || 0;
-          const memberSeasonTotal = memberHistoricalTotal + memberCurrentWeekPoints + bonusPoints;
-          
-          if (bonusPoints !== 0) {
-            console.log(`  🎁 Added ${bonusPoints} bonus points to member ${userId}`);
-          }
+          // Calculate new season total: previous week baseline + current week activity
+          const newSeasonTotal = previousWeekBaselinePoints + currentWeekPoints;
           
           // Queue member update
           memberUpdates.push({
             ref: memberDoc.ref,
-            points: memberSeasonTotal,
-            weeklyPoints: memberCurrentWeekPoints
+            points: newSeasonTotal,
+            weeklyPoints: currentWeekPoints
           });
           
-          console.log(`📊 Member ${userId} FINAL: ${memberSeasonTotal} total pts (${memberHistoricalTotal} historical + ${memberCurrentWeekPoints} current week + ${bonusPoints} bonus)`);
+          console.log(`📊 Member ${userId} FINAL: ${newSeasonTotal} total pts (${previousWeekBaselinePoints} week ${previousWeek} baseline + ${currentWeekPoints} current week)`);
         }
         
         // Batch update all members in this league
@@ -2000,10 +2028,19 @@
 
   exports.debugESPN = onRequest(async (req, res) => {
     try {
-      const dates = req.query.dates || '20250823';
+      // Get today's date in YYYYMMDD format if no date provided
+      const today = new Date();
+      const todayStr = today.getFullYear() + 
+                      String(today.getMonth() + 1).padStart(2, '0') + 
+                      String(today.getDate()).padStart(2, '0');
+      
+      const dates = req.query.dates || todayStr;
       
       const espnData = await fetchESPNScoreboard({ dates });
       const events = espnData?.events || [];
+      
+      // Show raw structure of first event for debugging
+      const firstEvent = events[0];
       
       const gameDetails = events.map(event => {
         const comp = event?.competitions?.[0];
@@ -2026,11 +2063,18 @@
       res.json({
         totalEvents: events.length,
         dateFilter: dates,
-        games: gameDetails
+        games: gameDetails,
+        // Add debugging info
+        firstEventStructure: firstEvent ? {
+          hasCompetitions: !!firstEvent.competitions,
+          competitionsLength: firstEvent.competitions?.length,
+          firstCompStructure: firstEvent.competitions?.[0] ? Object.keys(firstEvent.competitions[0]) : null,
+          rawFirstEvent: JSON.stringify(firstEvent, null, 2).substring(0, 1000) // First 1000 chars
+        } : null
       });
       
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: error.message, stack: error.stack });
     }
   });
 
@@ -2343,7 +2387,13 @@
 
   exports.debugESPNFull = onRequest(async (req, res) => {
     try {
-      const dates = req.query.dates || '20250828'; // Default to today
+      // Get today's date in YYYYMMDD format if no date provided
+      const today = new Date();
+      const todayStr = today.getFullYear() + 
+                      String(today.getMonth() + 1).padStart(2, '0') + 
+                      String(today.getDate()).padStart(2, '0');
+      
+      const dates = req.query.dates || todayStr; // Use today's date as default
       const teamFilter = req.query.team; // Optional team filter
       
       const espnData = await fetchESPNScoreboard({ dates });
@@ -2356,7 +2406,8 @@
           const competitors = comp?.competitors || [];
           return competitors.some(c => 
             c?.team?.displayName?.toLowerCase().includes(teamFilter.toLowerCase()) || 
-            c?.team?.name?.toLowerCase().includes(teamFilter.toLowerCase())
+            c?.team?.name?.toLowerCase().includes(teamFilter.toLowerCase()) ||
+            c?.team?.shortDisplayName?.toLowerCase().includes(teamFilter.toLowerCase())
           );
         });
         
@@ -2367,9 +2418,11 @@
           res.json({
             found: true,
             team: teamFilter,
+            dateUsed: dates,
             fullCompetitors: competitors,
             competitorStructure: competitors.map(c => ({
               team: c.team?.displayName,
+              shortDisplayName: c.team?.shortDisplayName,
               homeAway: c.homeAway,
               score: c.score,
               records: c.records,
@@ -2380,6 +2433,8 @@
           res.json({
             found: false,
             message: `${teamFilter} game not found`,
+            dateUsed: dates,
+            totalGamesInFeed: events.length,
             availableGames: events.map(e => {
               const comp = e?.competitions?.[0];
               const competitors = comp?.competitors || [];
@@ -2538,8 +2593,6 @@
       res.status(500).json({ error: error.message });
     }
   });
-
-  // Add this debug function to your functions/index.js
 
   exports.debugMissingGames = onRequest(async (req, res) => {
     try {
@@ -2747,10 +2800,6 @@
     }
   });
 
-  /**
-   * Manual cleanup function to fix team documents that missed live scoring updates
-   * Recalculates all stats based on completed games in the schedule
-   */
   exports.fixTeamCompletionStatus = onRequest(async (req, res) => {
     try {
       const db = admin.firestore();
@@ -4081,7 +4130,8 @@ exports.fixCurrentMemberPoints = onRequest(async (req, res) => {
           
           const weeklyStandingsSnap = await weeklyStandingsRef.get();
           
-          if (weeklyStandingsSnap.exists()) {
+            console.log(`🔧 DEBUG: weeklyStandings document exists: ${weeklyStandingsSnap.exists}`);
+            if (weeklyStandingsSnap.exists) {
             const standingsData = weeklyStandingsSnap.data();
             const week1Data = standingsData.week1;
             
@@ -4384,5 +4434,79 @@ exports.fixCurrentMemberPointsActual = onRequest(async (req, res) => {
       error: error.message,
       stack: error.stack
     });
+  }
+});
+
+exports.debugMemberPointsCalculation = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    const leagueId = 'cGOwzgjI9PDRzBmJKRhu';
+    const userId = 'MaIBUeppBCYCht3mai5dwYjacbd2';
+    const currentWeek = 2;
+    
+    console.log(`🔍 Debugging member ${userId} points calculation...`);
+    
+    // Get member data
+    const memberRef = db.collection('leagues').doc(leagueId).collection('members').doc(userId);
+    const memberSnap = await memberRef.get();
+    const memberData = memberSnap.data();
+    
+    const lineup = memberData.lineup || {};
+    const starterTeams = (lineup.starters || []).filter(teamName => teamName && teamName.trim() !== '');
+    const captainTeam = memberData.lineup?.captain || null;
+    
+    console.log(`👥 Starters: [${starterTeams.join(', ')}]`);
+    console.log(`👑 Captain: ${captainTeam}`);
+    console.log(`📊 Current member weeklyPoints: ${memberData.weeklyPoints}`);
+    console.log(`📊 Current member total points: ${memberData.points}`);
+    
+    // Check each team's current points
+    let calculatedWeeklyTotal = 0;
+    for (const teamName of starterTeams) {
+      try {
+        const slug = slugTeam(teamName);
+        const teamRef = db.collection('teams').doc(slug);
+        const teamSnap = await teamRef.get();
+        
+        if (teamSnap.exists) {
+          const teamData = teamSnap.data();
+          const teamWeeklyPoints = teamData.currentSeason?.weeklyPoints?.[`week${currentWeek}`] || 0;
+          const isCaptain = captainTeam === teamName;
+          const finalWeeklyPoints = isCaptain ? teamWeeklyPoints * 2 : teamWeeklyPoints;
+          
+          calculatedWeeklyTotal += finalWeeklyPoints;
+          
+          console.log(`🏈 ${teamName}: ${teamWeeklyPoints} pts${isCaptain ? ' × 2 (CAPTAIN)' : ''} = ${finalWeeklyPoints}`);
+        } else {
+          console.log(`❌ Team not found: ${teamName} (${slug})`);
+        }
+      } catch (error) {
+        console.error(`Error checking team ${teamName}:`, error);
+      }
+    }
+    
+    console.log(`🧮 Calculated weekly total: ${calculatedWeeklyTotal}`);
+    console.log(`📊 Stored weekly total: ${memberData.weeklyPoints}`);
+    console.log(`🚨 MISMATCH: ${calculatedWeeklyTotal !== memberData.weeklyPoints}`);
+    
+    res.json({
+      success: true,
+      memberData: {
+        weeklyPoints: memberData.weeklyPoints,
+        totalPoints: memberData.points,
+        captain: captainTeam,
+        starters: starterTeams
+      },
+      calculatedWeeklyTotal,
+      teamBreakdown: starterTeams.map(teamName => {
+        // This would need actual team data - simplified for response
+        return { teamName, isCaptain: captainTeam === teamName };
+      }),
+      mismatch: calculatedWeeklyTotal !== memberData.weeklyPoints
+    });
+    
+  } catch (error) {
+    console.error('❌ Debug failed:', error);
+    res.status(500).json({ error: error.message });
   }
 });

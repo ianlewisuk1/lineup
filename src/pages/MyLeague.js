@@ -32,49 +32,55 @@ function MyLeague() {
 
   // NEW: Function to fetch schedule data for live game status
   const fetchScheduleData = async (weekNum) => {
-    try {
-      setScheduleLoading(true);
-      
-      // Fetch current week's games
-      const gamesSnap = await getDocs(
-        collection(db, "schedule", "2025", "weeks", weekNum.toString(), "games")
-      );
-      
-      const gamesByTeam = {};
-      
-      gamesSnap.forEach(doc => {
-        const game = doc.data();
-        if (game.homeTeam && game.awayTeam) {
-          // Store game data for both teams - using exact team names from schedule
-          gamesByTeam[game.homeTeam] = {
-            opponent: game.awayTeam,
-            isHome: true,
-            gameStatus: game.gameStatus || 'scheduled',
-            gameComplete: game.gameComplete || false,
-            homeScore: game.homeScore || 0,
-            awayScore: game.awayScore || 0,
-            hasLiveGame: game.gameStatus === 'in_progress'
-          };
-          
-          gamesByTeam[game.awayTeam] = {
-            opponent: game.homeTeam,
-            isHome: false,
-            gameStatus: game.gameStatus || 'scheduled',
-            gameComplete: game.gameComplete || false,
-            homeScore: game.homeScore || 0,
-            awayScore: game.awayScore || 0,
-            hasLiveGame: game.gameStatus === 'in_progress'
-          };
-        }
-      });
-      
-      setScheduleData(gamesByTeam);
-      console.log('Schedule data loaded:', Object.keys(gamesByTeam));
-    } catch (error) {
-      console.error("Error fetching schedule data:", error);
-    } finally {
-      setScheduleLoading(false);
-    }
+  try {
+    setScheduleLoading(true);
+    
+    // Fetch current week's games
+    const gamesSnap = await getDocs(
+      collection(db, "schedule", "2025", "weeks", weekNum.toString(), "games")
+    );
+    
+    const gamesByTeam = {};
+    
+    gamesSnap.forEach(doc => {
+      const game = doc.data();
+      if (game.homeTeam && game.awayTeam) {
+        // Create game data objects
+        const homeData = {
+          opponent: game.awayTeam,
+          isHome: true,
+          gameStatus: game.gameStatus || 'scheduled',
+          gameComplete: game.gameComplete || false,
+          homeScore: game.homeScore || 0,
+          awayScore: game.awayScore || 0,
+          hasLiveGame: game.gameStatus === 'in_progress'
+        };
+        
+        const awayData = {
+          opponent: game.homeTeam,
+          isHome: false,
+          gameStatus: game.gameStatus || 'scheduled',
+          gameComplete: game.gameComplete || false,
+          homeScore: game.homeScore || 0,
+          awayScore: game.awayScore || 0,
+          hasLiveGame: game.gameStatus === 'in_progress'
+        };
+        
+        // Store with both original names AND lowercase names for reliable lookup
+        gamesByTeam[game.homeTeam] = homeData;
+        gamesByTeam[game.awayTeam] = awayData;
+        gamesByTeam[game.homeTeam.toLowerCase()] = homeData;
+        gamesByTeam[game.awayTeam.toLowerCase()] = awayData;
+      }
+    });
+    
+    setScheduleData(gamesByTeam);
+    console.log('Schedule data loaded:', Object.keys(gamesByTeam));
+  } catch (error) {
+    console.error("Error fetching schedule data:", error);
+  } finally {
+    setScheduleLoading(false);
+  }
   };
 
   // NEW: Load available historical weeks
@@ -258,8 +264,6 @@ function MyLeague() {
                     .replace(/&/g, "-")
                     .replace(/[^a-z0-9\-]/g, "");
 
-                console.log("Normalized key for Texas A&M:", normalize("Texas A&M"));
-
                 teamsMap[normalize(teamData.school)] = {
                 logo: teamData.logos1 || teamData.logos2 || null,
                 logos1: teamData.logos1 || null,
@@ -394,9 +398,12 @@ function MyLeague() {
     };
     const currentWeekNum = getCurrentWeekNumber();
     
-    // FIXED: Enhanced game state detection using schedule data first with captain bonus
     const getTeamDisplayState = () => {
       // Only show live status for current week view
+      if (teamName === 'duke') {
+        console.log('🎯 Duke viewMode check:', { viewMode, currentWeekNum });
+      }
+
       if (viewMode !== 'current') {
         return { 
           display: "?", 
@@ -406,12 +413,14 @@ function MyLeague() {
           shouldPulse: false
         };
       }
-        // DEBUG: Log what week we're actually checking
-      console.log(`Checking team ${teamName} for week ${currentWeekNum}`, {
-        currentWeekNum,
-        allWeeklyPoints: team?.currentSeason?.weeklyPoints,
-        thisWeekPoints: team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`]
-      });
+
+        // ADD THIS DEBUG RIGHT HERE:
+      if (teamName === 'duke') {
+        console.log('🎯 Duke past viewMode check, checking schedule data:', {
+          hasScheduleGame: !!scheduleGame,
+          scheduleLoading
+        });
+      }
 
       // First check schedule data (most reliable for current week)
       if (scheduleGame && !scheduleLoading) {
@@ -422,11 +431,23 @@ function MyLeague() {
         // Get weekly points from team document
         let weeklyPoints = team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`] || 0;
 
-        // Captain bonus is already handled in backend - don't double here in frontend
-        // Just show the raw points from the backend
+        // Apply captain bonus for display (backend handles actual scoring)
+        if (isCaptain && weeklyPoints !== 0) {
+          weeklyPoints *= 2;
+        }
         
-        console.log(`${teamName} schedule status:`, { gameStatus, gameComplete, hasLiveGame, weeklyPoints, isCaptain });
-        
+        // ADD DEBUG HERE:
+        if (teamName === 'duke') {
+          console.log('🏈 Duke game state debug:', {
+            weeklyPoints: team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`],
+            afterCaptainBonus: weeklyPoints, 
+            gameComplete: scheduleGame?.gameComplete,
+            gameStatus: scheduleGame?.gameStatus, 
+            hasLiveGame: scheduleGame?.hasLiveGame,
+            whichPath: 'about to determine display path'
+          });
+        }    
+
         // Determine status based on schedule data
         if (gameComplete === true || gameStatus === 'final') {
           return { 
@@ -465,8 +486,10 @@ function MyLeague() {
       const gameStatus = team?.currentSeason?.gameStatus;
       const hasLiveGame = team?.currentSeason?.hasLiveGame;
       
-      // Captain bonus is already handled in backend - don't double here in frontend
-      // Just show the raw points from the backend
+      // Apply captain bonus for display (backend handles actual scoring)
+      if (isCaptain && weeklyPoints !== 0) {
+        weeklyPoints *= 2;
+      }
       
       if (gameComplete === true || gameStatus === 'final') {
         return { 
@@ -497,6 +520,18 @@ function MyLeague() {
         shouldPulse: false
       };
     };
+
+    // More general debug - catches all teams for Duke's member
+    if (teamName && (teamName.toLowerCase().includes('duke') || teamName === 'Duke')) {
+      console.log('🔍 TEAM MATCH:', {
+        originalTeamName: teamName,
+        normalizedTeamName: normalize(teamName),
+        teamFound: !!team,
+        currentWeekNum,
+        weeklyPoints: team?.currentSeason?.weeklyPoints,
+        isCaptain
+      });
+    }
 
     const teamState = getTeamDisplayState();
 
