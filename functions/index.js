@@ -1754,10 +1754,38 @@
           
           console.log(`📝 Member ${userId} has ${starterTeams.length} starters: [${starterTeams.join(', ')}]${captainTeam ? ` - Captain: ${captainTeam}` : ''}`);
           
-          // Calculate member's total season points and current week points (STARTERS ONLY WITH CAPTAIN BONUS)
-          let memberSeasonTotal = 0;
+          // FIXED: Use historical data + current week only
+          let memberHistoricalTotal = 0;
           let memberCurrentWeekPoints = 0;
           
+          // Get historical points from weeklyStandings snapshots
+          try {
+            const weeklyStandingsRef = db.collection('leagues').doc(leagueId).collection('weeklyStandings').doc(userId);
+            const weeklyStandingsSnap = await weeklyStandingsRef.get();
+            
+            if (weeklyStandingsSnap.exists()) {
+              const standingsData = weeklyStandingsSnap.data();
+              
+              // Sum up all previous weeks from snapshots
+              for (let week = 1; week < currentWeek; week++) {
+                const weekData = standingsData[`week${week}`];
+                if (weekData && typeof weekData.points === 'number') {
+                  memberHistoricalTotal += weekData.points;
+                  console.log(`  📋 Week ${week} historical: ${weekData.points} pts`);
+                }
+              }
+            } else {
+              // Fallback: use current member.points as historical baseline
+              memberHistoricalTotal = memberData.points || 0;
+              console.log(`  📋 Using current points as historical baseline: ${memberHistoricalTotal}`);
+            }
+          } catch (error) {
+            // Fallback: use current member.points
+            memberHistoricalTotal = memberData.points || 0;
+            console.log(`  📋 Fallback to current points: ${memberHistoricalTotal}`);
+          }
+          
+          // Calculate ONLY current week activity
           for (const teamName of starterTeams) {
             try {
               const slug = slugTeam(teamName);
@@ -1766,19 +1794,16 @@
               
               if (teamSnap.exists) {
                 const teamData = teamSnap.data();
-                const teamGamePoints = teamData.currentSeason?.gamePoints || 0;
                 const teamWeeklyPoints = teamData.currentSeason?.weeklyPoints || {};
                 const teamCurrentWeekPoints = teamWeeklyPoints[`week${currentWeek}`] || 0;
                 
-                // CAPTAIN BONUS: Double points if this team is the captain
+                // CAPTAIN BONUS: Double current week points only
                 const isCaptain = captainTeam === teamName;
-                const finalSeasonPoints = isCaptain ? teamGamePoints * 2 : teamGamePoints;
                 const finalWeeklyPoints = isCaptain ? teamCurrentWeekPoints * 2 : teamCurrentWeekPoints;
                 
-                memberSeasonTotal += finalSeasonPoints;
                 memberCurrentWeekPoints += finalWeeklyPoints;
                 
-                console.log(`  📊 ${teamName}: ${teamGamePoints} season pts${isCaptain ? ' × 2 (CAPTAIN)' : ''} = ${finalSeasonPoints}, ${teamCurrentWeekPoints} week pts${isCaptain ? ' × 2 (CAPTAIN)' : ''} = ${finalWeeklyPoints}`);
+                console.log(`  📊 ${teamName}: ${teamCurrentWeekPoints} week ${currentWeek} pts${isCaptain ? ' × 2 (CAPTAIN)' : ''} = ${finalWeeklyPoints}`);
               } else {
                 console.warn(`⚠️ Team not found for member calculation: ${teamName} (${slug})`);
               }
@@ -1787,11 +1812,12 @@
             }
           }
           
-          // ADD BONUS POINTS TO SEASON TOTAL (unchanged)
+          // FINAL CALCULATION: Historical + Current Week + Bonus Points
           const bonusPoints = memberData.bonusPoints || 0;
+          const memberSeasonTotal = memberHistoricalTotal + memberCurrentWeekPoints + bonusPoints;
+          
           if (bonusPoints !== 0) {
-            memberSeasonTotal += bonusPoints;
-            console.log(`  ${bonusPoints > 0 ? '🎁 Added' : '⚠️ Deducted'} ${Math.abs(bonusPoints)} ${bonusPoints > 0 ? 'bonus' : 'penalty'} points to member ${userId}`);
+            console.log(`  🎁 Added ${bonusPoints} bonus points to member ${userId}`);
           }
           
           // Queue member update
@@ -1801,10 +1827,10 @@
             weeklyPoints: memberCurrentWeekPoints
           });
           
-          console.log(`📊 Member ${userId} FINAL: ${memberSeasonTotal} season pts (${starterTeams.length} starters${bonusPoints > 0 ? ` + ${bonusPoints} bonus` : ''}${captainTeam ? ` + captain bonus` : ''}), ${memberCurrentWeekPoints} week pts`);
+          console.log(`📊 Member ${userId} FINAL: ${memberSeasonTotal} total pts (${memberHistoricalTotal} historical + ${memberCurrentWeekPoints} current week + ${bonusPoints} bonus)`);
         }
         
-        // Batch update all members in this league (unchanged)
+        // Batch update all members in this league
         if (memberUpdates.length > 0) {
           const memberBatch = db.batch();
           
@@ -3615,24 +3641,113 @@ exports.advanceWeekAndSnapshot = onRequest(async (req, res) => {
     
     console.log(`Starting week advancement from week ${currentWeek}...`);
     
-    // Reset all leagues for new week
+    // STEP 1: Snapshot current week standings BEFORE making any changes
     const leaguesSnap = await db.collection('leagues').get();
+    let standingsSnapshotted = 0;
+    
+    for (const leagueDoc of leaguesSnap.docs) {
+      const leagueId = leagueDoc.id;
+      console.log(`Snapshotting Week ${currentWeek} standings for league: ${leagueId}`);
+      
+      const membersSnap = await db
+        .collection('leagues').doc(leagueId)
+        .collection('members')
+        .get();
+      
+      for (const memberDoc of membersSnap.docs) {
+        const memberData = memberDoc.data();
+        const userId = memberDoc.id;
+        
+        // Create weekly standings snapshot
+        const weeklyStandingsRef = db
+          .collection('leagues').doc(leagueId)
+          .collection('weeklyStandings').doc(userId);
+        
+        const snapshotData = {
+          [`week${currentWeek}`]: {
+            points: memberData.points || 0,
+            weeklyPoints: memberData.weeklyPoints || 0,
+            rank: null, // Will be calculated after sorting
+            teamName: memberData.teamName || 'Unknown Team',
+            firstName: memberData.firstName || 'Unknown',
+            freeAgentMoves: memberData.freeAgentMoves || 0,
+            bonusPoints: memberData.bonusPoints || 0,
+            snapshotAt: admin.firestore.FieldValue.serverTimestamp(),
+            // Snapshot the lineup for historical reference
+            lineup: {
+              starters: memberData.lineup?.starters || [],
+              bench: memberData.lineup?.bench || [],
+              captain: memberData.captain || null
+            }
+          }
+        };
+        
+        await weeklyStandingsRef.set(snapshotData, { merge: true });
+        standingsSnapshotted++;
+      }
+    }
+    
+    console.log(`Snapshotted ${standingsSnapshotted} member standings for Week ${currentWeek}`);
+    
+    // STEP 2: Calculate and update ranks in the snapshots
+    for (const leagueDoc of leaguesSnap.docs) {
+      const leagueId = leagueDoc.id;
+      
+      // Get all members for ranking
+      const membersSnap = await db
+        .collection('leagues').doc(leagueId)
+        .collection('members')
+        .get();
+      
+      const memberRankings = [];
+      membersSnap.forEach(memberDoc => {
+        const memberData = memberDoc.data();
+        memberRankings.push({
+          userId: memberDoc.id,
+          points: memberData.points || 0,
+          weeklyPoints: memberData.weeklyPoints || 0
+        });
+      });
+      
+      // Sort by points (descending), then by weekly points (descending)
+      memberRankings.sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points;
+        return b.weeklyPoints - a.weeklyPoints;
+      });
+      
+      // Update ranks in snapshots
+      const batch = db.batch();
+      memberRankings.forEach((member, index) => {
+        const weeklyStandingsRef = db
+          .collection('leagues').doc(leagueId)
+          .collection('weeklyStandings').doc(member.userId);
+        
+        batch.update(weeklyStandingsRef, {
+          [`week${currentWeek}.rank`]: index + 1
+        });
+      });
+      
+      await batch.commit();
+      console.log(`Updated ranks for ${memberRankings.length} members in league ${leagueId}`);
+    }
+    
+    // STEP 3: Reset all leagues for new week (preserve points, reset weeklyPoints)
     let leaguesProcessed = 0;
     let membersReset = 0;
     
     for (const leagueDoc of leaguesSnap.docs) {
       const leagueId = leagueDoc.id;
-      console.log(`Processing league: ${leagueId}`);
+      console.log(`Resetting league for new week: ${leagueId}`);
       
       const result = await resetLeagueForNewWeek(db, leagueId);
       membersReset += result.membersReset;
       leaguesProcessed++;
     }
     
-    // Reset team weekly points for all teams
+    // STEP 4: Reset team weekly points for all teams
     const teamsReset = await resetAllTeamWeeklyPoints(db, currentWeek);
     
-    // Advance the global week
+    // STEP 5: Advance the global week
     await seasonRef.update({
       currentWeek: currentWeek + 1,
       lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
@@ -3645,10 +3760,11 @@ exports.advanceWeekAndSnapshot = onRequest(async (req, res) => {
       success: true,
       previousWeek: currentWeek,
       newWeek: currentWeek + 1,
+      standingsSnapshotted,
       leaguesProcessed,
       membersReset,
       teamsReset,
-      message: `Successfully advanced from Week ${currentWeek} to Week ${currentWeek + 1}. Reset ${membersReset} members and ${teamsReset} teams.`
+      message: `Successfully advanced from Week ${currentWeek} to Week ${currentWeek + 1}. Snapshotted ${standingsSnapshotted} standings, reset ${membersReset} members and ${teamsReset} teams.`
     });
     
   } catch (error) {
@@ -3660,6 +3776,82 @@ exports.advanceWeekAndSnapshot = onRequest(async (req, res) => {
     });
   }
 });
+
+// Helper function needs update too
+async function resetLeagueForNewWeek(db, leagueId) {
+  try {
+    console.log(`Resetting league ${leagueId} for new week`);
+    
+    const membersSnap = await db
+      .collection('leagues').doc(leagueId)
+      .collection('members')
+      .get();
+    
+    if (membersSnap.empty) {
+      return { membersReset: 0 };
+    }
+    
+    const batch = db.batch();
+    let membersReset = 0;
+    
+    // Reset each member's weekly points ONLY (preserve total points)
+    for (const memberDoc of membersSnap.docs) {
+      batch.update(memberDoc.ref, {
+        weeklyPoints: 0,  // Reset for new week
+        // DO NOT RESET points - those are preserved season totals
+        lastWeeklyReset: admin.firestore.FieldValue.serverTimestamp()
+      });
+      membersReset++;
+    }
+    
+    await batch.commit();
+    console.log(`Reset ${membersReset} members in league ${leagueId}`);
+    
+    return { membersReset };
+    
+  } catch (error) {
+    console.error(`Error resetting league ${leagueId}:`, error);
+    throw error;
+  }
+}
+
+// Helper function needs update too
+async function resetLeagueForNewWeek(db, leagueId) {
+  try {
+    console.log(`Resetting league ${leagueId} for new week`);
+    
+    const membersSnap = await db
+      .collection('leagues').doc(leagueId)
+      .collection('members')
+      .get();
+    
+    if (membersSnap.empty) {
+      return { membersReset: 0 };
+    }
+    
+    const batch = db.batch();
+    let membersReset = 0;
+    
+    // Reset each member's weekly points ONLY (preserve total points)
+    for (const memberDoc of membersSnap.docs) {
+      batch.update(memberDoc.ref, {
+        weeklyPoints: 0,  // Reset for new week
+        // DO NOT RESET points - those are preserved season totals
+        lastWeeklyReset: admin.firestore.FieldValue.serverTimestamp()
+      });
+      membersReset++;
+    }
+    
+    await batch.commit();
+    console.log(`Reset ${membersReset} members in league ${leagueId}`);
+    
+    return { membersReset };
+    
+  } catch (error) {
+    console.error(`Error resetting league ${leagueId}:`, error);
+    throw error;
+  }
+}
 
 async function resetLeagueForNewWeek(db, leagueId) {
   try {
@@ -3847,6 +4039,348 @@ exports.testWeek2Ingestion = onRequest(async (req, res) => {
   } catch (error) {
     console.error('Week 2 ingestion failed:', error);
     res.status(500).json({ 
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+exports.fixCurrentMemberPoints = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    let membersFixed = 0;
+    let totalErrors = 0;
+    const fixDetails = [];
+    
+    console.log('Starting fix for current member points using Week 1 snapshots...');
+    
+    // Get all leagues
+    const leaguesSnap = await db.collection('leagues').get();
+    
+    for (const leagueDoc of leaguesSnap.docs) {
+      const leagueId = leagueDoc.id;
+      console.log(`Fixing league: ${leagueId}`);
+      
+      // Get all members in this league
+      const membersSnap = await db
+        .collection('leagues').doc(leagueId)
+        .collection('members')
+        .get();
+      
+      const batch = db.batch();
+      
+      for (const memberDoc of membersSnap.docs) {
+        const userId = memberDoc.id;
+        const memberData = memberDoc.data();
+        
+        try {
+          // Get their Week 1 snapshot
+          const weeklyStandingsRef = db
+            .collection('leagues').doc(leagueId)
+            .collection('weeklyStandings').doc(userId);
+          
+          const weeklyStandingsSnap = await weeklyStandingsRef.get();
+          
+          if (weeklyStandingsSnap.exists()) {
+            const standingsData = weeklyStandingsSnap.data();
+            const week1Data = standingsData.week1;
+            
+            // More flexible check for week1 data
+            if (week1Data && week1Data.points !== undefined && week1Data.points !== null) {
+              const correctPoints = Number(week1Data.points);
+              const currentPoints = memberData.points || 0;
+              
+              console.log(`Checking ${memberData.teamName || userId}: Current=${currentPoints}, Should be=${correctPoints}`);
+              
+              if (currentPoints !== correctPoints) {
+                console.log(`FIXING ${memberData.teamName || userId}: ${currentPoints} → ${correctPoints}`);
+                
+                // Update member points to match Week 1 snapshot
+                batch.update(memberDoc.ref, {
+                  points: correctPoints,
+                  weeklyPoints: 0, // Reset for Week 2
+                  lastPointsUpdate: admin.firestore.FieldValue.serverTimestamp(),
+                  fixedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                
+                fixDetails.push({
+                  userId,
+                  teamName: memberData.teamName,
+                  from: currentPoints,
+                  to: correctPoints
+                });
+                
+                membersFixed++;
+              } else {
+                console.log(`${memberData.teamName || userId}: Already correct (${correctPoints})`);
+              }
+            } else {
+              console.warn(`No valid Week 1 points data for ${userId}`);
+              totalErrors++;
+            }
+          } else {
+            console.warn(`No weeklyStandings document for ${userId}`);
+            totalErrors++;
+          }
+          
+        } catch (error) {
+          console.error(`Error processing member ${userId}:`, error);
+          totalErrors++;
+        }
+      }
+      
+      // Commit all changes for this league
+      if (membersFixed > 0) {
+        await batch.commit();
+        console.log(`Committed fixes for league ${leagueId}`);
+      }
+    }
+    
+    console.log(`Fix complete: ${membersFixed} members fixed, ${totalErrors} errors`);
+    
+    res.json({
+      success: true,
+      membersFixed,
+      totalErrors,
+      fixDetails,
+      message: `Fixed ${membersFixed} member points using Week 1 snapshots`
+    });
+    
+  } catch (error) {
+    console.error('Fix script failed:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+exports.debugWeeklyStandings = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    const leagueId = req.query.leagueId || 'cGOwzgjI9PDRzBmJKRhu';
+    
+    console.log(`Debugging weeklyStandings for league: ${leagueId}`);
+    
+    const weeklyStandingsSnap = await db
+      .collection('leagues').doc(leagueId)
+      .collection('weeklyStandings')
+      .get();
+    
+    const results = [];
+    
+    weeklyStandingsSnap.forEach(doc => {
+      const data = doc.data();
+      results.push({
+        userId: doc.id,
+        data: data,
+        hasWeek1: !!data.week1,
+        week1Points: data.week1?.points
+      });
+    });
+    
+    res.json({
+      leagueId,
+      totalDocs: results.length,
+      results
+    });
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+exports.fixCurrentMemberPointsDebug = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    let membersFixed = 0;
+    let totalErrors = 0;
+    const debugInfo = [];
+    
+    console.log('Starting detailed debug fix...');
+    
+    const leagueId = 'cGOwzgjI9PDRzBmJKRhu'; // Your specific league
+    console.log(`Fixing league: ${leagueId}`);
+    
+    // Get all members in this league
+    const membersSnap = await db
+      .collection('leagues').doc(leagueId)
+      .collection('members')
+      .get();
+    
+    console.log(`Found ${membersSnap.docs.length} members`);
+    
+    for (const memberDoc of membersSnap.docs) {
+      const userId = memberDoc.id;
+      const memberData = memberDoc.data();
+      
+      try {
+        console.log(`\n--- Processing ${userId} (${memberData.teamName}) ---`);
+        console.log(`Current member points: ${memberData.points}`);
+        
+        // Get their Week 1 snapshot
+        const weeklyStandingsRef = db
+          .collection('leagues').doc(leagueId)
+          .collection('weeklyStandings').doc(userId);
+        
+        console.log(`Looking for weeklyStandings doc: ${weeklyStandingsRef.path}`);
+        
+        const weeklyStandingsSnap = await weeklyStandingsRef.get();
+        console.log(`WeeklyStandings exists: ${weeklyStandingsSnap.exists}`);
+        
+        if (weeklyStandingsSnap.exists) {
+          const standingsData = weeklyStandingsSnap.data();
+          console.log(`Standings data keys: ${Object.keys(standingsData)}`);
+          
+          const week1Data = standingsData.week1;
+          console.log(`Week1 data exists: ${!!week1Data}`);
+          
+          if (week1Data) {
+            console.log(`Week1 data keys: ${Object.keys(week1Data)}`);
+            console.log(`Week1 points: ${week1Data.points} (type: ${typeof week1Data.points})`);
+            
+            if (week1Data.points !== undefined && week1Data.points !== null) {
+              const correctPoints = Number(week1Data.points);
+              const currentPoints = memberData.points || 0;
+              
+              debugInfo.push({
+                userId,
+                teamName: memberData.teamName,
+                currentPoints,
+                correctPoints,
+                needsUpdate: currentPoints !== correctPoints
+              });
+              
+              if (currentPoints !== correctPoints) {
+                console.log(`WOULD FIX: ${currentPoints} → ${correctPoints}`);
+                membersFixed++;
+              } else {
+                console.log(`Already correct: ${correctPoints}`);
+              }
+            } else {
+              console.log(`Week1 points is undefined/null`);
+              totalErrors++;
+            }
+          } else {
+            console.log(`No week1 data found`);
+            totalErrors++;
+          }
+        } else {
+          console.log(`No weeklyStandings document found`);
+          totalErrors++;
+        }
+        
+      } catch (error) {
+        console.error(`Error processing ${userId}:`, error);
+        totalErrors++;
+      }
+    }
+    
+    res.json({
+      success: true,
+      membersFixed: 0, // Not actually fixing, just debugging
+      totalErrors,
+      debugInfo,
+      message: `Debug complete: ${membersFixed} would be fixed, ${totalErrors} errors`
+    });
+    
+  } catch (error) {
+    console.error('Debug script failed:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+exports.fixCurrentMemberPointsActual = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    let membersFixed = 0;
+    const fixDetails = [];
+    
+    console.log('Starting ACTUAL fix for member points...');
+    
+    const leagueId = 'cGOwzgjI9PDRzBmJKRhu';
+    
+    // Get all members in this league
+    const membersSnap = await db
+      .collection('leagues').doc(leagueId)
+      .collection('members')
+      .get();
+    
+    const batch = db.batch();
+    
+    for (const memberDoc of membersSnap.docs) {
+      const userId = memberDoc.id;
+      const memberData = memberDoc.data();
+      
+      try {
+        // Get their Week 1 snapshot
+        const weeklyStandingsRef = db
+          .collection('leagues').doc(leagueId)
+          .collection('weeklyStandings').doc(userId);
+        
+        const weeklyStandingsSnap = await weeklyStandingsRef.get();
+        
+        // Use different syntax to check existence
+        const docExists = weeklyStandingsSnap._fieldsProto !== undefined || weeklyStandingsSnap.data() !== undefined;
+        
+        if (docExists) {
+          const standingsData = weeklyStandingsSnap.data();
+          
+          if (standingsData && standingsData.week1) {
+            const week1Data = standingsData.week1;
+            
+            if (week1Data.points !== undefined) {
+              const correctPoints = Number(week1Data.points);
+              const currentPoints = memberData.points || 0;
+              
+              if (currentPoints !== correctPoints) {
+                console.log(`FIXING ${memberData.teamName}: ${currentPoints} → ${correctPoints}`);
+                
+                batch.update(memberDoc.ref, {
+                  points: correctPoints,
+                  weeklyPoints: 0,
+                  lastPointsUpdate: admin.firestore.FieldValue.serverTimestamp(),
+                  fixedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                
+                fixDetails.push({
+                  userId,
+                  teamName: memberData.teamName,
+                  from: currentPoints,
+                  to: correctPoints
+                });
+                
+                membersFixed++;
+              }
+            }
+          }
+        }
+      } catch (innerError) {
+        console.error(`Error processing ${userId}:`, innerError);
+      }
+    }
+    
+    // Apply all fixes
+    if (membersFixed > 0) {
+      await batch.commit();
+    }
+    
+    console.log(`Fix complete: ${membersFixed} members fixed`);
+    
+    res.json({
+      success: true,
+      membersFixed,
+      fixDetails,
+      message: `Successfully fixed ${membersFixed} member points using Week 1 snapshots`
+    });
+    
+  } catch (error) {
+    console.error('Fix script failed:', error);
+    res.status(500).json({ 
+      success: false,
       error: error.message,
       stack: error.stack
     });

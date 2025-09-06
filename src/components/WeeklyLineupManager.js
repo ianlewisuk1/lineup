@@ -1150,10 +1150,10 @@ const WeeklyLineupContent = ({
     const normalizedTeamName = weeklyLineupUtils.normalizeTeamName(team);
     const isCaptain = captain && captain === normalizedTeamName;
     console.log("Captain check:", { captain, normalizedTeamName, isCaptain, teamName });
-    const gamePointsCalc = { finalPoints: baseGamePoints, bonus: 0, isCaptain: false };
-    const weeklyPointsCalc = calculateCaptainPoints(baseWeeklyPts, isCaptain);
-    
+
+    // Don't double points in frontend - backend already handles captain bonus
     const displaySeasonPoints = baseGamePoints;
+    const displayWeeklyPoints = baseWeeklyPts;
 
     return (
         <div className={`rounded-xl border overflow-hidden ${
@@ -1238,19 +1238,19 @@ const WeeklyLineupContent = ({
             {/* RIGHT: points column with captain bonus */}
             <div className="text-right leading-tight">
               <div className="font-bold text-sm text-green-400">
-                {gamePointsCalc.finalPoints}
+                {displaySeasonPoints}
               </div>
               <div className="text-[11px] text-green-300/80 -mt-0.5">
                 Season Points
               </div>
               <div className={`font-bold text-sm mt-1 ${isCaptain ? 'text-yellow-400' : 'text-orange-400'}`}>
-                {weeklyPointsCalc.finalPoints}
-                {isCaptain && weeklyPointsCalc.bonus > 0 && (
-                  <span className="text-[10px] text-yellow-300 ml-1">+{weeklyPointsCalc.bonus}</span>
+                {displayWeeklyPoints}
+                {isCaptain && (
+                  <span className="text-[10px] text-yellow-300 ml-1">Captain</span>
                 )}
               </div>
               <div className="text-[11px] text-orange-300/80 -mt-0.5">
-                Weekly Points{isCaptain ? ' (2x)' : ''}
+                Weekly Points{isCaptain ? ' (Captain)' : ''}
               </div>
             </div>
           </div>

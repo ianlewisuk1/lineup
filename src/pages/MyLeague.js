@@ -406,6 +406,12 @@ function MyLeague() {
           shouldPulse: false
         };
       }
+        // DEBUG: Log what week we're actually checking
+      console.log(`Checking team ${teamName} for week ${currentWeekNum}`, {
+        currentWeekNum,
+        allWeeklyPoints: team?.currentSeason?.weeklyPoints,
+        thisWeekPoints: team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`]
+      });
 
       // First check schedule data (most reliable for current week)
       if (scheduleGame && !scheduleLoading) {
@@ -413,13 +419,11 @@ function MyLeague() {
         const gameComplete = scheduleGame.gameComplete;
         const hasLiveGame = scheduleGame.hasLiveGame;
         
-        // Get weekly points from team document (still use this for display)
+        // Get weekly points from team document
         let weeklyPoints = team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`] || 0;
-        
-        // NEW: Apply captain bonus for display (double the points)
-        if (isCaptain && weeklyPoints > 0) {
-          weeklyPoints = weeklyPoints * 2;
-        }
+
+        // Captain bonus is already handled in backend - don't double here in frontend
+        // Just show the raw points from the backend
         
         console.log(`${teamName} schedule status:`, { gameStatus, gameComplete, hasLiveGame, weeklyPoints, isCaptain });
         
@@ -461,10 +465,8 @@ function MyLeague() {
       const gameStatus = team?.currentSeason?.gameStatus;
       const hasLiveGame = team?.currentSeason?.hasLiveGame;
       
-      // NEW: Apply captain bonus for display (double the points)
-      if (isCaptain && weeklyPoints > 0) {
-        weeklyPoints = weeklyPoints * 2;
-      }
+      // Captain bonus is already handled in backend - don't double here in frontend
+      // Just show the raw points from the backend
       
       if (gameComplete === true || gameStatus === 'final') {
         return { 
