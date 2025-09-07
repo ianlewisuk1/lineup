@@ -67,26 +67,31 @@
     if (s.includes('Miami') && s.includes('(OH)')) {
       normalized = s.replace(/\(OH\)/g, 'OH'); 
     }
+
+      // CRITICAL: Handle Michigan State specifically to avoid collision with Michigan
+    if (s === 'Michigan State Spartans' || s === 'Michigan St' || s === 'Michigan State') {
+      return 'michiganstate';
+    }
     
     // CRITICAL: Handle State schools before general normalization to preserve distinctions
     const stateSchoolMappings = {
       // ESPN shortDisplayName patterns
-      'Jax State': 'jacksonvillestate',  // FIXED: Match Firestore normalization
+      'Jax State': 'jacksonvillestate',
       'SF Austin': 'stephenfaustin',
-      'Delaware St': 'delawarestate',    // FIXED: Match Firestore normalization  
-      'Oklahoma St': 'oklahomastate',    // FIXED: Match Firestore normalization
-      'Kansas St': 'kansasstate',        // FIXED: Match Firestore normalization
+      'Delaware St': 'delawarestate',
+      'Oklahoma St': 'oklahomastate',
+      'Kansas St': 'kansasstate',
       'Alabama St': 'alabama',
       'Arkansas St': 'arkansas', 
-      'Mississippi St': 'mississippi',
-      'Michigan St': 'michigan',
+      'Mississippi St': 'mississippistate',
+      'Michigan St': 'michiganstate',        // FIXED: was 'michigan'
       'Illinois St': 'illinois',
       'Colorado St': 'colorado',
-      'Oregon St': 'oregon',
-      'Washington St': 'washington',
-      'Arizona St': 'arizona',
+      'Oregon St': 'oregonstate',
+      'Washington St': 'washingtonstate',
+      'Arizona St': 'arizonastate',
       'Florida St': 'florida',
-      'Georgia St': 'georgia',
+      'Georgia St': 'georgiastate',
       'NC State': 'nc',
       'Penn State': 'penn',
       'Fresno St': 'fresno',
@@ -94,25 +99,28 @@
       'San José St': 'sanjose',
       'Boise St': 'boise',
       'Utah State': 'utah',
-      'Iowa State': 'iowa',           // Critical: Iowa State vs Iowa
+      'Iowa State': 'iowa',
+      'Missouri State': 'missouristate',        // Full name
+      'Missouri St': 'missouristate',           // Short name
+      'Missouri State Bears': 'missouristate',  // With mascot
       
       // ESPN displayName patterns  
-      'Jacksonville State Gamecocks': 'jacksonvillestate',  // FIXED: Match Firestore normalization
+      'Jacksonville State Gamecocks': 'jacksonvillestate',
       'Stephen F. Austin Lumberjacks': 'stephenfaustin', 
-      'Delaware State Hornets': 'delawarestate',           // FIXED: Match Firestore normalization
-      'Oklahoma State Cowboys': 'oklahomastate',           // FIXED: Match Firestore normalization
-      'Kansas State Wildcats': 'kansasstate',             // FIXED: Match Firestore normalization
-      'Alabama State Hornets': 'alabamastate',            // FIXED: Alabama State vs Alabama
-      'Arkansas State Red Wolves': 'arkansasstate',       // FIXED: Match Firestore normalization
-      'Mississippi State Bulldogs': 'mississippi',
-      'Michigan State Spartans': 'michigan', 
+      'Delaware State Hornets': 'delawarestate',
+      'Oklahoma State Cowboys': 'oklahomastate',
+      'Kansas State Wildcats': 'kansasstate',
+      'Alabama State Hornets': 'alabamastate',
+      'Arkansas State Red Wolves': 'arkansasstate',
+      'Mississippi State Bulldogs': 'mississippistate',
+      'Michigan State Spartans': 'michiganstate', 
       'Illinois State Redbirds': 'illinois',
       'Colorado State Rams': 'colorado',
-      'Oregon State Beavers': 'oregon',
-      'Washington State Cougars': 'washington',
-      'Arizona State Sun Devils': 'arizona',
+      'Oregon State Beavers': 'oregonstate',
+      'Washington State Cougars': 'washingtonstate', 
+      'Arizona State Sun Devils': 'arizonastate',
       'Florida State Seminoles': 'florida',
-      'Georgia State Panthers': 'georgia',
+      'Georgia State Panthers': 'georgiastate',
       'Iowa State Cyclones': 'iowa',
       'Utah State Aggies': 'utah',
       
@@ -121,7 +129,7 @@
       'Houston Cougars': 'houston',
       'Sam Houston Bearkats': 'samhouston',
       'UT Martin Skyhawks': 'utmartin',
-      'UAB Blazers': 'uab',                    // NEW: UAB should match directly
+      'UAB Blazers': 'uab',
     };
     
     // Check for exact state school mapping first
@@ -149,7 +157,7 @@
     'miamifl': 'miami', 
     'miamioh': 'miamioh',
     'miamiohio': 'miamioh',
-    'utsa': 'texassanantonio',
+    'utsa': 'utsa',    
     'utep': 'texaselpaso',
     'ucf': 'centralflorida',
     'usf': 'southflorida',
@@ -166,14 +174,17 @@
     'southernmiss': 'southernmississippi',
     'appalachianst': 'appalachianstate',
     'sanjosest': 'sanjosestate',
+    'pennstate': 'penn',
+    'indianahoosiers': 'indiana',
+
+    'utsaroadrunners': 'utsa',  // ESPN normalized → Firestore normalized
     
-    // CRITICAL: ESPN shortDisplayName → Firestore normalized mappings
-    // Based on debug output: ESPN calls them different than Firestore
     'jax': 'jacksonville',              // "Jax State" → "Jacksonville State"
     'sfaustin': 'stephenfaustin',        // "SF Austin" → "Stephen F. Austin"  
     'oklahoma': 'oklahoma',              // "Oklahoma St" → "Oklahoma State" (both normalize to oklahoma)
     'kansas': 'kansas',                  // "Kansas St" → "Kansas State" (both normalize to kansas)
     'delaware': 'delaware',              // Handle Delaware vs Delaware State conflict
+    'arkansasrazorbacks': 'arkansas',
     
     // ESPN displayName → Firestore normalized mappings  
     'jacksonville': 'jacksonville',      // "Jacksonville State Gamecocks" → "Jacksonville State"
@@ -183,6 +194,8 @@
     'centralflorida': 'centralflorida',  // "UCF Knights" → "UCF" 
     'houston': 'houston',                // "Houston Cougars" → "Houston"
     'samhouston': 'samhouston',          // "Sam Houston Bearkats" → "Sam Houston"
+    'michiganwolverines': 'michigan',      // ESPN Michigan → Firestore michigan
+    'michiganstatespartans': 'michiganstate',
     
     // Handle other State school conflicts
     'alabamaaandm': 'alabamaaandm',      // Alabama A&M vs Alabama

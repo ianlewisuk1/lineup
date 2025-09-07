@@ -7,6 +7,13 @@ import BottomNavBar from "../components/BottomNavBar";
 import ScoringSystemModal from "../components/ScoringSystemModal";
 import RecentMovesWidget from '../components/RecentMovesWidget';
 
+const normalize = (name) =>
+  name
+    ?.toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/&/g, "-")
+    .replace(/[^a-z0-9\-]/g, "");
+
 function MyLeague() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
@@ -251,38 +258,40 @@ function MyLeague() {
         await loadAvailableWeeks();
 
         // Fetch all teams first to get team logos and current season data
-          const teamsRef = collection(db, "teams");
-          const teamsSnapshot = await getDocs(teamsRef);
-          const teamsMap = {};
-          teamsSnapshot.docs.forEach(doc => {
-            const teamData = doc.data();
-            if (teamData.school) {
-                const normalize = (name) =>
-                  name
-                    ?.toLowerCase()
-                    .replace(/\s+/g, "-")
-                    .replace(/&/g, "-")
-                    .replace(/[^a-z0-9\-]/g, "");
+        const teamsRef = collection(db, "teams");
+        const teamsSnapshot = await getDocs(teamsRef);
+        const teamsMap = {};
+        teamsSnapshot.docs.forEach(doc => {
+          const teamData = doc.data();
+          if (teamData.school) {
+            teamsMap[normalize(teamData.school)] = {
+              logo: teamData.logos1 || teamData.logos2 || null,
+              logos1: teamData.logos1 || null,
+              logos2: teamData.logos2 || null,
+              colors: teamData.colors || {},
+              // Add additional team info for the card
+              conference: teamData.conference || "Unknown",
+              mascot: teamData.mascot || "",
+              city: teamData.city || "",
+              state: teamData.state || "",
+              currentSeason: teamData.currentSeason || {}, // Include full currentSeason object
+              gameComplete: teamData.currentSeason?.gameComplete || false,
+              nextOpponentSpread: teamData.currentSeason?.nextOpponentSpread || null,
+              name: teamData.school,  // ADD THIS LINE
+              school: teamData.school // ADD THIS LINE
+            };
+          }
+        });
+        setAllTeams(teamsMap);
 
-                teamsMap[normalize(teamData.school)] = {
-                logo: teamData.logos1 || teamData.logos2 || null,
-                logos1: teamData.logos1 || null,
-                logos2: teamData.logos2 || null,
-                colors: teamData.colors || {},
-                // Add additional team info for the card
-                conference: teamData.conference || "Unknown",
-                mascot: teamData.mascot || "",
-                city: teamData.city || "",
-                state: teamData.state || "",
-                currentSeason: teamData.currentSeason || {}, // Include full currentSeason object
-                gameComplete: teamData.currentSeason?.gameComplete || false,
-                nextOpponentSpread: teamData.currentSeason?.nextOpponentSpread || null,
-                name: teamData.school,  // ADD THIS LINE
-                school: teamData.school // ADD THIS LINE
-              };
-            }
-          });
-          setAllTeams(teamsMap);
+        // In your useEffect, right after you load the teams data
+        console.log('🏈 All teams loaded:', Object.keys(teamsMap));
+        console.log('🎯 Arizona entries:', Object.keys(teamsMap).filter(key => key.includes('arizona')));
+        console.log('🔍 Arizona State team data:', teamsMap['arizona-state']);
+
+        // Also log what normalize produces
+        console.log('Normalize "Arizona State":', normalize('Arizona State'));
+        console.log('Normalize "arizona-state":', normalize('arizona-state'));
 
         // Fetch league members with captain data
         const membersRef = collection(db, "leagues", leagueId, "members");
@@ -333,6 +342,39 @@ function MyLeague() {
         );
 
         setMembers(membersData);
+
+        // NEW: Debug - Check which teams from lineups are missing from schedule
+        if (!scheduleLoading && Object.keys(scheduleData).length > 0) {
+          const allLineupsTeams = new Set();
+          membersData.forEach(member => {
+            const lineup = member.lineup || {};
+            const starters = Array.isArray(lineup.starters) ? lineup.starters : [];
+            const bench = Array.isArray(lineup.bench) ? lineup.bench : [];
+            [...starters, ...bench].forEach(teamName => {
+              if (typeof teamName === 'string' && teamName.trim() !== '') {
+                allLineupsTeams.add(teamName);
+              }
+            });
+          });
+
+          const teamsNotInSchedule = Array.from(allLineupsTeams).filter(teamName => {
+            return !scheduleData[teamName] && !scheduleData[teamName.toLowerCase()];
+          });
+
+          console.log('🏈 Schedule Debug for Week', getCurrentWeekNumber(), ':');
+          console.log('   Teams in schedule:', Object.keys(scheduleData).filter(key => !key.includes('.')));
+          console.log('   Teams in lineups:', Array.from(allLineupsTeams));
+          
+          if (teamsNotInSchedule.length > 0) {
+            console.log('🚨 Teams in lineups but NOT in schedule (potential byes):');
+            teamsNotInSchedule.forEach(teamName => {
+              console.log(`   - "${teamName}"`);
+            });
+          } else {
+            console.log('✅ All lineup teams found in schedule');
+          }
+        }
+
         setLoading(false);
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -346,13 +388,6 @@ function MyLeague() {
 
 // FIXED: Team logo component with schedule-based live game display and captain support
   const TeamLogo = ({ teamName, size = 32, clickable = false, isCaptain = false }) => {
-
-    const normalize = (name) =>
-      name
-        ?.toLowerCase()
-        .replace(/\s+/g, "-")
-        .replace(/&/g, "-")
-        .replace(/[^a-z0-9\-]/g, "");
 
     const team = allTeams[normalize(teamName)];
     const logoUrl = team?.logo;
@@ -399,10 +434,6 @@ function MyLeague() {
     const currentWeekNum = getCurrentWeekNumber();
     
     const getTeamDisplayState = () => {
-      // Only show live status for current week view
-      if (teamName === 'duke') {
-        console.log('🎯 Duke viewMode check:', { viewMode, currentWeekNum });
-      }
 
       if (viewMode !== 'current') {
         return { 
@@ -412,14 +443,6 @@ function MyLeague() {
           bgColor: "#374151",
           shouldPulse: false
         };
-      }
-
-        // ADD THIS DEBUG RIGHT HERE:
-      if (teamName === 'duke') {
-        console.log('🎯 Duke past viewMode check, checking schedule data:', {
-          hasScheduleGame: !!scheduleGame,
-          scheduleLoading
-        });
       }
 
       // First check schedule data (most reliable for current week)
@@ -435,18 +458,6 @@ function MyLeague() {
         if (isCaptain && weeklyPoints !== 0) {
           weeklyPoints *= 2;
         }
-        
-        // ADD DEBUG HERE:
-        if (teamName === 'duke') {
-          console.log('🏈 Duke game state debug:', {
-            weeklyPoints: team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`],
-            afterCaptainBonus: weeklyPoints, 
-            gameComplete: scheduleGame?.gameComplete,
-            gameStatus: scheduleGame?.gameStatus, 
-            hasLiveGame: scheduleGame?.hasLiveGame,
-            whichPath: 'about to determine display path'
-          });
-        }    
 
         // Determine status based on schedule data
         if (gameComplete === true || gameStatus === 'final') {
@@ -482,6 +493,7 @@ function MyLeague() {
       
       // Fallback to team document if no schedule data (shouldn't happen for current week)
       let weeklyPoints = team?.currentSeason?.weeklyPoints?.[`week${currentWeekNum}`] || 0;
+
       const gameComplete = team?.currentSeason?.gameComplete;
       const gameStatus = team?.currentSeason?.gameStatus;
       const hasLiveGame = team?.currentSeason?.hasLiveGame;
@@ -501,7 +513,7 @@ function MyLeague() {
         };
       }
       
-      if (gameStatus === 'in_progress' || hasLiveGame || (weeklyPoints > 0 && gameComplete === false)) {
+      if (gameStatus === 'in_progress' || hasLiveGame || (weeklyPoints !== 0 && gameComplete === false)) {
         return { 
           display: weeklyPoints, 
           state: "live", 
@@ -520,18 +532,6 @@ function MyLeague() {
         shouldPulse: false
       };
     };
-
-    // More general debug - catches all teams for Duke's member
-    if (teamName && (teamName.toLowerCase().includes('duke') || teamName === 'Duke')) {
-      console.log('🔍 TEAM MATCH:', {
-        originalTeamName: teamName,
-        normalizedTeamName: normalize(teamName),
-        teamFound: !!team,
-        currentWeekNum,
-        weeklyPoints: team?.currentSeason?.weeklyPoints,
-        isCaptain
-      });
-    }
 
     const teamState = getTeamDisplayState();
 
@@ -1476,14 +1476,6 @@ function MyLeague() {
       if (scheduleGame && !scheduleLoading) {
         return scheduleGame.gameStatus === 'in_progress' || scheduleGame.hasLiveGame;
       }
-      
-      // Fallback to team document
-      const normalize = (name) =>
-        name
-          ?.toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/&/g, "-")
-          .replace(/[^a-z0-9\-]/g, "");
 
       const team = allTeams[normalize(teamName)];
       return team?.currentSeason?.gameStatus === 'in_progress' || team?.currentSeason?.hasLiveGame;

@@ -1245,9 +1245,6 @@ const WeeklyLineupContent = ({
               </div>
               <div className={`font-bold text-sm mt-1 ${isCaptain ? 'text-yellow-400' : 'text-orange-400'}`}>
                 {displayWeeklyPoints}
-                {isCaptain && (
-                  <span className="text-[10px] text-yellow-300 ml-1">Captain</span>
-                )}
               </div>
               <div className="text-[11px] text-orange-300/80 -mt-0.5">
                 Weekly Points{isCaptain ? ' (Captain)' : ''}
