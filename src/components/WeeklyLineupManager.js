@@ -7,6 +7,10 @@ import { db } from '../firebase/firebase';
 import { weeklyLineupUtils } from '../utils/weeklyLineupUtils';
 import { ChevronLeft, ChevronRight, Lock, Clock, CheckCircle, ChevronDown, ChevronUp, Crown } from 'lucide-react';
 
+const isWeekEditable = (week, currentWeek) => {
+  return week === currentWeek;
+};
+
 /**
  * Get game information for a specific team in a specific week
  * @param {string} teamName - The team name to look up
@@ -576,47 +580,55 @@ const WeeklyLineupManager = ({
       setAvailableWeeks(weeks);
 
       const lineupData = {};
-      const weeklyLineupsRef = doc(db, "leagues", leagueId, "weeklyLineups", userId);
-      const weeklyLineupsSnap = await getDoc(weeklyLineupsRef);
-      const existingWeeklyData = weeklyLineupsSnap.exists() ? weeklyLineupsSnap.data() : {};
-
+      
+      // Get current week lineup from member document
       const memberRef = doc(db, "leagues", leagueId, "members", userId);
       const memberSnap = await getDoc(memberRef);
       const memberData = memberSnap.data();
       const currentLineup = memberData?.lineup;
 
+      // Get historical lineups from weeklyStandings
+      const weeklyStandingsRef = doc(db, "leagues", leagueId, "weeklyStandings", userId);
+      const weeklyStandingsSnap = await getDoc(weeklyStandingsRef);
+      const historicalData = weeklyStandingsSnap.exists() ? weeklyStandingsSnap.data() : {};
+
       weeks.forEach(week => {
         const weekKey = `week${week}`;
         
-        const createEnhancedLineup = (existingLineup = null) => {
-          const baseLineup = existingLineup || {
+        if (week === currentWeek && currentLineup) {
+          // Current week - read from member document
+          lineupData[weekKey] = {
+            starters: currentLineup.starters || Array(5).fill(null),
+            bench: currentLineup.bench || Array(2).fill(null),
+            captain: currentLineup.captain || null,
+            lockedTeams: [],
+            teamLockTimes: {},
+            lockedAt: null,
+            isEditable: true
+          };
+        } else if (historicalData[weekKey]?.lineup) {
+          // Past week - read from weeklyStandings (read-only)
+          const historicalLineup = historicalData[weekKey].lineup;
+          lineupData[weekKey] = {
+            starters: historicalLineup.starters || Array(5).fill(null),
+            bench: historicalLineup.bench || Array(2).fill(null),
+            captain: historicalLineup.captain || null,
+            lockedTeams: [],
+            teamLockTimes: {},
+            lockedAt: historicalData[weekKey].snapshotAt || null,
+            isEditable: false
+          };
+        } else {
+          // Future week or no data - empty lineup
+          lineupData[weekKey] = {
             starters: Array(5).fill(null),
             bench: Array(2).fill(null),
             captain: null,
-            lockedAt: null
+            lockedTeams: [],
+            teamLockTimes: {},
+            lockedAt: null,
+            isEditable: week === currentWeek
           };
-          
-          return {
-            starters: baseLineup.starters || Array(5).fill(null),
-            bench: baseLineup.bench || Array(2).fill(null),
-            captain: baseLineup.captain || null,
-            lockedTeams: baseLineup.lockedTeams || [],
-            teamLockTimes: baseLineup.teamLockTimes || {},
-            lockedAt: baseLineup.lockedAt || null
-          };
-        };
-        
-        if (week === currentWeek && currentLineup) {
-          lineupData[weekKey] = createEnhancedLineup({
-            starters: currentLineup.starters || Array(5).fill(null),
-            bench: currentLineup.bench || Array(2).fill(null),
-            captain: currentLineup.captain || null,  // ← Read from member doc instead
-            lockedAt: null
-          });
-        } else if (existingWeeklyData[weekKey]) {
-          lineupData[weekKey] = createEnhancedLineup(existingWeeklyData[weekKey]);
-        } else {
-          lineupData[weekKey] = createEnhancedLineup();
         }
       });
 
@@ -687,36 +699,39 @@ const WeeklyLineupManager = ({
     try {
       console.log("saveLineup called with captain:", captain);
       
+      // ONLY allow saving current week
+      if (week !== currentWeek) {
+        console.warn(`Cannot save Week ${week}. Only current week (${currentWeek}) can be edited.`);
+        return;
+      }
+      
       const normalizedStarters = starters.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null);
       const normalizedBench = bench.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null);
       const normalizedCaptain = captain;      
       console.log("normalized captain:", normalizedCaptain);
 
-      if (week === currentWeek) {
-        const memberRef = doc(db, "leagues", leagueId, "members", userId);
-        await updateDoc(memberRef, { 
-          lineup: { 
-            starters: normalizedStarters, 
-            bench: normalizedBench,
-            captain: normalizedCaptain 
-          } 
-        });
-      } else {
-        console.warn(`Attempted to save non-current week ${week}. Current week is ${currentWeek}`);
-      }
+      // Save to member document (current week only)
+      const memberRef = doc(db, "leagues", leagueId, "members", userId);
+      await updateDoc(memberRef, { 
+        lineup: { 
+          starters: normalizedStarters, 
+          bench: normalizedBench,
+          captain: normalizedCaptain 
+        } 
+      });
 
+      // Update frontend state
       const weekKey = `week${week}`;
-      
       const updatedLineup = {
         starters: normalizedStarters,
         bench: normalizedBench,
         captain: normalizedCaptain,
         lockedTeams: weeklyLineups[weekKey]?.lockedTeams || [],
         teamLockTimes: weeklyLineups[weekKey]?.teamLockTimes || {},
-        lockedAt: null
+        lockedAt: null,
+        isEditable: true
       };
 
-      // Keep this to update your frontend state
       setWeeklyLineups(prev => ({ 
         ...prev, 
         [weekKey]: updatedLineup
@@ -795,6 +810,11 @@ const WeeklyLineupManager = ({
                   Current
                 </span>
               )}
+              {selectedWeek < currentWeek && (
+                <span className="bg-gray-500 text-white text-xs px-2 py-1 rounded-full font-medium">
+                  Read Only
+                </span>
+              )}
             </div>
             <p className="text-sm text-white/60">{getStatusMessage(selectedWeek)}</p>
           </div>
@@ -832,7 +852,7 @@ const WeeklyLineupManager = ({
           week={selectedWeek}
           lineup={weeklyLineups[`week${selectedWeek}`]}
           allTeams={allTeams}
-          isEditable={true}
+          isEditable={selectedWeek === currentWeek}
           onSave={(starters, bench, captain) => saveLineup(selectedWeek, starters, bench, captain)}
           onTeamClick={onTeamClick}
           TeamLogo={TeamLogo}
@@ -846,7 +866,6 @@ const WeeklyLineupManager = ({
   );
 };
 
-/* ---------- WeeklyLineupContent: lineup editor + modals ---------- */
 const WeeklyLineupContent = ({ 
   week,
   lineup,
@@ -867,6 +886,7 @@ const WeeklyLineupContent = ({
   const [showConfirmCut, setShowConfirmCut] = useState(null);
   const [showReplaceModal, setShowReplaceModal] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const canEdit = isEditable && (week === currentWeek) && (lineup?.isEditable !== false);
 
   useEffect(() => {
     if (lineup) {
@@ -932,7 +952,7 @@ const WeeklyLineupContent = ({
   };
 
   const handleTeamMove = async (team, fromSection, fromIndex, toSection, toIndex = null) => {
-    if (!isEditable || isSaving) return;
+    if (!canEdit || isSaving) return;
 
     const teamName = team.school || team.name;
     const moveValidation = await canMoveTeam(teamName, week);
@@ -1072,7 +1092,7 @@ const WeeklyLineupContent = ({
   };
 
   const handleSave = async () => {
-    if (hasChanges && isEditable && !isSaving) await saveLineupChanges(starters, bench, captain);
+    if (hasChanges && canEdit && !isSaving) await saveLineupChanges(starters, bench, captain);
   };
 
   /* ---------- Enhanced Team Card with Captain Selection ---------- */
@@ -1124,7 +1144,7 @@ const WeeklyLineupContent = ({
     if (!team) {
       return (
         <div className="flex items-center justify-center py-5 border-2 border-dashed border-white/15 rounded-xl min-h-[72px]">
-          {isEditable ? (
+          {canEdit ? (
             <Link
               to={`/${leagueId}/free-agents?returnWeek=${week}&section=${section}&index=${index}`}
               className="flex items-center gap-2 text-white/70 hover:text-white transition-colors duration-200 no-underline"
@@ -1188,7 +1208,7 @@ const WeeklyLineupContent = ({
                   </div>
                 )}
               </div>
-              {isEditable && !lockStatus.locked && (
+              {canEdit && !lockStatus.locked && (
                 <button
                   onClick={() => setShowActions(!showActions)}
                   className="p-1 hover:bg-white/10 rounded-md transition-colors duration-200"
@@ -1254,7 +1274,7 @@ const WeeklyLineupContent = ({
         </div>
 
         {/* Actions section with captain option */}
-        {isEditable && showActions && !lockStatus.locked && (
+        {canEdit && showActions && !lockStatus.locked && (
           <div className="bg-white/6 border-t border-white/10 p-2.5">
             <div className="flex flex-col gap-2">
               <div className="flex gap-2">
@@ -1478,8 +1498,8 @@ const WeeklyLineupContent = ({
         </div>
       </div>
 
-      {isEditable && hasChanges && (
-        <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-4">
+        {canEdit && hasChanges && (
+          <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
               <span className="text-green-200 font-medium">You have unsaved changes</span>

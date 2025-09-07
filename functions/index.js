@@ -3215,42 +3215,39 @@
     }
   });
 
-  /**
-   * Calculate team records from schedule data and update team documents
-   * Works purely from Firestore schedule data without relying on external APIs
-   */
   exports.updateTeamRecordsFromSchedule = onRequest(async (req, res) => {
-    try {
-      const db = admin.firestore();
-      const week = parseInt(req.query.week);
-      const year = req.query.year || '2025';
+  try {
+    const db = admin.firestore();
+    const year = req.query.year || '2025';
+    
+    console.log(`Updating team records from schedule data for ALL weeks in ${year}...`);
+    
+    // Get ALL completed games from ALL weeks
+    const teamResults = new Map();
+    const processedGames = [];
+    
+    // Get all weeks
+    const weeksSnap = await db.collection('schedule').doc(year).collection('weeks').get();
+    
+    if (weeksSnap.empty) {
+      return res.json({
+        success: true,
+        message: `No weeks found for year ${year}`,
+        teamsUpdated: 0
+      });
+    }
+    
+    let totalGames = 0;
+    
+    for (const weekDoc of weeksSnap.docs) {
+      const weekNumber = weekDoc.id;
+      console.log(`Processing week ${weekNumber} games...`);
       
-      if (!week) {
-        return res.status(400).json({ error: 'Week parameter is required' });
-      }
-      
-      console.log(`Updating team records from schedule data for week ${week}...`);
-      
-      // Get all completed games for the specified week
-      const gamesSnap = await db
-        .collection('schedule').doc(year)
-        .collection('weeks').doc(week.toString())
-        .collection('games')
+      const gamesSnap = await weekDoc.ref.collection('games')
         .where('gameComplete', '==', true)
         .get();
       
-      if (gamesSnap.empty) {
-        return res.json({
-          success: true,
-          message: `No completed games found for week ${week}`,
-          week,
-          teamsUpdated: 0
-        });
-      }
-      
-      // Collect team results
-      const teamResults = new Map();
-      const processedGames = [];
+      let weekGameCount = 0;
       
       gamesSnap.forEach(gameDoc => {
         const game = gameDoc.data();
@@ -3346,121 +3343,134 @@
           awayTeam: game.awayTeam,
           score: `${game.homeScore}-${game.awayScore}`,
           winner: isTie ? 'TIE' : (homeWon ? game.homeTeam : game.awayTeam),
-          conferenceGame: isConferenceGame
+          conferenceGame: isConferenceGame,
+          week: weekNumber
         });
+        
+        weekGameCount++;
+        totalGames++;
       });
       
-      console.log(`Processed ${processedGames.length} completed games`);
-      console.log(`Updating ${teamResults.size} teams`);
-      
-      // Update team documents
-      const bw = new BatchWriter(db);
-      let teamsUpdated = 0;
-      
-      for (const [teamName, stats] of teamResults) {
-        try {
-          const slug = slugTeam(teamName);
-          const teamRef = db.collection('teams').doc(slug);
-          
-          // Check if team document exists
-          const teamSnap = await teamRef.get();
-          if (!teamSnap.exists) {
-            console.warn(`Team document not found: ${teamName} (${slug})`);
-            continue;
-          }
-          
-          // Format records
-          const overallRecord = stats.ties > 0 
-            ? `${stats.wins}-${stats.losses}-${stats.ties}`
-            : `${stats.wins}-${stats.losses}`;
-            
-          const confRecord = stats.conferenceGames > 0
-            ? (stats.confTies > 0 
-              ? `${stats.confWins}-${stats.confLosses}-${stats.confTies}`
-              : `${stats.confWins}-${stats.confLosses}`)
-            : '0-0';
-          
-          // Calculate averages
-          const avgPointsFor = stats.gamesPlayed > 0 
-            ? (stats.totalPointsFor / stats.gamesPlayed).toFixed(1)
-            : '0.0';
-            
-          const avgPointsAgainst = stats.gamesPlayed > 0 
-            ? (stats.totalPointsAgainst / stats.gamesPlayed).toFixed(1)
-            : '0.0';
-          
-          // Update team document
-          const updateData = {
-            // Win-loss records
-            'currentSeason.record': overallRecord,
-            'currentSeason.confRecord': confRecord,
-            'currentSeason.wins': stats.wins,
-            'currentSeason.losses': stats.losses,
-            'currentSeason.ties': stats.ties,
-            
-            // Conference records
-            'currentSeason.confWins': stats.confWins,
-            'currentSeason.confLosses': stats.confLosses,
-            'currentSeason.confTies': stats.confTies,
-            
-            // Game statistics
-            'currentSeason.gamesPlayed': stats.gamesPlayed,
-            'currentSeason.totalPointsFor': stats.totalPointsFor,
-            'currentSeason.totalPointsAgainst': stats.totalPointsAgainst,
-            
-            // Averages
-            'currentSeason.avgPointsFor': avgPointsFor,
-            'currentSeason.avgPointsAgainst': avgPointsAgainst,
-            
-            // Update timestamp
-            'currentSeason.recordLastUpdated': admin.firestore.FieldValue.serverTimestamp()
-          };
-          
-          bw.update(teamRef, updateData);
-          teamsUpdated++;
-          
-          console.log(`${teamName}: ${overallRecord} overall, ${confRecord} conf, ${avgPointsFor} PPG`);
-          
-        } catch (error) {
-          console.error(`Error updating team ${teamName}:`, error);
-        }
-      }
-      
-      await bw.commit();
-      
-      console.log(`Successfully updated ${teamsUpdated} team records`);
-      
-      res.json({
-        success: true,
-        message: `Updated records for ${teamsUpdated} teams from ${processedGames.length} completed games`,
-        week,
-        year,
-        teamsUpdated,
-        gamesProcessed: processedGames.length,
-        teamResults: Object.fromEntries(
-          Array.from(teamResults.entries()).map(([team, stats]) => [
-            team,
-            {
-              record: stats.ties > 0 ? `${stats.wins}-${stats.losses}-${stats.ties}` : `${stats.wins}-${stats.losses}`,
-              confRecord: stats.conferenceGames > 0 
-                ? (stats.confTies > 0 ? `${stats.confWins}-${stats.confLosses}-${stats.confTies}` : `${stats.confWins}-${stats.confLosses}`)
-                : '0-0',
-              avgPointsFor: stats.gamesPlayed > 0 ? (stats.totalPointsFor / stats.gamesPlayed).toFixed(1) : '0.0'
-            }
-          ])
-        )
-      });
-      
-    } catch (error) {
-      console.error('Error updating team records from schedule:', error);
-      res.status(500).json({ error: error.message });
+      console.log(`Week ${weekNumber}: ${weekGameCount} completed games`);
     }
+    
+    console.log(`Processed ${totalGames} completed games across all weeks`);
+    console.log(`Updating ${teamResults.size} teams`);
+    
+    if (totalGames === 0) {
+      return res.json({
+        success: true,
+        message: `No completed games found across all weeks in ${year}`,
+        teamsUpdated: 0
+      });
+    }
+    
+    // Update team documents
+    const bw = new BatchWriter(db);
+    let teamsUpdated = 0;
+    
+    for (const [teamName, stats] of teamResults) {
+      try {
+        const slug = slugTeam(teamName);
+        const teamRef = db.collection('teams').doc(slug);
+        
+        // Check if team document exists
+        const teamSnap = await teamRef.get();
+        if (!teamSnap.exists) {
+          console.warn(`Team document not found: ${teamName} (${slug})`);
+          continue;
+        }
+        
+        // Format records
+        const overallRecord = stats.ties > 0 
+          ? `${stats.wins}-${stats.losses}-${stats.ties}`
+          : `${stats.wins}-${stats.losses}`;
+          
+        const confRecord = stats.conferenceGames > 0
+          ? (stats.confTies > 0 
+            ? `${stats.confWins}-${stats.confLosses}-${stats.confTies}`
+            : `${stats.confWins}-${stats.confLosses}`)
+          : '0-0';
+        
+        // Calculate averages
+        const avgPointsFor = stats.gamesPlayed > 0 
+          ? (stats.totalPointsFor / stats.gamesPlayed).toFixed(1)
+          : '0.0';
+          
+        const avgPointsAgainst = stats.gamesPlayed > 0 
+          ? (stats.totalPointsAgainst / stats.gamesPlayed).toFixed(1)
+          : '0.0';
+        
+        // Update team document
+        const updateData = {
+          // Win-loss records
+          'currentSeason.record': overallRecord,
+          'currentSeason.confRecord': confRecord,
+          'currentSeason.wins': stats.wins,
+          'currentSeason.losses': stats.losses,
+          'currentSeason.ties': stats.ties,
+          
+          // Conference records
+          'currentSeason.confWins': stats.confWins,
+          'currentSeason.confLosses': stats.confLosses,
+          'currentSeason.confTies': stats.confTies,
+          
+          // Game statistics
+          'currentSeason.gamesPlayed': stats.gamesPlayed,
+          'currentSeason.totalPointsFor': stats.totalPointsFor,
+          'currentSeason.totalPointsAgainst': stats.totalPointsAgainst,
+          
+          // Averages
+          'currentSeason.avgPointsFor': avgPointsFor,
+          'currentSeason.avgPointsAgainst': avgPointsAgainst,
+          
+          // Update timestamp
+          'currentSeason.recordLastUpdated': admin.firestore.FieldValue.serverTimestamp()
+        };
+        
+        bw.update(teamRef, updateData);
+        teamsUpdated++;
+        
+        console.log(`${teamName}: ${overallRecord} overall, ${confRecord} conf, ${avgPointsFor} PPG (${stats.gamesPlayed} games)`);
+        
+      } catch (error) {
+        console.error(`Error updating team ${teamName}:`, error);
+      }
+    }
+    
+    await bw.commit();
+    
+    console.log(`Successfully updated ${teamsUpdated} team records from ${totalGames} games`);
+    
+    res.json({
+      success: true,
+      message: `Updated records for ${teamsUpdated} teams from ${totalGames} completed games across all weeks`,
+      year,
+      weeksProcessed: weeksSnap.size,
+      teamsUpdated,
+      gamesProcessed: totalGames,
+      processedAllWeeks: true,
+      teamResults: Object.fromEntries(
+        Array.from(teamResults.entries()).map(([team, stats]) => [
+          team,
+          {
+            record: stats.ties > 0 ? `${stats.wins}-${stats.losses}-${stats.ties}` : `${stats.wins}-${stats.losses}`,
+            confRecord: stats.conferenceGames > 0 
+              ? (stats.confTies > 0 ? `${stats.confWins}-${stats.confLosses}-${stats.confTies}` : `${stats.confWins}-${stats.confLosses}`)
+              : '0-0',
+            avgPointsFor: stats.gamesPlayed > 0 ? (stats.totalPointsFor / stats.gamesPlayed).toFixed(1) : '0.0',
+            gamesPlayed: stats.gamesPlayed
+          }
+        ])
+      )
+    });
+    
+  } catch (error) {
+    console.error('Error updating team records from schedule:', error);
+    res.status(500).json({ error: error.message });
+  }
   });
 
-  /**
-   * Scheduled function to update team records from completed games
-   * Runs daily at 8 AM ET to catch any games that completed overnight
-   */
   exports.updateTeamRecordsScheduled = onSchedule(
     { 
       schedule: '0 8 * * *',           // 8 AM daily
@@ -3472,7 +3482,7 @@
         
         const db = admin.firestore();
         
-        // Get current week from season config
+        // Get current week from season config (for logging purposes)
         const seasonSnap = await db.collection('config').doc('season').get();
         if (!seasonSnap.exists) {
           console.log('No season config found');
@@ -3491,100 +3501,101 @@
         };
         
         const weekNum = getCurrentWeekNumber();
-        console.log(`Updating records for week ${weekNum}`);
+        console.log(`Updating records using ALL completed games (current week: ${weekNum})`);
         
-        // Run the same logic as the HTTP function
         const year = '2025';
         
-        // Get all completed games for the current week
-        const gamesSnap = await db
-          .collection('schedule').doc(year)
-          .collection('weeks').doc(weekNum.toString())
-          .collection('games')
-          .where('gameComplete', '==', true)
-          .get();
-        
-        if (gamesSnap.empty) {
-          console.log(`No completed games found for week ${weekNum}`);
-          return;
-        }
-        
-        // Use the same team results calculation logic
+        // Get ALL completed games from ALL weeks
         const teamResults = new Map();
         const processedGames = [];
         
-        gamesSnap.forEach(gameDoc => {
-          const game = gameDoc.data();
+        // Get all weeks
+        const weeksSnap = await db.collection('schedule').doc(year).collection('weeks').get();
+        
+        for (const weekDoc of weeksSnap.docs) {
+          const weekNumber = weekDoc.id;
+          console.log(`Processing week ${weekNumber} games...`);
           
-          if (!game.homeTeam || !game.awayTeam || 
-              typeof game.homeScore !== 'number' || 
-              typeof game.awayScore !== 'number') {
-            return;
-          }
+          const gamesSnap = await weekDoc.ref.collection('games')
+            .where('gameComplete', '==', true)
+            .get();
           
-          const homeWon = game.homeScore > game.awayScore;
-          const awayWon = game.awayScore > game.homeScore;
-          const isTie = game.homeScore === game.awayScore;
-          
-          // Initialize team records
-          [game.homeTeam, game.awayTeam].forEach(teamName => {
-            if (!teamResults.has(teamName)) {
-              teamResults.set(teamName, {
-                wins: 0, losses: 0, ties: 0,
-                confWins: 0, confLosses: 0, confTies: 0,
-                gamesPlayed: 0, totalPointsFor: 0, totalPointsAgainst: 0,
-                conferenceGames: 0
-              });
+          gamesSnap.forEach(gameDoc => {
+            const game = gameDoc.data();
+            
+            if (!game.homeTeam || !game.awayTeam || 
+                typeof game.homeScore !== 'number' || 
+                typeof game.awayScore !== 'number') {
+              return;
             }
+            
+            const homeWon = game.homeScore > game.awayScore;
+            const awayWon = game.awayScore > game.homeScore;
+            const isTie = game.homeScore === game.awayScore;
+            
+            // Initialize team records
+            [game.homeTeam, game.awayTeam].forEach(teamName => {
+              if (!teamResults.has(teamName)) {
+                teamResults.set(teamName, {
+                  wins: 0, losses: 0, ties: 0,
+                  confWins: 0, confLosses: 0, confTies: 0,
+                  gamesPlayed: 0, totalPointsFor: 0, totalPointsAgainst: 0,
+                  conferenceGames: 0
+                });
+              }
+            });
+            
+            const homeStats = teamResults.get(game.homeTeam);
+            const awayStats = teamResults.get(game.awayTeam);
+            
+            // Update stats
+            homeStats.gamesPlayed++;
+            awayStats.gamesPlayed++;
+            homeStats.totalPointsFor += game.homeScore;
+            homeStats.totalPointsAgainst += game.awayScore;
+            awayStats.totalPointsFor += game.awayScore;
+            awayStats.totalPointsAgainst += game.homeScore;
+            
+            const isConferenceGame = game.conferenceGame === true;
+            if (isConferenceGame) {
+              homeStats.conferenceGames++;
+              awayStats.conferenceGames++;
+            }
+            
+            // Update records
+            if (isTie) {
+              homeStats.ties++;
+              awayStats.ties++;
+              if (isConferenceGame) {
+                homeStats.confTies++;
+                awayStats.confTies++;
+              }
+            } else if (homeWon) {
+              homeStats.wins++;
+              awayStats.losses++;
+              if (isConferenceGame) {
+                homeStats.confWins++;
+                awayStats.confLosses++;
+              }
+            } else {
+              homeStats.losses++;
+              awayStats.wins++;
+              if (isConferenceGame) {
+                homeStats.confLosses++;
+                awayStats.confWins++;
+              }
+            }
+            
+            processedGames.push({
+              homeTeam: game.homeTeam,
+              awayTeam: game.awayTeam,
+              score: `${game.homeScore}-${game.awayScore}`,
+              week: weekNumber
+            });
           });
-          
-          const homeStats = teamResults.get(game.homeTeam);
-          const awayStats = teamResults.get(game.awayTeam);
-          
-          // Update stats
-          homeStats.gamesPlayed++;
-          awayStats.gamesPlayed++;
-          homeStats.totalPointsFor += game.homeScore;
-          homeStats.totalPointsAgainst += game.awayScore;
-          awayStats.totalPointsFor += game.awayScore;
-          awayStats.totalPointsAgainst += game.homeScore;
-          
-          const isConferenceGame = game.conferenceGame === true;
-          if (isConferenceGame) {
-            homeStats.conferenceGames++;
-            awayStats.conferenceGames++;
-          }
-          
-          // Update records
-          if (isTie) {
-            homeStats.ties++;
-            awayStats.ties++;
-            if (isConferenceGame) {
-              homeStats.confTies++;
-              awayStats.confTies++;
-            }
-          } else if (homeWon) {
-            homeStats.wins++;
-            awayStats.losses++;
-            if (isConferenceGame) {
-              homeStats.confWins++;
-              awayStats.confLosses++;
-            }
-          } else {
-            homeStats.losses++;
-            awayStats.wins++;
-            if (isConferenceGame) {
-              homeStats.confLosses++;
-              awayStats.confWins++;
-            }
-          }
-          
-          processedGames.push({
-            homeTeam: game.homeTeam,
-            awayTeam: game.awayTeam,
-            score: `${game.homeScore}-${game.awayScore}`
-          });
-        });
+        }
+        
+        console.log(`Found ${processedGames.length} completed games across all weeks`);
         
         // Update team documents
         const bw = new BatchWriter(db);
@@ -3636,7 +3647,7 @@
             bw.update(teamRef, updateData);
             teamsUpdated++;
             
-            console.log(`Updated ${teamName}: ${overallRecord}`);
+            console.log(`Updated ${teamName}: ${overallRecord} (${stats.gamesPlayed} games)`);
             
           } catch (error) {
             console.error(`Error updating team ${teamName}:`, error);
@@ -3645,14 +3656,15 @@
         
         await bw.commit();
         
-        console.log(`Scheduled team records update complete: ${teamsUpdated} teams updated from ${processedGames.length} games`);
+        console.log(`Scheduled team records update complete: ${teamsUpdated} teams updated from ${processedGames.length} games across all weeks`);
         
         // Log to system collection for monitoring
         try {
           await db.collection('system').doc('team-records-log').collection('daily').add({
-            week: weekNum,
+            currentWeek: weekNum,
             teamsUpdated,
             gamesProcessed: processedGames.length,
+            processedAllWeeks: true,
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
             status: 'success'
           });
@@ -3682,10 +3694,6 @@
 /*                         Weekly Standings Management                         */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Advance the global week and snapshot all league standings with proper reset
- * Manual trigger for week advancement with standings preservation and data reset
- */
 exports.advanceWeekAndSnapshot = onRequest(async (req, res) => {
   try {
     const db = admin.firestore();
@@ -3731,7 +3739,7 @@ exports.advanceWeekAndSnapshot = onRequest(async (req, res) => {
             weeklyPoints: memberData.weeklyPoints || 0,
             rank: null, // Will be calculated after sorting
             teamName: memberData.teamName || 'Unknown Team',
-            firstName: memberData.firstName || 'Unknown',
+            email: memberData.email || 'Unknown',
             freeAgentMoves: memberData.freeAgentMoves || 0,
             bonusPoints: memberData.bonusPoints || 0,
             snapshotAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -3739,7 +3747,7 @@ exports.advanceWeekAndSnapshot = onRequest(async (req, res) => {
             lineup: {
               starters: memberData.lineup?.starters || [],
               bench: memberData.lineup?.bench || [],
-              captain: memberData.captain || null
+              captain: memberData.lineup?.captain || null
             }
           }
         };
@@ -4521,5 +4529,158 @@ exports.debugMemberPointsCalculation = onRequest(async (req, res) => {
   } catch (error) {
     console.error('❌ Debug failed:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+exports.testWeeklySnapshot = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    
+    // Get current week from season config
+    const seasonRef = db.collection('config').doc('season');
+    const seasonSnap = await seasonRef.get();
+    
+    if (!seasonSnap.exists) {
+      return res.status(404).json({ error: 'Season config not found' });
+    }
+    
+    const seasonData = seasonSnap.data();
+    const currentWeek = seasonData.currentWeek || 2;
+    
+    console.log(`Testing snapshot for Week ${currentWeek}...`);
+    
+    // Get all leagues
+    const leaguesSnap = await db.collection('leagues').get();
+    const testResults = [];
+    
+    for (const leagueDoc of leaguesSnap.docs) {
+      const leagueId = leagueDoc.id;
+      console.log(`Testing snapshot for league: ${leagueId}`);
+      
+      // Get all members in this league
+      const membersSnap = await db
+        .collection('leagues').doc(leagueId)
+        .collection('members')
+        .get();
+      
+      const leagueTestData = {
+        leagueId,
+        members: []
+      };
+      
+      for (const memberDoc of membersSnap.docs) {
+        const memberData = memberDoc.data();
+        const userId = memberDoc.id;
+        
+        // Create the snapshot data (but don't save it)
+        const testSnapshotData = {
+          [`week${currentWeek}`]: {
+            points: memberData.points || 0,
+            weeklyPoints: memberData.weeklyPoints || 0,
+            rank: null, // Will be calculated
+            teamName: memberData.teamName || 'Unknown Team',
+            email: memberData.email || 'Unknown',  // Changed from firstName
+            freeAgentMoves: memberData.freeAgentMoves || 0,
+            bonusPoints: memberData.bonusPoints || 0,
+            snapshotAt: new Date().toISOString(),
+            lineup: {
+              starters: memberData.lineup?.starters || [],
+              bench: memberData.lineup?.bench || [],
+              captain: memberData.lineup?.captain || null  // Fixed from memberData.captain
+            }
+          }
+        };
+        
+        // Validate the data
+        const validation = {
+          hasLineup: !!(memberData.lineup),
+          hasStarters: !!(memberData.lineup?.starters?.length > 0),
+          hasBench: !!(memberData.lineup?.bench?.length > 0),
+          hasCaptain: !!(memberData.lineup?.captain),
+          captainInStarters: memberData.lineup?.captain && 
+            memberData.lineup?.starters?.includes(memberData.lineup.captain),
+          hasEmail: !!(memberData.email),
+          hasPoints: typeof memberData.points === 'number',
+          hasWeeklyPoints: typeof memberData.weeklyPoints === 'number'
+        };
+        
+        leagueTestData.members.push({
+          userId,
+          teamName: memberData.teamName,
+          email: memberData.email,
+          currentData: {
+            points: memberData.points,
+            weeklyPoints: memberData.weeklyPoints,
+            lineup: memberData.lineup
+          },
+          proposedSnapshot: testSnapshotData,
+          validation,
+          issues: [
+            !validation.hasLineup && 'Missing lineup object',
+            !validation.hasStarters && 'No starters found',
+            !validation.hasBench && 'No bench found', 
+            !validation.hasCaptain && 'No captain selected',
+            !validation.captainInStarters && validation.hasCaptain && 'Captain not in starters',
+            !validation.hasEmail && 'Missing email',
+            !validation.hasPoints && 'Missing points',
+            !validation.hasWeeklyPoints && 'Missing weeklyPoints'
+          ].filter(Boolean)
+        });
+      }
+      
+      // Sort members by points for ranking test
+      leagueTestData.members.sort((a, b) => {
+        const aPoints = a.currentData.points || 0;
+        const bPoints = b.currentData.points || 0;
+        if (bPoints !== aPoints) return bPoints - aPoints;
+        return (b.currentData.weeklyPoints || 0) - (a.currentData.weeklyPoints || 0);
+      });
+      
+      // Add ranks
+      leagueTestData.members.forEach((member, index) => {
+        member.proposedSnapshot[`week${currentWeek}`].rank = index + 1;
+      });
+      
+      testResults.push(leagueTestData);
+    }
+    
+    // Summary stats
+    const summary = {
+      totalLeagues: testResults.length,
+      totalMembers: testResults.reduce((sum, league) => sum + league.members.length, 0),
+      membersWithIssues: testResults.reduce((sum, league) => 
+        sum + league.members.filter(m => m.issues.length > 0).length, 0
+      ),
+      commonIssues: {}
+    };
+    
+    // Count common issues
+    testResults.forEach(league => {
+      league.members.forEach(member => {
+        member.issues.forEach(issue => {
+          summary.commonIssues[issue] = (summary.commonIssues[issue] || 0) + 1;
+        });
+      });
+    });
+    
+    console.log(`Test complete: ${summary.totalMembers} members across ${summary.totalLeagues} leagues`);
+    console.log(`Issues found: ${summary.membersWithIssues} members have issues`);
+    console.log('Common issues:', summary.commonIssues);
+    
+    res.json({
+      success: true,
+      currentWeek,
+      summary,
+      testResults,
+      message: `Tested snapshot for Week ${currentWeek}. Check results for any issues before running actual advancement.`
+    });
+    
+  } catch (error) {
+    console.error('Test snapshot failed:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message,
+      message: 'Test snapshot failed. Check logs for details.'
+    });
   }
 });
