@@ -14,6 +14,75 @@ const normalize = (name) =>
     .replace(/&/g, "-")
     .replace(/[^a-z0-9\-]/g, "");
 
+const canonicalizeTeam = (name) => {
+  if (!name) return "";
+  let s = String(name).toLowerCase();
+
+  // unify common words
+  s = s.replace(/\buniversity\b/g, "")
+       .replace(/\bthe\b/g, "")
+       .replace(/\bof\b/g, "")
+       .replace(/\bat\b/g, "")
+       .replace(/\bst[.\s]\b/g, "state ");   // "st.", "st " → "state "
+  
+  // remove parentheses and their contents
+  s = s.replace(/\([^)]*\)/g, "");
+
+  // collapse & strip punctuation/spaces/hyphens
+  s = s.replace(/&/g, "and")
+       .replace(/[^a-z0-9]+/g, "");          // keep only a-z0-9
+
+  return s;
+};
+
+const getScheduleEntry = (scheduleData, name) => {
+  if (!name) return undefined;
+  return (
+    scheduleData[name] ||
+    scheduleData[name?.toLowerCase?.()] ||
+    scheduleData[normalize(name)] ||
+    scheduleData[`__canon__:${canonicalizeTeam(name)}`]
+  );
+};
+
+// Toggle this to true only when you want diagnostics in the console
+const DEBUG_BYE = false;
+
+const debugByeCheck = (scheduleData, name) => {
+  if (!DEBUG_BYE || !name) return;
+
+  const keysTried = {
+    exact: name,
+    lower: name?.toLowerCase?.(),
+    normalized: normalize(name),
+    canonical: `__canon__:${canonicalizeTeam(name)}`
+  };
+
+  const hits = {
+    exact: !!scheduleData[keysTried.exact],
+    lower: !!scheduleData[keysTried.lower],
+    normalized: !!scheduleData[keysTried.normalized],
+    canonical: !!scheduleData[keysTried.canonical],
+  };
+
+  if (!hits.exact && !hits.lower && !hits.normalized && !hits.canonical) {
+    // Only log when we’d mark it as a BYE
+    console.warn(
+      `[BYE DEBUG] No schedule match for "${name}". Tried:`,
+      keysTried,
+      " | hits: ",
+      hits
+    );
+  }
+};
+
+// --- BYE detection helper (robust) ---
+const isTeamOnBye = (name, scheduleData) => {
+  const hasEntry = !!getScheduleEntry(scheduleData, name);
+  if (!hasEntry) debugByeCheck(scheduleData, name);
+  return !hasEntry;
+};
+
 function MyLeague() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
@@ -78,6 +147,12 @@ function MyLeague() {
         gamesByTeam[game.awayTeam] = awayData;
         gamesByTeam[game.homeTeam.toLowerCase()] = homeData;
         gamesByTeam[game.awayTeam.toLowerCase()] = awayData;
+
+        // also store normalized + canonical keys for robust matching
+        gamesByTeam[normalize(game.homeTeam)] = homeData;
+        gamesByTeam[normalize(game.awayTeam)] = awayData;
+        gamesByTeam[`__canon__:${canonicalizeTeam(game.homeTeam)}`] = homeData;
+        gamesByTeam[`__canon__:${canonicalizeTeam(game.awayTeam)}`] = awayData;
       }
     });
     
@@ -357,9 +432,15 @@ function MyLeague() {
             });
           });
 
-          const teamsNotInSchedule = Array.from(allLineupsTeams).filter(teamName => {
-            return !scheduleData[teamName] && !scheduleData[teamName.toLowerCase()];
-          });
+            const inSchedule = (name) =>
+              !!(
+                scheduleData[name] ||
+                scheduleData[name?.toLowerCase?.()] ||
+                scheduleData[normalize(name)] ||
+                scheduleData[`__canon__:${canonicalizeTeam(name)}`]
+              );
+
+            const teamsNotInSchedule = Array.from(allLineupsTeams).filter(name => !inSchedule(name));
 
           console.log('🏈 Schedule Debug for Week', getCurrentWeekNumber(), ':');
           console.log('   Teams in schedule:', Object.keys(scheduleData).filter(key => !key.includes('.')));
@@ -386,14 +467,13 @@ function MyLeague() {
     fetchData();
   }, [leagueId]);
 
-// FIXED: Team logo component with schedule-based live game display and captain support
   const TeamLogo = ({ teamName, size = 32, clickable = false, isCaptain = false }) => {
 
     const team = allTeams[normalize(teamName)];
     const logoUrl = team?.logo;
-    
-    // NEW: Get schedule data for this team (direct lookup by team name)
-    const scheduleGame = scheduleData[teamName];
+    const scheduleGame = getScheduleEntry(scheduleData, teamName);
+    const hasWeekSchedule = !scheduleLoading && Object.keys(scheduleData || {}).length > 0;
+    const byeThisWeek = viewMode === 'current' && hasWeekSchedule && isTeamOnBye(teamName, scheduleData);
 
     const handleClick = () => {
       if (clickable && teamName) {
@@ -441,6 +521,17 @@ function MyLeague() {
           state: "historical", 
           color: "#6b7280",
           bgColor: "#374151",
+          shouldPulse: false
+        };
+      }
+
+      // BYE: no game entry this week
+      if (byeThisWeek) {
+        return { 
+          display: "—",           
+          state: "bye", 
+          color: "#9ca3af",
+          bgColor: "#4b5563",
           shouldPulse: false
         };
       }
@@ -617,31 +708,38 @@ function MyLeague() {
           {clickable && viewMode === 'current' && (            
             <div style={{
               position: "absolute",
-              bottom: "-8px",
+              bottom: "-10px",  // Changed from -8px to -10px (moved down 2px)
               left: "50%",
               transform: "translateX(-50%)",
-              backgroundColor: !spreadDisplay ? "#6b7280" :                 // TBD (neutral gray)
-                             spreadDisplay.includes('-') ? "#10b981" :     // Favorite (green)
-                             spreadDisplay === "PK" ? "#6366f1" :          // Pick 'em (indigo) 
-                             "#ef4444",                                     // Underdog (red)
+              backgroundColor: byeThisWeek
+                ? "#6b7280"                                        // BYE (neutral gray)
+                : !spreadDisplay
+                  ? "#6b7280"                                      // TBD
+                  : spreadDisplay.includes('-')
+                    ? "#10b981"                                    // Favorite (green)
+                    : spreadDisplay === "PK"
+                      ? "#6366f1"                                  // Pick 'em (indigo) 
+                      : "#ef4444",                                 // Underdog (red)
               color: "white",
               borderRadius: "8px",
-              minWidth: "24px",
-              height: "14px",
+              width: `${size}px`,           // Changed from minWidth: "28px" to match logo size
+              height: "16px",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: "8px",
-              fontWeight: "700",
+              fontSize: "8px",              // Changed from 9px to 8px (reduced by 1)
+              fontWeight: "800",
               zIndex: 10,
               border: "1px solid rgba(255, 255, 255, 0.3)",
               boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)",
-              padding: "0 3px"
+              padding: "0 6px",
+              letterSpacing: "0.3px",
+              textTransform: "uppercase"
             }}>
-              {spreadDisplay || "TBD"}
+              {byeThisWeek ? "BYE" : (spreadDisplay || "TBD")}
             </div>
           )}
-          
+
           <div 
             style={logoStyle}
             onClick={handleClick}
@@ -1472,7 +1570,7 @@ function MyLeague() {
     // NEW: Check schedule data first, then fallback to team documents
     return allTeamsOwned.some(teamName => {
       // First check schedule data (more reliable)
-      const scheduleGame = scheduleData[teamName];
+      const scheduleGame = getScheduleEntry(scheduleData, teamName);
       if (scheduleGame && !scheduleLoading) {
         return scheduleGame.gameStatus === 'in_progress' || scheduleGame.hasLiveGame;
       }
@@ -1825,10 +1923,10 @@ function MyLeague() {
                           <div className="text-xs text-white/60 mt-1">
                             {member.freeAgentMoves ?? 0} FA moves
                           </div>
-                          {/* Bonus Points Display */}
-                          {member.bonusPoints !== undefined && member.bonusPoints !== null && (
-                            <div className="text-xs text-purple-400 mt-1 font-medium">
-                              {member.bonusPoints > 0 ? '+' : ''}{member.bonusPoints} from double play
+                          {/* Duplicate Week Display - smaller text */}
+                          {member.duplicateWeek1 && (
+                            <div className="text-[10px] text-purple-400 mt-1 font-medium">
+                              {member.duplicateWeek1}
                             </div>
                           )}
                         </>
