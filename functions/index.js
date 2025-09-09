@@ -1710,28 +1710,6 @@
       updateData['currentSeason.gameComplete'] = true;
       updateData['currentSeason.gameStatus'] = 'final';
     }
-    
-    // FIXED: Update ATS record if it's missing (regardless of isNewlyComplete)
-    const currentAtsWins = teamData.currentSeason?.atsWins || 0;
-    const currentAtsLosses = teamData.currentSeason?.atsLosses || 0;
-    const hasATSStats = currentAtsWins > 0 || currentAtsLosses > 0;
-    
-    if (!hasATSStats && typeof coverPoints === 'number') {
-      // This team has no ATS stats yet - add them now
-      const covered = coverPoints >= 1;
-      
-      if (covered) {
-        updateData['currentSeason.atsWins'] = 1;
-        updateData['currentSeason.atsLosses'] = 0;
-        updateData['currentSeason.atsRecord'] = '1-0';
-      } else {
-        updateData['currentSeason.atsWins'] = 0;
-        updateData['currentSeason.atsLosses'] = 1;
-        updateData['currentSeason.atsRecord'] = '0-1';
-      }
-      
-      console.log(`📊 ATS Stats Added for ${teamName}: ${covered ? 'COVERED' : 'FAILED'} (${covered ? '1-0' : '0-1'})`);
-    }
 
     // FIXED: Update actual scoring if it's missing (regardless of isNewlyComplete)
     const currentPointsFor = Number(teamData.currentSeason?.totalPointsFor || 0);
@@ -4682,6 +4660,545 @@ exports.testWeeklySnapshot = onRequest(async (req, res) => {
       success: false,
       error: error.message,
       message: 'Test snapshot failed. Check logs for details.'
+    });
+  }
+});
+
+/**
+ * Test function to check what data is available from CFBD records endpoint
+ * Add this to your functions/index.js to test before implementing full solution
+ */
+exports.testCFBDRecordsAPI = onRequest(async (req, res) => {
+  try {
+    const key = CFB_KEY.value();
+    const year = parseInt(req.query.year) || 2025;
+    const team = req.query.team; // Optional team filter for focused testing
+    
+    console.log(`Testing CFBD Records API for ${year}${team ? ` (team: ${team})` : ''}...`);
+    
+    // Test the /records endpoint
+    let url = `${CFBD_API_BASE}/records?year=${year}`;
+    if (team) {
+      url += `&team=${encodeURIComponent(team)}`;
+    }
+    
+    console.log(`Fetching: ${url}`);
+    
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${key}` }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({
+        success: false,
+        error: `CFBD API error ${response.status}: ${errorText}`,
+        url: url
+      });
+    }
+    
+    const data = await response.json();
+    
+    if (!data || data.length === 0) {
+      return res.json({
+        success: true,
+        message: `No records data found for ${year}${team ? ` team: ${team}` : ''}`,
+        totalTeams: 0,
+        url: url
+      });
+    }
+    
+    // Analyze the structure of the first few teams
+    const sampleSize = Math.min(3, data.length);
+    const sample = data.slice(0, sampleSize);
+    
+    // Look for ATS data specifically
+    const atsAnalysis = {
+      teamsWithATS: 0,
+      atsFieldNames: new Set(),
+      sampleATSData: []
+    };
+    
+    data.forEach(team => {
+      // Check for any ATS-related fields
+      const teamKeys = Object.keys(team);
+      const atsFields = teamKeys.filter(key => 
+        key.toLowerCase().includes('ats') || 
+        key.toLowerCase().includes('spread') ||
+        key.toLowerCase().includes('against')
+      );
+      
+      if (atsFields.length > 0) {
+        atsAnalysis.teamsWithATS++;
+        atsFields.forEach(field => atsAnalysis.atsFieldNames.add(field));
+        
+        // Save sample for first few teams
+        if (atsAnalysis.sampleATSData.length < 3) {
+          atsAnalysis.sampleATSData.push({
+            team: team.team,
+            atsFields: atsFields.map(field => ({
+              fieldName: field,
+              fieldValue: team[field]
+            }))
+          });
+        }
+      }
+    });
+    
+    // Check for any betting/gambling related fields
+    const bettingAnalysis = {
+      commonFields: new Set(),
+      possibleRecordFields: new Set()
+    };
+    
+    sample.forEach(team => {
+      Object.keys(team).forEach(key => {
+        bettingAnalysis.commonFields.add(key);
+        
+        // Look for fields that might contain record data
+        if (typeof team[key] === 'string' && team[key].match(/^\d+-\d+/)) {
+          bettingAnalysis.possibleRecordFields.add(key);
+        } else if (Array.isArray(team[key])) {
+          // Check if it's an array of record objects
+          bettingAnalysis.possibleRecordFields.add(`${key} (array)`);
+        }
+      });
+    });
+    
+    // If we found specific teams, show their full structure
+    const detailedSample = team && data.length > 0 ? data[0] : null;
+    
+    res.json({
+      success: true,
+      year,
+      teamFilter: team || 'none',
+      url: url,
+      totalTeams: data.length,
+      
+      // ATS Analysis
+      atsAnalysis: {
+        teamsWithATS: atsAnalysis.teamsWithATS,
+        atsFieldNames: Array.from(atsAnalysis.atsFieldNames),
+        sampleATSData: atsAnalysis.sampleATSData,
+        hasATSData: atsAnalysis.teamsWithATS > 0
+      },
+      
+      // General structure analysis
+      structureAnalysis: {
+        commonFields: Array.from(bettingAnalysis.commonFields),
+        possibleRecordFields: Array.from(bettingAnalysis.possibleRecordFields)
+      },
+      
+      // Sample data
+      sampleTeams: sample.map(team => ({
+        team: team.team,
+        conference: team.conference,
+        availableFields: Object.keys(team),
+        // Show first 3 fields with their values
+        sampleFieldValues: Object.keys(team).slice(0, 3).map(key => ({
+          field: key,
+          value: team[key],
+          type: typeof team[key]
+        }))
+      })),
+      
+      // Full detail if specific team requested
+      ...(detailedSample && {
+        detailedTeamSample: {
+          team: detailedSample.team,
+          fullStructure: detailedSample
+        }
+      }),
+      
+      // Quick recommendations
+      recommendations: [
+        atsAnalysis.teamsWithATS > 0 
+          ? "✅ ATS data found - can proceed with import implementation"
+          : "❌ No ATS data found - may need different endpoint or approach",
+        data.length > 0 
+          ? `✅ Records endpoint working - returned ${data.length} teams`
+          : "❌ No data returned from records endpoint",
+        bettingAnalysis.possibleRecordFields.size > 0
+          ? `✅ Found ${bettingAnalysis.possibleRecordFields.size} potential record fields`
+          : "⚠️ No obvious record fields found"
+      ]
+    });
+    
+  } catch (error) {
+    console.error('CFBD Records API test failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+/**
+ * Simplified test for a specific team to see exact data structure
+ */
+exports.testCFBDRecordsSingleTeam = onRequest(async (req, res) => {
+  try {
+    const key = CFB_KEY.value();
+    const year = parseInt(req.query.year) || 2025;
+    const team = req.query.team || 'Missouri'; // Default to Missouri for testing
+    
+    const url = `${CFBD_API_BASE}/records?year=${year}&team=${encodeURIComponent(team)}`;
+    
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${key}` }
+    });
+    
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: `CFBD API error ${response.status}: ${await response.text()}`
+      });
+    }
+    
+    const data = await response.json();
+    
+    res.json({
+      success: true,
+      year,
+      team,
+      url,
+      dataFound: data.length > 0,
+      fullResponse: data,
+      // If data exists, break down the structure
+      ...(data.length > 0 && {
+        firstTeam: data[0],
+        fieldBreakdown: Object.keys(data[0]).map(key => ({
+          field: key,
+          value: data[0][key],
+          type: typeof data[0][key],
+          isArray: Array.isArray(data[0][key]),
+          ...(Array.isArray(data[0][key]) && data[0][key].length > 0 && {
+            arrayFirstElement: data[0][key][0],
+            arrayElementType: typeof data[0][key][0]
+          })
+        }))
+      })
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Calculate ATS records from completed games in your schedule collection
+ * This uses your existing game results + spread data instead of importing from CFBD
+ */
+async function calculateATSRecordsFromGames(db, year = '2025') {
+  console.log(`Calculating ATS records from completed games for ${year}...`);
+  
+  const teamATSRecords = new Map();
+  let totalGamesProcessed = 0;
+  let gamesWithSpreads = 0;
+  
+  // Get all weeks
+  const weeksSnap = await db.collection('schedule').doc(year).collection('weeks').get();
+  
+  for (const weekDoc of weeksSnap.docs) {
+    const weekNumber = weekDoc.id;
+    console.log(`Processing week ${weekNumber}...`);
+    
+    // Get all completed games with scores and spreads
+    const gamesSnap = await weekDoc.ref.collection('games')
+      .where('gameComplete', '==', true)
+      .get();
+    
+    gamesSnap.forEach(gameDoc => {
+      const game = gameDoc.data();
+      
+      // Validate required data
+      if (!game.homeTeam || !game.awayTeam || 
+          typeof game.homeScore !== 'number' || 
+          typeof game.awayScore !== 'number') {
+        return;
+      }
+      
+      totalGamesProcessed++;
+      
+      // Check if we have spread data
+      if (typeof game.homeSpread === 'number') {
+        gamesWithSpreads++;
+        
+        const homeScore = game.homeScore;
+        const awayScore = game.awayScore;
+        const homeSpread = game.homeSpread; // From home team's perspective
+        
+        // Calculate actual margin (home team perspective)
+        const actualMargin = homeScore - awayScore;
+        
+        // Calculate cover amounts for each team
+        const homeCoverAmount = actualMargin - homeSpread; // How much home team covered by
+        const awayCoverAmount = -actualMargin - (-homeSpread); // How much away team covered by
+        
+        // Determine if each team covered (>= 0.5 to handle pushes)
+        const homeCovered = homeCoverAmount >= 0.5;
+        const awayCovered = awayCoverAmount >= 0.5;
+        const isPush = Math.abs(homeCoverAmount) < 0.5; // Within 0.5 points is a push
+        
+        // Initialize team records if not exists
+        [game.homeTeam, game.awayTeam].forEach(teamName => {
+          if (!teamATSRecords.has(teamName)) {
+            teamATSRecords.set(teamName, {
+              wins: 0,
+              losses: 0,
+              pushes: 0,
+              gamesWithSpreads: 0,
+              totalCoverAmount: 0, // For average calculation
+              games: [] // Store individual game results for debugging
+            });
+          }
+        });
+        
+        const homeRecord = teamATSRecords.get(game.homeTeam);
+        const awayRecord = teamATSRecords.get(game.awayTeam);
+        
+        // Update records
+        homeRecord.gamesWithSpreads++;
+        awayRecord.gamesWithSpreads++;
+        homeRecord.totalCoverAmount += homeCoverAmount;
+        awayRecord.totalCoverAmount += awayCoverAmount;
+        
+        if (isPush) {
+          homeRecord.pushes++;
+          awayRecord.pushes++;
+        } else if (homeCovered) {
+          homeRecord.wins++;
+          awayRecord.losses++;
+        } else {
+          homeRecord.losses++;
+          awayRecord.wins++;
+        }
+        
+        // Store game details for debugging
+        homeRecord.games.push({
+          week: weekNumber,
+          opponent: game.awayTeam,
+          isHome: true,
+          score: `${homeScore}-${awayScore}`,
+          spread: homeSpread,
+          coverAmount: homeCoverAmount,
+          result: isPush ? 'PUSH' : (homeCovered ? 'WIN' : 'LOSS')
+        });
+        
+        awayRecord.games.push({
+          week: weekNumber,
+          opponent: game.homeTeam,
+          isHome: false,
+          score: `${awayScore}-${homeScore}`,
+          spread: -homeSpread,
+          coverAmount: awayCoverAmount,
+          result: isPush ? 'PUSH' : (awayCovered ? 'WIN' : 'LOSS')
+        });
+        
+        console.log(`${game.homeTeam} vs ${game.awayTeam}: ${homeScore}-${awayScore} (spread: ${homeSpread}) -> Home ${homeCovered ? 'COVERED' : 'FAILED'}, Away ${awayCovered ? 'COVERED' : 'FAILED'}${isPush ? ' (PUSH)' : ''}`);
+      }
+    });
+  }
+  
+  // Convert to final format with percentages
+  const finalRecords = new Map();
+  
+  for (const [teamName, record] of teamATSRecords) {
+    const totalGames = record.wins + record.losses + record.pushes;
+    const gamesForPercentage = record.wins + record.losses; // Exclude pushes from percentage
+    
+    finalRecords.set(teamName, {
+      wins: record.wins,
+      losses: record.losses,
+      pushes: record.pushes,
+      record: record.pushes > 0 
+        ? `${record.wins}-${record.losses}-${record.pushes}`
+        : `${record.wins}-${record.losses}`,
+      coverPercentage: gamesForPercentage > 0 
+        ? ((record.wins / gamesForPercentage) * 100).toFixed(1)
+        : '0.0',
+      avgCoverAmount: record.gamesWithSpreads > 0 
+        ? (record.totalCoverAmount / record.gamesWithSpreads).toFixed(1)
+        : '0.0',
+      gamesWithSpreads: record.gamesWithSpreads,
+      games: record.games // Keep for debugging
+    });
+  }
+  
+  console.log(`ATS calculation complete: ${finalRecords.size} teams, ${totalGamesProcessed} total games, ${gamesWithSpreads} games with spreads`);
+  
+  return {
+    teamRecords: finalRecords,
+    summary: {
+      totalTeams: finalRecords.size,
+      totalGamesProcessed,
+      gamesWithSpreads,
+      gamesWithoutSpreads: totalGamesProcessed - gamesWithSpreads
+    }
+  };
+}
+
+/**
+ * Update team documents with calculated ATS records
+ */
+async function updateTeamATSFromCalculation(bw, db, teamATSRecords) {
+  let teamsUpdated = 0;
+  let teamsNotFound = 0;
+  
+  for (const [teamName, atsData] of teamATSRecords) {
+    try {
+      const slug = slugTeam(teamName);
+      const teamRef = db.collection('teams').doc(slug);
+      
+      // Check if team exists
+      const teamSnap = await teamRef.get();
+      if (!teamSnap.exists) {
+        console.warn(`Team document not found: ${teamName} (${slug})`);
+        teamsNotFound++;
+        continue;
+      }
+      
+      // Update team document with calculated ATS data
+      const updateData = {
+        'currentSeason.atsWins': atsData.wins,
+        'currentSeason.atsLosses': atsData.losses,
+        'currentSeason.atsPushes': atsData.pushes,
+        'currentSeason.atsRecord': atsData.record,
+        'currentSeason.atsCoverPercentage': atsData.coverPercentage,
+        'currentSeason.atsAvgCoverAmount': atsData.avgCoverAmount,
+        'currentSeason.atsGamesWithSpreads': atsData.gamesWithSpreads,
+        'currentSeason.atsCalculated': true,
+        'currentSeason.atsLastCalculated': admin.firestore.FieldValue.serverTimestamp(),
+      };
+      
+      bw.update(teamRef, updateData);
+      teamsUpdated++;
+      
+      console.log(`Updated ${teamName} ATS: ${atsData.record} (${atsData.coverPercentage}%)`);
+      
+    } catch (error) {
+      console.error(`Error updating ATS for ${teamName}:`, error);
+      teamsNotFound++;
+    }
+  }
+  
+  return { teamsUpdated, teamsNotFound };
+}
+
+/**
+ * Main function to calculate and update all ATS records
+ */
+exports.calculateATSRecords = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    const year = req.query.year || '2025';
+    
+    console.log(`Starting ATS calculation for ${year}...`);
+    
+    // Calculate ATS records from completed games
+    const { teamRecords, summary } = await calculateATSRecordsFromGames(db, year);
+    
+    if (teamRecords.size === 0) {
+      return res.json({
+        success: true,
+        message: `No teams with ATS data found for ${year}`,
+        summary
+      });
+    }
+    
+    // Update team documents
+    const bw = new BatchWriter(db);
+    const updateResult = await updateTeamATSFromCalculation(bw, db, teamRecords);
+    await bw.commit();
+    
+    // Format top performers for response
+    const topPerformers = Array.from(teamRecords.entries())
+      .filter(([_, record]) => record.gamesWithSpreads >= 3) // At least 3 games
+      .sort(([_, a], [__, b]) => parseFloat(b.coverPercentage) - parseFloat(a.coverPercentage))
+      .slice(0, 10)
+      .map(([team, record]) => ({
+        team,
+        record: record.record,
+        coverPercentage: record.coverPercentage,
+        avgCoverAmount: record.avgCoverAmount,
+        gamesWithSpreads: record.gamesWithSpreads
+      }));
+    
+    res.json({
+      success: true,
+      year,
+      message: `Calculated ATS records for ${updateResult.teamsUpdated} teams from ${summary.gamesWithSpreads} games with spreads`,
+      summary: {
+        ...summary,
+        teamsUpdated: updateResult.teamsUpdated,
+        teamsNotFound: updateResult.teamsNotFound
+      },
+      topPerformers,
+      // Include sample of all records (first 20)
+      sampleRecords: Array.from(teamRecords.entries()).slice(0, 20).map(([team, record]) => ({
+        team,
+        record: record.record,
+        coverPercentage: record.coverPercentage,
+        avgCoverAmount: record.avgCoverAmount
+      }))
+    });
+    
+  } catch (error) {
+    console.error('ATS calculation failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Debug function to show detailed ATS calculation for a specific team
+ */
+exports.debugTeamATS = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    const year = req.query.year || '2025';
+    const teamName = req.query.team || 'Missouri';
+    
+    console.log(`Debug ATS calculation for ${teamName} in ${year}...`);
+    
+    const { teamRecords } = await calculateATSRecordsFromGames(db, year);
+    const teamRecord = teamRecords.get(teamName);
+    
+    if (!teamRecord) {
+      return res.json({
+        success: false,
+        message: `No ATS data found for ${teamName} in ${year}`,
+        availableTeams: Array.from(teamRecords.keys()).slice(0, 20)
+      });
+    }
+    
+    res.json({
+      success: true,
+      team: teamName,
+      year,
+      atsRecord: {
+        record: teamRecord.record,
+        wins: teamRecord.wins,
+        losses: teamRecord.losses,
+        pushes: teamRecord.pushes,
+        coverPercentage: teamRecord.coverPercentage,
+        avgCoverAmount: teamRecord.avgCoverAmount,
+        gamesWithSpreads: teamRecord.gamesWithSpreads
+      },
+      gameDetails: teamRecord.games,
+      message: `${teamName} is ${teamRecord.record} ATS (${teamRecord.coverPercentage}% cover rate)`
+    });
+    
+  } catch (error) {
+    console.error('Debug ATS failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });
