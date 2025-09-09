@@ -522,11 +522,40 @@
       });
     }
     
-    // Now process each team's games to find the chronologically next game
+    // NEW: Get all teams and check for bye weeks
+    const allTeamsSnap = await db.collection('teams').get();
     const now = new Date();
     
-    for (const [teamName, teamGamesList] of teamGames) {
-      // Sort games by start date
+    for (const teamDoc of allTeamsSnap.docs) {
+      const teamData = teamDoc.data();
+      const teamName = teamData.school;
+      
+      if (!teamName) continue;
+      
+      const teamGamesList = teamGames.get(teamName) || [];
+      
+      if (teamGamesList.length === 0) {
+        // This team has no games - they're on bye
+        console.log(`Clearing bye week data for ${teamName}`);
+        
+        bw.set(teamDoc.ref, {
+          currentSeason: {
+            nextOpponent: null,
+            nextGameDate: null,
+            nextGameIsHome: null,
+            nextOpponentSpread: null,
+            nextOpponentSpreadDisplay: null,
+            nextOverUnder: null,
+            nextOpponentProvider: null,
+            isOnBye: true,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          }
+        }, { merge: true });
+        
+        continue;
+      }
+      
+      // Process teams with games (existing logic)
       const sortedGames = teamGamesList
         .filter(g => g.startDate)
         .map(g => ({
@@ -544,66 +573,38 @@
       
       if (!nextGame) continue;
       
-      // Update the team document
-      const slug = slugTeam(teamName);
-      const ref = db.collection('teams').doc(slug);
+      // Calculate spread from team's perspective
+      const spreadNum = (typeof nextGame.line.spread === 'number')
+        ? (nextGame.isHome ? nextGame.line.spread : -nextGame.line.spread)
+        : null;
       
-      try {
-        const snap = await ref.get();
-        if (!snap.exists) {
-          // Log missing team but don't create new docs
-          try {
-            await db.collection('cfb').doc('misses').collection('teams').add({
-              raw: teamName,
-              slugTried: slug,
-              game: {
-                homeTeam: nextGame.homeTeam || null,
-                awayTeam: nextGame.awayTeam || null,
-                startDate: nextGame.startDate || null
-              },
-              when: admin.firestore.FieldValue.serverTimestamp(),
-            });
-          } catch (e) {
-            console.warn('[patchTeamsForAllGames] miss log failed', teamName, e);
-          }
-          continue;
+      // Human-friendly display string
+      let spreadDisplay = null;
+      if (typeof spreadNum === 'number') {
+        if (spreadNum === 0) {
+          spreadDisplay = 'PICK';
+        } else if (spreadNum > 0) {
+          spreadDisplay = `+${spreadNum}`;
+        } else {
+          spreadDisplay = String(spreadNum);
         }
-        
-        // Calculate spread from team's perspective
-        const spreadNum = (typeof nextGame.line.spread === 'number')
-          ? (nextGame.isHome ? nextGame.line.spread : -nextGame.line.spread)
-          : null;
-        
-        // Human-friendly display string
-        let spreadDisplay = null;
-        if (typeof spreadNum === 'number') {
-          if (spreadNum === 0) {
-            spreadDisplay = 'PICK';
-          } else if (spreadNum > 0) {
-            spreadDisplay = `+${spreadNum}`;
-          } else {
-            spreadDisplay = String(spreadNum);
-          }
-        }
-        
-        console.log(`Updating ${teamName}: next game vs ${nextGame.opponent} on ${nextGame.startDate} (spread: ${spreadDisplay})`);
-        
-        bw.set(ref, {
-          currentSeason: {
-            nextOpponent: nextGame.opponent ?? null,
-            nextGameDate: nextGame.startDate,
-            nextGameIsHome: !!nextGame.isHome,
-            nextOpponentSpread: spreadNum,
-            nextOpponentSpreadDisplay: spreadDisplay,
-            nextOverUnder: (typeof nextGame.line.overUnder === 'number') ? nextGame.line.overUnder : null,
-            nextOpponentProvider: nextGame.line.provider ?? null,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          }
-        }, { merge: true });
-        
-      } catch (error) {
-        console.error(`Error updating team ${teamName}:`, error);
       }
+      
+      console.log(`Updating ${teamName}: next game vs ${nextGame.opponent} on ${nextGame.startDate} (spread: ${spreadDisplay})`);
+      
+      bw.set(teamDoc.ref, {
+        currentSeason: {
+          nextOpponent: nextGame.opponent ?? null,
+          nextGameDate: nextGame.startDate,
+          nextGameIsHome: !!nextGame.isHome,
+          nextOpponentSpread: spreadNum,
+          nextOpponentSpreadDisplay: spreadDisplay,
+          nextOverUnder: (typeof nextGame.line.overUnder === 'number') ? nextGame.line.overUnder : null,
+          nextOpponentProvider: nextGame.line.provider ?? null,
+          isOnBye: false,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }
+      }, { merge: true });
     }
   }
 

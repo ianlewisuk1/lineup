@@ -1,11 +1,11 @@
-// WeeklyLineupManager.js — Enhanced with Captain Selection Feature
+// WeeklyLineupManager.js — Enhanced with Captain Selection Feature and Trip Play
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { doc, getDoc, updateDoc, collection, getDocs, addDoc, increment } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 import { weeklyLineupUtils } from '../utils/weeklyLineupUtils';
-import { ChevronLeft, ChevronRight, Lock, Clock, CheckCircle, ChevronDown, ChevronUp, Crown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock, Clock, CheckCircle, ChevronDown, ChevronUp, Crown, Zap } from 'lucide-react';
 
 const isWeekEditable = (week, currentWeek) => {
   return week === currentWeek;
@@ -67,10 +67,12 @@ const getGameSpreadDisplay = (gameInfo, teamName) => {
 const getGameDisplayInfo = (gameInfo, teamName) => {
   if (!gameInfo) {
     return { 
-      type: 'no-game', 
-      display: 'No game scheduled',
-      chipClass: 'bg-gray-500/20 text-gray-400',
-      isLive: false
+      type: 'bye-week', 
+      display: 'BYE WEEK',
+      chipClass: 'bg-purple-500/20 text-purple-300 border border-purple-400/30',
+      subtext: 'No game this week',
+      isLive: false,
+      hideSpread: true  // New flag to hide spread chip
     };
   }
 
@@ -389,6 +391,70 @@ const calculateCaptainPoints = (basePoints, isCaptain = false) => {
   };
 };
 
+/* ---------- Trip Play Helper Functions ---------- */
+
+const canUseTripPlay = (team, starters, bench) => {
+  if (!team) return false;
+  
+  const normalizedTripPlay = typeof team === 'string' ? team : weeklyLineupUtils.normalizeTeamName(team);
+  
+  // Only check starters, not bench (same as captain)
+  const starterTeams = starters
+    .filter(team => team !== null)
+    .map(team => typeof team === 'string' ? team : weeklyLineupUtils.normalizeTeamName(team));
+  
+  return starterTeams.includes(normalizedTripPlay);
+};
+
+const calculateTripPlayPoints = (basePoints, isTripPlay = false) => {
+  const finalPoints = isTripPlay ? basePoints * 3 : basePoints;
+  const bonus = isTripPlay ? basePoints * 2 : 0; // 2x bonus (3x total)
+  
+  return {
+    basePoints,
+    finalPoints,
+    bonus,
+    isTripPlay
+  };
+};
+
+const calculateCombinedPoints = (basePoints, isCaptain = false, isTripPlay = false) => {
+  if (isCaptain && isTripPlay) {
+    // 5x total (2x from captain, 3x from trip play, but they multiply)
+    const finalPoints = basePoints * 5;
+    const bonus = basePoints * 4; // 4x bonus (5x total)
+    return {
+      basePoints,
+      finalPoints,
+      bonus,
+      multiplier: '5x',
+      isCaptain,
+      isTripPlay
+    };
+  } else if (isCaptain) {
+    return {
+      ...calculateCaptainPoints(basePoints, true),
+      multiplier: '2x',
+      isTripPlay: false
+    };
+  } else if (isTripPlay) {
+    return {
+      ...calculateTripPlayPoints(basePoints, true),
+      multiplier: '3x',
+      isCaptain: false
+    };
+  } else {
+    return {
+      basePoints,
+      finalPoints: basePoints,
+      bonus: 0,
+      multiplier: '1x',
+      isCaptain: false,
+      isTripPlay: false
+    };
+  }
+};
+
 /* ---------- Shared helpers ---------- */
 const toJSDate = (v) => {
   if (!v) return null;
@@ -447,6 +513,8 @@ const WeeklyLineupManager = ({
   const [weekStatuses, setWeekStatuses] = useState({});
   const [loading, setLoading] = useState(true);
   const [availableWeeks, setAvailableWeeks] = useState([]);
+  const [hasTripPlay, setHasTripPlay] = useState(false);
+  const [tripPlayUsedWeek, setTripPlayUsedWeek] = useState(null);
 
   const fixTexasAMNormalization = async () => {
     try {
@@ -539,6 +607,26 @@ const WeeklyLineupManager = ({
     }
   };
 
+  const loadTripPlayStatus = async () => {
+    try {
+      const memberRef = doc(db, "leagues", leagueId, "members", userId);
+      const memberSnap = await getDoc(memberRef);
+      
+      if (memberSnap.exists()) {
+        const memberData = memberSnap.data();
+        const hasTripPlayValue = memberData.hasTripPlay || false;
+        const tripPlayUsedWeekValue = memberData.tripPlayUsedWeek || null;
+        
+        setHasTripPlay(hasTripPlayValue);
+        setTripPlayUsedWeek(tripPlayUsedWeekValue);
+        
+        console.log("Trip Play Status:", { hasTripPlay: hasTripPlayValue, usedWeek: tripPlayUsedWeekValue });
+      }
+    } catch (error) {
+      console.error("Error loading trip play status:", error);
+    }
+  };
+
   useEffect(() => {
     console.log("🔍 Debug: allTeams prop:", allTeams ? Object.keys(allTeams).length : "undefined/null");
     
@@ -566,6 +654,7 @@ const WeeklyLineupManager = ({
 
   useEffect(() => {
     initializeWeeklyLineups();
+    loadTripPlayStatus();
   }, [leagueId, userId]);
 
   useEffect(() => {
@@ -601,6 +690,7 @@ const WeeklyLineupManager = ({
             starters: currentLineup.starters || Array(5).fill(null),
             bench: currentLineup.bench || Array(2).fill(null),
             captain: currentLineup.captain || null,
+            tripPlayTeam: currentLineup.tripPlayTeam || null,
             lockedTeams: [],
             teamLockTimes: {},
             lockedAt: null,
@@ -613,6 +703,7 @@ const WeeklyLineupManager = ({
             starters: historicalLineup.starters || Array(5).fill(null),
             bench: historicalLineup.bench || Array(2).fill(null),
             captain: historicalLineup.captain || null,
+            tripPlayTeam: historicalLineup.tripPlayTeam || null,
             lockedTeams: [],
             teamLockTimes: {},
             lockedAt: historicalData[weekKey].snapshotAt || null,
@@ -624,6 +715,7 @@ const WeeklyLineupManager = ({
             starters: Array(5).fill(null),
             bench: Array(2).fill(null),
             captain: null,
+            tripPlayTeam: null,
             lockedTeams: [],
             teamLockTimes: {},
             lockedAt: null,
@@ -695,9 +787,9 @@ const WeeklyLineupManager = ({
     setWeekStatuses(statuses);
   };
 
-  const saveLineup = async (week, starters, bench, captain = null) => {
+  const saveLineup = async (week, starters, bench, captain = null, tripPlayTeam = null) => {
     try {
-      console.log("saveLineup called with captain:", captain);
+      console.log("saveLineup called with captain:", captain, "tripPlayTeam:", tripPlayTeam);
       
       // ONLY allow saving current week
       if (week !== currentWeek) {
@@ -708,17 +800,52 @@ const WeeklyLineupManager = ({
       const normalizedStarters = starters.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null);
       const normalizedBench = bench.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null);
       const normalizedCaptain = captain;      
+      const normalizedTripPlayTeam = tripPlayTeam;
+      
       console.log("normalized captain:", normalizedCaptain);
+      console.log("normalized tripPlayTeam:", normalizedTripPlayTeam);
 
-      // Save to member document (current week only)
+      // Get current lineup to check previous trip play state
       const memberRef = doc(db, "leagues", leagueId, "members", userId);
-      await updateDoc(memberRef, { 
+      const memberSnap = await getDoc(memberRef);
+      const currentMemberData = memberSnap.data();
+      const currentTripPlayTeam = currentMemberData?.lineup?.tripPlayTeam;
+
+      // Prepare update object
+      const updateData = { 
         lineup: { 
           starters: normalizedStarters, 
           bench: normalizedBench,
-          captain: normalizedCaptain 
+          captain: normalizedCaptain,
+          tripPlayTeam: normalizedTripPlayTeam
         } 
-      });
+      };
+
+      // Handle trip play state changes
+      if (tripPlayTeam && hasTripPlay) {
+        // First time using trip play - mark as used
+        updateData.hasTripPlay = false;
+        updateData.tripPlayUsedWeek = week;
+        setHasTripPlay(false);
+        setTripPlayUsedWeek(week);
+        console.log("Trip play used for first time on week", week);
+        
+      } else if (!tripPlayTeam && currentTripPlayTeam && tripPlayUsedWeek === week) {
+        // Removing trip play from the same week it was used - restore availability
+        updateData.hasTripPlay = true;
+        updateData.tripPlayUsedWeek = null;
+        setHasTripPlay(true);
+        setTripPlayUsedWeek(null);
+        console.log("Trip play removed and restored for future use");
+        
+      } else if (!tripPlayTeam && currentTripPlayTeam && tripPlayUsedWeek !== week) {
+        // Trying to remove trip play but it was used in a different week - not allowed
+        console.warn("Cannot remove trip play - it was used in a different week");
+        // You might want to show an alert here or handle this case differently
+      }
+
+      // Save to member document (current week only)
+      await updateDoc(memberRef, updateData);
 
       // Update frontend state
       const weekKey = `week${week}`;
@@ -726,6 +853,7 @@ const WeeklyLineupManager = ({
         starters: normalizedStarters,
         bench: normalizedBench,
         captain: normalizedCaptain,
+        tripPlayTeam: normalizedTripPlayTeam,
         lockedTeams: weeklyLineups[weekKey]?.lockedTeams || [],
         teamLockTimes: weeklyLineups[weekKey]?.teamLockTimes || {},
         lockedAt: null,
@@ -739,6 +867,16 @@ const WeeklyLineupManager = ({
     } catch (error) {
       console.error("Error saving lineup:", error);
       throw error;
+    }
+  };
+
+  const getTripPlayStatusMessage = () => {
+    if (hasTripPlay) {
+      return "x3 PLAY AVAILABLE";
+    } else if (tripPlayUsedWeek) {
+      return `x3 PLAY USED (Week ${tripPlayUsedWeek})`;
+    } else {
+      return "x3 USED";
     }
   };
 
@@ -816,7 +954,21 @@ const WeeklyLineupManager = ({
                 </span>
               )}
             </div>
-            <p className="text-sm text-white/60">{getStatusMessage(selectedWeek)}</p>
+            <p className="text-xs text-white/60">{getStatusMessage(selectedWeek)}</p>
+            
+            {/* Trip Play Status Indicator */}
+            {(hasTripPlay || tripPlayUsedWeek) && (
+              <div className="mt-2">
+                <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${
+                  hasTripPlay 
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30' 
+                    : 'bg-gray-500/20 text-gray-400 border border-gray-400/30'
+                }`}>
+                  <Zap size={12} className={hasTripPlay ? 'text-cyan-400' : 'text-gray-400'} />
+                  {getTripPlayStatusMessage()}
+                </span>
+              </div>
+            )}
           </div>
           
           <button
@@ -853,13 +1005,15 @@ const WeeklyLineupManager = ({
           lineup={weeklyLineups[`week${selectedWeek}`]}
           allTeams={allTeams}
           isEditable={selectedWeek === currentWeek}
-          onSave={(starters, bench, captain) => saveLineup(selectedWeek, starters, bench, captain)}
+          onSave={(starters, bench, captain, tripPlayTeam) => saveLineup(selectedWeek, starters, bench, captain, tripPlayTeam)}
           onTeamClick={onTeamClick}
           TeamLogo={TeamLogo}
           leagueId={leagueId}
           userId={userId}
           userDisplayName={userDisplayName}
           currentWeek={currentWeek}
+          hasTripPlay={hasTripPlay}
+          tripPlayUsedWeek={tripPlayUsedWeek}
         />
       </div>
     </div>
@@ -877,11 +1031,14 @@ const WeeklyLineupContent = ({
   leagueId,
   userId,
   userDisplayName,
-  currentWeek
+  currentWeek,
+  hasTripPlay,
+  tripPlayUsedWeek
 }) => {
   const [starters, setStarters] = useState(Array(5).fill(null));
   const [bench, setBench] = useState(Array(2).fill(null));
   const [captain, setCaptain] = useState(null);
+  const [tripPlayTeam, setTripPlayTeam] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [showConfirmCut, setShowConfirmCut] = useState(null);
   const [showReplaceModal, setShowReplaceModal] = useState(null);
@@ -895,10 +1052,12 @@ const WeeklyLineupContent = ({
       setStarters(resolvedStarters);
       setBench(resolvedBench);
       setCaptain(lineup.captain || null);
+      setTripPlayTeam(lineup.tripPlayTeam || null);
     } else {
       setStarters(Array(5).fill(null));
       setBench(Array(2).fill(null));
       setCaptain(null);
+      setTripPlayTeam(null);
     }
     setHasChanges(false);
   }, [lineup, allTeams]);
@@ -928,21 +1087,67 @@ const WeeklyLineupContent = ({
     setHasChanges(true);
   };
 
-  const saveLineupChanges = async (newStarters, newBench, newCaptain = captain) => {
+  const handleTripPlaySelect = (teamName) => {
+    // Find the actual team object from starters or bench
+    const teamObject = [...starters, ...bench]
+      .filter(team => team !== null)
+      .find(team => (team.school || team.name) === teamName);
+      
+    if (!teamObject) {
+      alert("Team not found in lineup");
+      return;
+    }
+
+    const normalizedTeamName = weeklyLineupUtils.normalizeTeamName(teamObject);
+    const isCurrentlyTripPlay = tripPlayTeam === normalizedTeamName;
+
+    // If we're trying to REMOVE trip play (team currently has it)
+    if (isCurrentlyTripPlay) {
+      // Allow removal - this will be handled in saveLineup
+      const newTripPlayTeam = null;
+      setTripPlayTeam(newTripPlayTeam);
+      setHasChanges(true);
+      return;
+    }
+
+    // If we're trying to ADD trip play but it's not available
+    if (!hasTripPlay) {
+      alert("3x Play has already been used this season");
+      return;
+    }
+
+    // Check if team can use trip play (must be in starters)
+    if (!canUseTripPlay(teamObject, starters, bench)) {
+      alert("x3 Play must be selected from your starters");
+      return;
+    }
+
+    // Add trip play to this team
+    setTripPlayTeam(normalizedTeamName);
+    setHasChanges(true);
+  };
+
+  const saveLineupChanges = async (newStarters, newBench, newCaptain = captain, newTripPlayTeam = tripPlayTeam) => {
     try {
       setIsSaving(true);
       
       console.log("saveLineupChanges called with:");
       console.log("newCaptain:", newCaptain);
+      console.log("newTripPlayTeam:", newTripPlayTeam);
       console.log("current captain state:", captain);
+      console.log("current tripPlayTeam state:", tripPlayTeam);
       
       const validatedCaptain = newCaptain && canBeCaptain(newCaptain, newStarters, newBench) ? newCaptain : null;
+      const validatedTripPlayTeam = newTripPlayTeam && canUseTripPlay(newTripPlayTeam, newStarters, newBench) ? newTripPlayTeam : null;      
+
       console.log("validatedCaptain after validation:", validatedCaptain);
+      console.log("validatedTripPlayTeam after validation:", validatedTripPlayTeam);
       
-      await onSave(newStarters, newBench, validatedCaptain);
+      await onSave(newStarters, newBench, validatedCaptain, validatedTripPlayTeam);
       setStarters(newStarters);
       setBench(newBench);
       setCaptain(validatedCaptain);
+      setTripPlayTeam(validatedTripPlayTeam);
       setHasChanges(false);
     } catch (e) {
       console.error("Error saving lineup:", e);
@@ -1025,14 +1230,16 @@ const WeeklyLineupContent = ({
     const newStarters = [...starters];
     const newBench = [...bench];
     const teamName = team.school || team.name;
+    const normalizedTeamName = weeklyLineupUtils.normalizeTeamName(team);
 
     if (section === 'starters') newStarters[index] = null; else newBench[index] = null;
 
-    const newCaptain = captain === teamName ? null : captain;
+    const newCaptain = captain === normalizedTeamName ? null : captain;
+    const newTripPlayTeam = tripPlayTeam === normalizedTeamName ? null : tripPlayTeam;
 
     try {
       setIsSaving(true);
-      await saveLineupChanges(newStarters, newBench, newCaptain);
+      await saveLineupChanges(newStarters, newBench, newCaptain, newTripPlayTeam);
 
       const moveHistoryRef = collection(db, "leagues", leagueId, "moveHistory");
       await addDoc(moveHistoryRef, {
@@ -1092,10 +1299,10 @@ const WeeklyLineupContent = ({
   };
 
   const handleSave = async () => {
-    if (hasChanges && canEdit && !isSaving) await saveLineupChanges(starters, bench, captain);
+    if (hasChanges && canEdit && !isSaving) await saveLineupChanges(starters, bench, captain, tripPlayTeam);
   };
 
-  /* ---------- Enhanced Team Card with Captain Selection ---------- */
+  /* ---------- Enhanced Team Card with Captain Selection and Trip Play ---------- */
   const TeamSlot = ({ team, section, index, size = 42 }) => {
     const [showActions, setShowActions] = useState(false);
     const [lockStatus, setLockStatus] = useState({ locked: false, message: null });
@@ -1169,19 +1376,31 @@ const WeeklyLineupContent = ({
     const teamName = team.school || team.name;
     const normalizedTeamName = weeklyLineupUtils.normalizeTeamName(team);
     const isCaptain = captain && captain === normalizedTeamName;
-    console.log("Captain check:", { captain, normalizedTeamName, isCaptain, teamName });
+    const isTripPlay = tripPlayTeam && tripPlayTeam === normalizedTeamName;
+    
+    console.log("Team check:", { 
+      captain, 
+      tripPlayTeam, 
+      normalizedTeamName, 
+      isCaptain, 
+      isTripPlay, 
+      teamName 
+    });
 
-    // Don't double points in frontend - backend already handles captain bonus
-    const displaySeasonPoints = baseGamePoints;
-    const displayWeeklyPoints = baseWeeklyPts;
+    // Calculate combined points for display
+    const pointsInfo = calculateCombinedPoints(baseWeeklyPts, isCaptain, isTripPlay);
 
     return (
         <div className={`rounded-xl border overflow-hidden ${
-          isCaptain 
-            ? 'bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 border-yellow-400/50 ring-2 ring-yellow-400/50 shadow-lg shadow-yellow-400/20' 
-            : lockStatus.locked 
-              ? 'border-red-400/50 bg-red-500/10' 
-              : 'bg-white/6 border-white/10'
+          isCaptain && isTripPlay
+            ? 'bg-gradient-to-br from-yellow-500/20 via-cyan-500/20 to-yellow-600/20 border-yellow-400/50 ring-2 ring-gradient-to-r ring-from-yellow-400/50 ring-to-cyan-400/50 shadow-lg shadow-yellow-400/20' 
+            : isCaptain 
+              ? 'bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 border-yellow-400/50 ring-2 ring-yellow-400/50 shadow-lg shadow-yellow-400/20' 
+              : isTripPlay
+                ? 'bg-gradient-to-br from-cyan-500/20 to-cyan-600/20 border-cyan-400/50 ring-2 ring-cyan-400/50 shadow-lg shadow-cyan-400/20'
+                : lockStatus.locked 
+                  ? 'border-red-400/50 bg-red-500/10' 
+                  : 'bg-white/6 border-white/10'
         }`}>
         <div className="p-3">
           <div className="grid grid-cols-[44px,1fr,auto] gap-3 items-center">
@@ -1190,9 +1409,24 @@ const WeeklyLineupContent = ({
               <div className="relative">
                 <TeamLogo teamName={team.school} size={size} clickable={true} />
                 
+                {/* Captain badge */}
                 {isCaptain && (
                   <div className="absolute -top-2 -right-2 bg-yellow-500 rounded-full p-1">
                     <Crown size={12} className="text-white" />
+                  </div>
+                )}
+                
+                {/* Trip Play badge */}
+                {isTripPlay && (
+                  <div className="absolute -top-2 -left-2 bg-cyan-500 rounded-full p-1">
+                    <Zap size={12} className="text-white" />
+                  </div>
+                )}
+                
+                {/* Combined 5x indicator */}
+                {isCaptain && isTripPlay && (
+                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-yellow-500 to-cyan-500 rounded-full px-2 py-0.5">
+                    <span className="text-white text-xs font-bold">5X</span>
                   </div>
                 )}
                 
@@ -1227,8 +1461,18 @@ const WeeklyLineupContent = ({
                 lockStatus.locked ? 'text-red-300' : 'text-white'
               }`}>
                 {team.school}
-                {isCaptain && (
-                  <span className="ml-2 text-xs text-yellow-400 font-bold">CAPTAIN</span>
+                {(isCaptain || isTripPlay) && (
+                  <span className="ml-2 text-xs font-bold">
+                    {isCaptain && isTripPlay && (
+                      <span className="text-purple-400">CAPTAIN + x3 PLAY</span>
+                    )}
+                    {isCaptain && !isTripPlay && (
+                      <span className="text-yellow-400">CAPTAIN</span>
+                    )}
+                    {!isCaptain && isTripPlay && (
+                      <span className="text-cyan-400">x3 PLAY</span>
+                    )}
+                  </span>
                 )}
                 {lockStatus.locked && (
                   <span className="ml-2 text-xs text-red-400">LOCKED</span>
@@ -1245,9 +1489,12 @@ const WeeklyLineupContent = ({
                   </span>
                 )}
                 
-                <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/10 text-yellow-300/90">
-                  {gameDisplayInfo?.gameSpread ? `Spread ${gameDisplayInfo.gameSpread}` : 'Line TBD'}
-                </span>
+                {/* Only show spread chip if not a bye week */}
+                {!gameDisplayInfo?.hideSpread && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/10 text-yellow-300/90">
+                    {gameDisplayInfo?.gameSpread ? `Spread ${gameDisplayInfo.gameSpread}` : 'Line TBD'}
+                  </span>
+                )}
                 
                 <span className="px-2 py-0.5 rounded-full text-[11px] bg-white/10 text-blue-300/90">
                   {record}
@@ -1255,25 +1502,33 @@ const WeeklyLineupContent = ({
               </div>
             </div>
 
-            {/* RIGHT: points column with captain bonus */}
+            {/* RIGHT: points column with multipliers */}
             <div className="text-right leading-tight">
               <div className="font-bold text-sm text-green-400">
-                {displaySeasonPoints}
+                {baseGamePoints}
               </div>
               <div className="text-[11px] text-green-300/80 -mt-0.5">
                 Season Points
               </div>
-              <div className={`font-bold text-sm mt-1 ${isCaptain ? 'text-yellow-400' : 'text-orange-400'}`}>
-                {displayWeeklyPoints}
+              <div className={`font-bold text-sm mt-1 ${
+                isCaptain && isTripPlay 
+                  ? 'text-purple-400' 
+                  : isCaptain 
+                    ? 'text-yellow-400' 
+                    : isTripPlay 
+                      ? 'text-cyan-400' 
+                      : 'text-orange-400'
+              }`}>
+                {pointsInfo.finalPoints}
               </div>
               <div className="text-[11px] text-orange-300/80 -mt-0.5">
-                Weekly Points{isCaptain ? ' (Captain)' : ''}
+                Weekly ({pointsInfo.multiplier})
               </div>
             </div>
           </div>
         </div>
 
-        {/* Actions section with captain option */}
+        {/* Actions section with captain and trip play options */}
         {canEdit && showActions && !lockStatus.locked && (
           <div className="bg-white/6 border-t border-white/10 p-2.5">
             <div className="flex flex-col gap-2">
@@ -1297,24 +1552,50 @@ const WeeklyLineupContent = ({
                 </button>
               </div>
               
-              <button
-                onClick={() => { handleCaptainSelect(teamName); setShowActions(false); }}
-                disabled={isSaving || section === 'bench'}
-                className={`w-full px-3 py-2 text-white text-xs rounded-lg transition-colors font-medium ${
-                  section === 'bench' 
-                    ? 'bg-gray-500 cursor-not-allowed'
+              {/* Captain and Trip Play buttons - split the row */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { handleCaptainSelect(teamName); setShowActions(false); }}
+                  disabled={isSaving || section === 'bench'}
+                  className={`flex-1 px-3 py-2 text-white text-xs rounded-lg transition-colors font-medium ${
+                    section === 'bench' 
+                      ? 'bg-gray-500 cursor-not-allowed'
+                      : isCaptain 
+                        ? 'bg-yellow-600 hover:bg-yellow-700' 
+                        : 'bg-purple-600 hover:bg-purple-700'
+                  } disabled:bg-gray-500`}
+                >
+                  {section === 'bench' 
+                    ? '🪑 Bench (No Captain)' 
                     : isCaptain 
-                      ? 'bg-yellow-600 hover:bg-yellow-700' 
-                      : 'bg-purple-600 hover:bg-purple-700'
-                } disabled:bg-gray-500`}
-              >
-                {section === 'bench' 
-                  ? '🪑 Bench (No Captain)' 
-                  : isCaptain 
-                    ? '👑 Remove Captain' 
-                    : '👑 Make Captain'
-                }
-              </button>
+                      ? '👑 Remove Captain' 
+                      : '👑 Make Captain'
+                  }
+                </button>
+                
+                <button
+                  onClick={() => { handleTripPlaySelect(teamName); setShowActions(false); }}
+                  disabled={isSaving || section === 'bench' || (!hasTripPlay && !isTripPlay)}
+                  className={`flex-1 px-3 py-2 text-white text-xs rounded-lg transition-colors font-medium ${
+                    section === 'bench' 
+                      ? 'bg-gray-500 cursor-not-allowed'
+                      : (!hasTripPlay && !isTripPlay)
+                        ? 'bg-gray-500 cursor-not-allowed'
+                        : isTripPlay 
+                          ? 'bg-cyan-600 hover:bg-cyan-700' 
+                          : 'bg-cyan-500 hover:bg-cyan-600'
+                  } disabled:bg-gray-500`}
+                >
+                  {section === 'bench' 
+                    ? '🪑 Bench (No Trip)' 
+                    : (!hasTripPlay && !isTripPlay)
+                      ? '⚡ Trip Used'
+                      : isTripPlay 
+                        ? '⚡ Remove x3 Play' 
+                        : '⚡ Use x3 Play'
+                  }
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1330,6 +1611,9 @@ const WeeklyLineupContent = ({
     const { team } = showConfirmCut;
     const gamePoints = team.currentSeason?.gamePoints || 0;
     const record = team.currentSeason?.record || '0-0';
+    const normalizedTeamName = weeklyLineupUtils.normalizeTeamName(team);
+    const isCaptain = captain === normalizedTeamName;
+    const isTripPlay = tripPlayTeam === normalizedTeamName;
 
     return (
       <ModalPortal open={true}>
@@ -1345,8 +1629,14 @@ const WeeklyLineupContent = ({
                     <div className="font-medium text-gray-800">{team.school}</div>
                     <div className="text-sm text-gray-600">{team.conference}</div>
                     <div className="text-sm text-gray-600 mt-1">{gamePoints} Season Points • {record}</div>
-                    {captain === (team.school || team.name) && (
+                    {isCaptain && (
                       <div className="text-sm text-yellow-600 mt-1 font-bold">⚠️ This is your current captain</div>
+                    )}
+                    {isTripPlay && (
+                      <div className="text-sm text-cyan-600 mt-1 font-bold">⚡ This team has your x3 Play active</div>
+                    )}
+                    {isCaptain && isTripPlay && (
+                      <div className="text-sm text-purple-600 mt-1 font-bold">💥 This team has BOTH Captain and x3 Play (5x points)</div>
                     )}
                   </div>
                 </div>
@@ -1447,24 +1737,64 @@ const WeeklyLineupContent = ({
 
   return (
     <div>
+      {/* Captain Status Display */}
       {captain && (
-        <div className="bg-yellow-500/20 border border-yellow-400/30 rounded-xl p-3 mb-4">
-          <div className="flex items-center gap-3">
-            <Crown className="text-yellow-400" size={20} />
+        <div className="bg-yellow-500/15 border border-yellow-400/20 rounded-lg p-2.5 mb-3">
+          <div className="flex items-center gap-2">
+            <Crown className="text-yellow-400" size={16} />
             <div>
-              <span className="text-yellow-200 font-semibold">
+              <span className="text-yellow-200 font-medium text-sm">
                 Captain: {
                   [...starters, ...bench]
                     .filter(team => team !== null)
                     .find(team => weeklyLineupUtils.normalizeTeamName(team) === captain)?.school || captain
-                }
+                } (double points)
               </span>
-              <div className="text-yellow-300/80 text-sm">This team will earn double points (positive or negative)</div>
             </div>
           </div>
         </div>
       )}
 
+      {/* Trip Play Status Display */}
+      {tripPlayTeam && (
+        <div className="bg-cyan-500/15 border border-cyan-400/20 rounded-lg p-2.5 mb-3">
+          <div className="flex items-center gap-2">
+            <Zap className="text-cyan-400" size={16} />
+            <div>
+              <span className="text-cyan-200 font-medium text-sm">
+                x3 Play: {
+                  [...starters, ...bench]
+                    .filter(team => team !== null)
+                    .find(team => weeklyLineupUtils.normalizeTeamName(team) === tripPlayTeam)?.school || tripPlayTeam
+                } (triple points)
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Combined Captain + Trip Play Display */}
+      {captain && tripPlayTeam && captain === tripPlayTeam && (
+        <div className="bg-gradient-to-r from-yellow-500/15 to-cyan-500/15 border border-purple-400/20 rounded-lg p-2.5 mb-3">
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
+              <Crown className="text-yellow-400" size={16} />
+              <Zap className="text-cyan-400" size={16} />
+            </div>
+            <div>
+              <span className="text-purple-200 font-medium text-sm">
+                5X Combo Active: {
+                  [...starters, ...bench]
+                    .filter(team => team !== null)
+                    .find(team => weeklyLineupUtils.normalizeTeamName(team) === captain)?.school || captain
+                }
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+{/* 
       {week === currentWeek && (
         <div className="bg-blue-500/20 border border-blue-400/30 rounded-xl p-3 mb-4">
           <div className="flex items-center gap-2 text-blue-200">
@@ -1474,7 +1804,7 @@ const WeeklyLineupContent = ({
             </span>
           </div>
         </div>
-      )}
+      )} */}
 
       <div className="mb-5">
         <h4 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
@@ -1498,21 +1828,16 @@ const WeeklyLineupContent = ({
         </div>
       </div>
 
-        {canEdit && hasChanges && (
-          <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-4">
+      {canEdit && hasChanges && (
+        <div className="bg-white/10 border border-white/20 rounded-lg p-3">
           <div className="flex items-center justify-between">
-            <div>
-              <span className="text-green-200 font-medium">You have unsaved changes</span>
-              {captain && (
-                <div className="text-green-300/80 text-sm">Captain: {captain} (2x points)</div>
-              )}
-            </div>
+            <span className="text-white font-medium text-sm">You have unsaved changes</span>
             <button
               onClick={handleSave}
               disabled={isSaving}
-              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
             >
-              {isSaving ? 'Saving...' : 'Save Lineup'}
+              {isSaving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>

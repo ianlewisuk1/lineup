@@ -34,14 +34,27 @@ function MyLineup() {
   const [weekNumbers, setWeekNumbers] = useState([]);
   const [userData, setUserData] = useState(null);
   const [migrationNeeded, setMigrationNeeded] = useState(false);
+  const [previousWeekRank, setPreviousWeekRank] = useState(null);
+  const [previousWeekPoints, setPreviousWeekPoints] = useState(0);
 
-  // User Avatar Component
-  const UserAvatar = ({ member, size = 80 }) => {
+  const getOrdinalSuffix = (rank) => {
+    if (rank >= 11 && rank <= 13) return 'th';
+    switch (rank % 10) {
+      case 1: return 'st';
+      case 2: return 'nd';
+      case 3: return 'rd';
+      default: return 'th';
+    }
+  };
+
+  // User Avatar Component with Points Badge
+  const UserAvatar = ({ member, points = 0, size = 80 }) => {
     const avatarUrl = member?.teamAvatar;
     const isCustomUpload = avatarUrl && (avatarUrl.startsWith('http') || avatarUrl.startsWith('data:'));
     
     return (
-      <div className="relative">
+      <div className="relative inline-block">
+        {/* Main Avatar Circle */}
         <div 
           className="rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 shadow-lg overflow-hidden border-4 border-white/30"
           style={{
@@ -80,6 +93,31 @@ function MyLineup() {
             {teamName ? teamName.charAt(0).toUpperCase() : '?'}
           </div>
         </div>
+
+        {/* Points Badge - positioned at bottom right of avatar */}
+        <button
+          onClick={() => navigate(`/${leagueId}/leaderboard`)}
+          className="absolute -bottom-3 -right-3 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-white rounded-full shadow-lg border-3 border-white/50 transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer group"
+          style={{
+            width: size * 0.55,
+            height: size * 0.55,
+            minWidth: '60px',
+            minHeight: '60px'
+          }}
+          title="Click to view leaderboard"
+        >
+          <div className="flex flex-col items-center justify-center h-full">
+            <div className="text-4xl font-black leading-none">
+              {points >= 1000 ? `${(points/1000).toFixed(1)}k` : points.toLocaleString()}
+            </div>
+            <div className="text-xs leading-none opacity-60 mt-1" style={{ fontSize: '8px' }}>
+              PTS
+            </div>
+          </div>
+          
+          {/* Hover effect ring */}
+          <div className="absolute inset-0 rounded-full ring-2 ring-yellow-300 opacity-0 group-hover:opacity-100 transition-opacity duration-200 animate-pulse"></div>
+        </button>
       </div>
     );
   };
@@ -594,6 +632,25 @@ function MyLineup() {
       const currentUser = auth.currentUser;
       if (!currentUser) return;
 
+      const loadPreviousWeekRanking = async () => {
+        try {
+          const configRef = doc(db, "config", "season");
+          const configSnap = await getDoc(configRef);
+          const currentWeek = configSnap.data()?.currentWeek || 1;
+          
+          const previousWeek = Math.max(1, currentWeek - 1);
+          
+          const weeklyStandingsRef = doc(db, "leagues", leagueId, "weeklyStandings", auth.currentUser?.uid);
+          const weeklySnap = await getDoc(weeklyStandingsRef);
+          const previousWeekData = weeklySnap.data()?.[`week${previousWeek}`];
+          
+          setPreviousWeekRank(previousWeekData?.rank || null);
+          setPreviousWeekPoints(previousWeekData?.points || 0);
+        } catch (error) {
+          console.error("Error loading previous week ranking:", error);
+        }
+      };
+
       try {
         // Get user/member data
         const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
@@ -670,6 +727,9 @@ function MyLineup() {
         console.log("Sample teams:", Object.keys(teamsMap).slice(0, 5));
 
         setLoading(false);
+
+        await loadPreviousWeekRanking();
+
       } catch (error) {
         console.error("Error fetching data:", error);
         setLoading(false);
@@ -765,7 +825,7 @@ function MyLineup() {
       {/* Header */}
       <div className="relative z-10 text-center mb-8 px-4 sm:px-6">
         <div className="flex flex-col items-center gap-4 mb-4">
-          <UserAvatar member={userData} size={120} />
+          <UserAvatar member={userData} points={squadPoints} size={120} />
           
           <div>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black leading-tight mb-2">
@@ -774,11 +834,8 @@ function MyLineup() {
               </span>
             </h1>
             <div className="text-2xl font-bold text-blue-400 mb-2">
-              {squadPoints.toLocaleString()} Season Pts
+              {previousWeekRank ? `${previousWeekRank}${getOrdinalSuffix(previousWeekRank)} Place` : 'Season Start'}
             </div>
-            <p className="text-lg sm:text-xl text-white/80">
-              Current Week: {currentWeek}
-            </p>
           </div>
         </div>
       </div>
@@ -786,6 +843,19 @@ function MyLineup() {
       {/* Main Content */}
       <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 pb-32">
         
+
+    {/* WEEKLY LINEUP MANAGER */}
+    <div className="mb-6">
+      <WeeklyLineupManager
+        leagueId={leagueId}
+        userId={auth.currentUser?.uid}
+        allTeams={allTeams}
+        currentWeek={currentWeek}
+        onTeamClick={handleTeamClick}
+        TeamLogo={TeamLogo}
+        userDisplayName={userData?.firstName || "Unknown"}
+      />
+    </div>
 
         {/* Smack Talk Section */}
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
@@ -872,19 +942,6 @@ function MyLineup() {
 
         {/* Enhanced Schedule Grid */}
         <ScheduleGrid />
-
-    {/* WEEKLY LINEUP MANAGER */}
-    <div className="mb-6">
-      <WeeklyLineupManager
-        leagueId={leagueId}
-        userId={auth.currentUser?.uid}
-        allTeams={allTeams}
-        currentWeek={currentWeek}
-        onTeamClick={handleTeamClick}
-        TeamLogo={TeamLogo}
-        userDisplayName={userData?.firstName || "Unknown"}
-      />
-    </div>
 
         {/* Free Agent Instructions */}
         <div className="bg-blue-500/20 backdrop-blur-sm border border-blue-400/30 rounded-xl p-4 mb-6">
