@@ -1241,10 +1241,22 @@ const WeeklyLineupContent = ({
       setIsSaving(true);
       await saveLineupChanges(newStarters, newBench, newCaptain, newTripPlayTeam);
 
+// Fetch manager name from users collection
+      let managerName = "Unknown Manager";
+      try {
+        const userDoc = await getDoc(doc(db, "users", userId));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          managerName = userData.firstName || userData.displayName || userData.name || "Unknown Manager";
+        }
+      } catch (userError) {
+        console.warn("Could not fetch user name:", userError);
+      }
+
       const moveHistoryRef = collection(db, "leagues", leagueId, "moveHistory");
       await addDoc(moveHistoryRef, {
         userId,
-        managerName: userDisplayName,
+        managerName: managerName,
         moveType: "drop",
         droppedTeam: team.school || team.name,
         pickedUpTeam: null,

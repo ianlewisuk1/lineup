@@ -56,27 +56,27 @@ const RecentMovesWidget = ({ leagueId }) => {
   };
 
   const getMoveData = (move) => {
-    if (move.pickedUp && move.dropped) {
+    if (move.pickedUpTeam && move.droppedTeam) {
       return {
         type: 'swap',
         icon: <TrendingUp size={16} className="text-purple-400" />,
-        text: `picked up ${move.pickedUp}, cut ${move.dropped}`,
+        text: `picked up ${move.pickedUpTeam}, cut ${move.droppedTeam}`,
         gradient: 'from-purple-500/20 to-blue-500/20',
         border: 'border-purple-400/30'
       };
-    } else if (move.pickedUp) {
+    } else if (move.pickedUpTeam) {
       return {
         type: 'pickup',
         icon: <UserPlus size={16} className="text-green-400" />,
-        text: `picked up ${move.pickedUp}`,
+        text: `picked up ${move.pickedUpTeam}`,
         gradient: 'from-green-500/20 to-emerald-500/20',
         border: 'border-green-400/30'
       };
-    } else if (move.dropped) {
+    } else if (move.droppedTeam) {
       return {
         type: 'cut',
         icon: <UserX size={16} className="text-red-400" />,
-        text: `cut ${move.dropped}`,
+        text: `cut ${move.droppedTeam}`,
         gradient: 'from-red-500/20 to-pink-500/20',
         border: 'border-red-400/30'
       };
@@ -165,23 +165,19 @@ const RecentMovesWidget = ({ leagueId }) => {
                         {/* Move Details */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-semibold text-white truncate">
-                              {move.teamName || 'Unknown Manager'}
-                            </h4>
-                            <div className="flex items-center gap-1 text-white/60 text-xs bg-black/20 px-2 py-1 rounded-full">
+                            <p className="text-sm text-white/90 leading-relaxed flex-1">
+                              {move.managerName || 'Unknown Manager'} {moveData.text}
+                            </p>
+                            <div className="flex items-center gap-1 text-white/60 text-xs bg-black/20 px-2 py-1 rounded-full ml-3">
                               <Clock size={10} />
                               {formatTimeAgo(move.timestamp)}
                             </div>
                           </div>
-                          
-                          <p className="text-sm text-white/90 leading-relaxed">
-                            {moveData.text}
-                          </p>
-                          
+
                           {move.week && move.week !== 'Unknown' && (
                             <div className="mt-2">
                               <span className="text-xs text-white/50 bg-white/10 px-2 py-1 rounded-full">
-                                {move.week}
+                                Week {move.week}
                               </span>
                             </div>
                           )}

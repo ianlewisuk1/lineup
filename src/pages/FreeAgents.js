@@ -33,7 +33,7 @@ const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
 
 function FreeAgents() {
   const { leagueId } = useParams();
-  const navigate = useNavigate();
+  const navigate = useNavigate(); 
   const [teamsByConference, setTeamsByConference] = useState({});
   const [conferenceList, setConferenceList] = useState([]);
   const [activeConference, setActiveConference] = useState("National");
@@ -311,11 +311,23 @@ function FreeAgents() {
 
       const actualCurrentWeek = await getCurrentWeekFromConfig();
 
+      // Fetch manager name from users collection
+      let managerName = "Unknown Manager";
+      try {
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          managerName = userData.firstName || userData.displayName || userData.name || "Unknown Manager";
+        }
+      } catch (userError) {
+        console.warn("Could not fetch user name:", userError);
+      }
+
       // Log the move using same structure as WeeklyLineupManager
       const moveHistoryRef = collection(db, "leagues", leagueId, "moveHistory");
       await addDoc(moveHistoryRef, {
         userId: user.uid,
-        managerName: memberData.displayName || "Unknown Manager",
+        managerName: managerName,
         moveType: "pickup",
         droppedTeam: null,
         pickedUpTeam: teamToAdd.school,
@@ -419,11 +431,23 @@ function FreeAgents() {
 
       const actualCurrentWeek = await getCurrentWeekFromConfig();
 
+      // Fetch manager name from users collection
+      let managerName = "Unknown Manager";
+      try {
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          managerName = userData.firstName || userData.displayName || userData.name || "Unknown Manager";
+        }
+      } catch (userError) {
+        console.warn("Could not fetch user name:", userError);
+      }
+
       // Log the move using same structure as WeeklyLineupManager
       const moveHistoryRef = collection(db, "leagues", leagueId, "moveHistory");
       await addDoc(moveHistoryRef, {
         userId: user.uid,
-        managerName: memberData.displayName || "Unknown Manager",
+        managerName: managerName,
         moveType: "swap",
         droppedTeam: droppedTeamName,
         pickedUpTeam: pendingAddTeam,
@@ -450,15 +474,7 @@ function FreeAgents() {
       setPendingAddTeam("");
       setSelectedDropTeam("");
       
-      // Get display names for the success message
-      const droppedTeamData = Object.values(teamsByConference).flat().find(team => 
-        team.school?.toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/&/g, "-")
-          .replace(/[^a-z0-9\-]/g, "") === selectedDropTeam
-      );
-      const droppedTeamName = droppedTeamData?.school || selectedDropTeam;
-      
+      // Use the droppedTeamName that was already calculated above
       showSuccess("Team Swapped!", `Successfully swapped ${droppedTeamName} for ${pendingAddTeam}!`);
       
     } catch (error) {
