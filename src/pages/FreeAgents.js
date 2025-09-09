@@ -6,11 +6,11 @@ import {
   getDoc,
   doc,
   updateDoc,
+  addDoc
 } from "firebase/firestore";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Plus, Search, Filter, ChevronDown } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
-import { logFreeAgentMove } from '../components/LogFreeAgentMove';
 
 // Compact Sort Button Component
 const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
@@ -298,32 +298,30 @@ function FreeAgents() {
         "freeAgentMoves": currentMoves + 1
       });
 
-      // Log the move for the news ticker
-      try {
-        // Get user's first name from users collection
-        let firstName = "Unknown Manager";
+      // Get current week from config
+      const getCurrentWeekFromConfig = async () => {
         try {
-          const userDoc = await getDoc(doc(db, "users", user.uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            firstName = userData.firstName || userData.displayName || "Unknown Manager";
-          }
-        } catch (userError) {
-          console.warn("Could not fetch user data for logging:", userError);
+          const configDoc = await getDoc(doc(db, "config", "season"));
+          return configDoc.exists() ? configDoc.data().currentWeek : 1;
+        } catch (error) {
+          console.error("Error fetching current week:", error);
+          return 1;
         }
+      };
 
-        await logFreeAgentMove(leagueId, {
-          userId: user.uid,
-          teamName: firstName, // Use firstName from users collection
-          pickedUp: teamToAdd.school,
-          dropped: null,
-          week: "Preseason", // You can change this to dynamic later
-          moveType: 'pickup'
-        });
-      } catch (error) {
-        console.error('Error logging move:', error);
-        // Don't fail the whole operation if logging fails
-      }
+      const actualCurrentWeek = await getCurrentWeekFromConfig();
+
+      // Log the move using same structure as WeeklyLineupManager
+      const moveHistoryRef = collection(db, "leagues", leagueId, "moveHistory");
+      await addDoc(moveHistoryRef, {
+        userId: user.uid,
+        managerName: memberData.displayName || "Unknown Manager",
+        moveType: "pickup",
+        droppedTeam: null,
+        pickedUpTeam: teamToAdd.school,
+        timestamp: new Date(),
+        week: actualCurrentWeek,
+      });
 
       setUserTeams([...starters, ...bench].filter(Boolean));
       
@@ -399,41 +397,39 @@ function FreeAgents() {
         "freeAgentMoves": currentMoves + 1
       });
 
-      // Log the move for the news ticker
-      try {
-        // Get user's first name from users collection
-        let firstName = "Unknown Manager";
+      // Get current week from config
+      const getCurrentWeekFromConfig = async () => {
         try {
-          const userDoc = await getDoc(doc(db, "users", user.uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            firstName = userData.firstName || userData.displayName || "Unknown Manager";
-          }
-        } catch (userError) {
-          console.warn("Could not fetch user data for logging:", userError);
+          const configDoc = await getDoc(doc(db, "config", "season"));
+          return configDoc.exists() ? configDoc.data().currentWeek : 1;
+        } catch (error) {
+          console.error("Error fetching current week:", error);
+          return 1;
         }
+      };
 
-        // Get display name for dropped team
-        const droppedTeamData = Object.values(teamsByConference).flat().find(team => 
-          team.school?.toLowerCase()
-            .replace(/\s+/g, "-")
-            .replace(/&/g, "-")
-            .replace(/[^a-z0-9\-]/g, "") === selectedDropTeam
-        );
-        const droppedTeamName = droppedTeamData?.school || selectedDropTeam;
+      // Get display name for dropped team
+      const droppedTeamData = Object.values(teamsByConference).flat().find(team => 
+        team.school?.toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/&/g, "-")
+          .replace(/[^a-z0-9\-]/g, "") === selectedDropTeam
+      );
+      const droppedTeamName = droppedTeamData?.school || selectedDropTeam;
 
-        await logFreeAgentMove(leagueId, {
-          userId: user.uid,
-          teamName: firstName, // Use firstName from users collection
-          pickedUp: pendingAddTeam,
-          dropped: droppedTeamName,
-          week: "Preseason", // You can change this to dynamic later
-          moveType: 'swap'
-        });
-      } catch (error) {
-        console.error('Error logging move:', error);
-        // Don't fail the whole operation if logging fails
-      }
+      const actualCurrentWeek = await getCurrentWeekFromConfig();
+
+      // Log the move using same structure as WeeklyLineupManager
+      const moveHistoryRef = collection(db, "leagues", leagueId, "moveHistory");
+      await addDoc(moveHistoryRef, {
+        userId: user.uid,
+        managerName: memberData.displayName || "Unknown Manager",
+        moveType: "swap",
+        droppedTeam: droppedTeamName,
+        pickedUpTeam: pendingAddTeam,
+        timestamp: new Date(),
+        week: actualCurrentWeek,
+      });
 
       setUserTeams([...starters, ...bench].filter(Boolean));
       

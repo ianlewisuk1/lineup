@@ -1244,12 +1244,12 @@ const WeeklyLineupContent = ({
       const moveHistoryRef = collection(db, "leagues", leagueId, "moveHistory");
       await addDoc(moveHistoryRef, {
         userId,
-        teamName: userDisplayName,
+        managerName: userDisplayName,
         moveType: "drop",
-        dropped: team.school || team.name,
-        pickedUp: null,
+        droppedTeam: team.school || team.name,
+        pickedUpTeam: null,
         timestamp: new Date(),
-        week: currentWeek || "Preseason",
+        week: currentWeek,
       });
 
       const memberRef = doc(db, "leagues", leagueId, "members", userId);
