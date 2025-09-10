@@ -1552,14 +1552,14 @@
         game.awayTeam
       );
 
+
       // FIXED: Check if this is a newly completed game to prevent duplicate ATS/scoring updates
       const isNewlyComplete = isComplete && !game.gameComplete;
 
-      await updateTeamWeeklyPoints(bw, db, game.homeTeam, homeResult.points, week, isNewlyComplete, 
+      await updateTeamWeeklyPointsBase(bw, db, game.homeTeam, homeResult.points, week, isNewlyComplete, 
         homeResult.coverPoints, homeScore > awayScore, homeScore, awayScore);
-      await updateTeamWeeklyPoints(bw, db, game.awayTeam, awayResult.points, week, isNewlyComplete, 
+      await updateTeamWeeklyPointsBase(bw, db, game.awayTeam, awayResult.points, week, isNewlyComplete, 
         awayResult.coverPoints, awayScore > homeScore, awayScore, homeScore);
-      teamsUpdated += 2;
 
       if (isNewlyComplete) {
         completedTeams.add(game.homeTeam);
@@ -1604,7 +1604,7 @@
   /**
    * Calculate fantasy points based on your scoring system
    */
-    function calculateTeamFantasyPoints(won, actualMargin, teamSpread, teamName) {
+  function calculateTeamFantasyPoints(won, actualMargin, teamSpread, teamName) {
       // Base points: +5 for win, -3 for loss
       const basePoints = won ? 5 : -3;
       
@@ -1656,87 +1656,90 @@
         points: totalPoints,
         coverPoints: coverPoints
       };
-    }
+  }
 
-  /**
-   * Update team document with weekly fantasy points (FIXED: Duplicate prevention + proper data types)
-   */
-  async function updateTeamWeeklyPoints(bw, db, teamName, points, week, isNewlyComplete, coverPoints, teamWon, teamScore, opponentScore) {
-  try {
-    const slug = slugTeam(teamName);
-    const teamRef = db.collection('teams').doc(slug);
-    
-    // Check if team document exists
-    const teamSnap = await teamRef.get();
-    if (!teamSnap.exists) {
-      console.warn(`⚠️ Team document not found: ${teamName} (${slug})`);
+  async function updateTeamWeeklyPointsBase(bw, db, teamName, basePoints, week, isNewlyComplete, coverPoints, teamWon, teamScore, opponentScore) {
+    try {
+      const slug = slugTeam(teamName);
+      const teamRef = db.collection('teams').doc(slug);
       
-      // Log to misses collection
-      try {
-        await db.collection('cfb').doc('misses').collection('teams').add({
-          raw: teamName,
-          slugTried: slug,
-          context: 'weekly_points_update',
-          week,
-          points,
-          when: admin.firestore.FieldValue.serverTimestamp(),
-        });
-      } catch (e) {
-        console.warn('[updateTeamWeeklyPoints] miss log failed', teamName, e);
+      // Check if team document exists
+      const teamSnap = await teamRef.get();
+      if (!teamSnap.exists) {
+        console.warn(`⚠️ Team document not found: ${teamName} (${slug})`);
+        
+        // Log to misses collection
+        try {
+          await db.collection('cfb').doc('misses').collection('teams').add({
+            raw: teamName,
+            slugTried: slug,
+            context: 'weekly_points_update',
+            week,
+            points: basePoints,
+            when: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        } catch (e) {
+          console.warn('[updateTeamWeeklyPointsBase] miss log failed', teamName, e);
+        }
+        return;
       }
-      return;
-    }
-    
-    const teamData = teamSnap.data();
-    const currentWeeklyPoints = teamData.currentSeason?.weeklyPoints || {};
-    const currentGamePoints = teamData.currentSeason?.gamePoints || 0;
-    
-    // Update weekly points for this week
-    const weekKey = `week${week}`;
-    const previousWeekPoints = currentWeeklyPoints[weekKey] || 0;
-    
-    // Calculate new season total (remove old week points, add new week points)
-    const newGamePoints = currentGamePoints - previousWeekPoints + points;
-    
-    // Prepare update object
-    const updateData = {
-      [`currentSeason.weeklyPoints.${weekKey}`]: points,
-      'currentSeason.gamePoints': newGamePoints,
-      'currentSeason.lastPointsUpdate': admin.firestore.FieldValue.serverTimestamp(),
-    };
-    
-    // NEW: Add game completion status to team document
-    if (isNewlyComplete) {
-      updateData['currentSeason.gameComplete'] = true;
-      updateData['currentSeason.gameStatus'] = 'final';
-    }
-
-    // FIXED: Update actual scoring if it's missing (regardless of isNewlyComplete)
-    const currentPointsFor = Number(teamData.currentSeason?.totalPointsFor || 0);
-    const currentPointsAgainst = Number(teamData.currentSeason?.totalPointsAgainst || 0);
-    const hasScoringStats = currentPointsFor > 0 || currentPointsAgainst > 0;
-    
-    if (!hasScoringStats && typeof teamScore === 'number' && typeof opponentScore === 'number') {
-      // This team has no scoring stats yet - add them now
-      updateData['currentSeason.totalPointsFor'] = teamScore;
-      updateData['currentSeason.totalPointsAgainst'] = opponentScore;
       
-      console.log(`📊 Scoring Stats Added for ${teamName}: ${teamScore} pts scored, ${opponentScore} pts allowed`);
+      const teamData = teamSnap.data();
+      const currentWeeklyPoints = teamData.currentSeason?.weeklyPoints || {};
+      const currentGamePoints = teamData.currentSeason?.gamePoints || 0;
+      
+      // Update weekly points for this week (BASE POINTS ONLY)
+      const weekKey = `week${week}`;
+      const previousWeekPoints = currentWeeklyPoints[weekKey] || 0;
+      
+      // Calculate new season total (remove old week points, add new week points)
+      const newGamePoints = currentGamePoints - previousWeekPoints + basePoints;
+      
+      // Prepare update object - NO MULTIPLIERS HERE
+      const updateData = {
+        [`currentSeason.weeklyPoints.${weekKey}`]: basePoints,  // STORE BASE POINTS ONLY
+        'currentSeason.gamePoints': newGamePoints,
+        'currentSeason.lastPointsUpdate': admin.firestore.FieldValue.serverTimestamp(),
+      };
+      
+      // Add game completion status to team document
+      if (isNewlyComplete) {
+        updateData['currentSeason.gameComplete'] = true;
+        updateData['currentSeason.gameStatus'] = 'final';
+      }
+
+      // Update actual scoring if it's missing
+      const currentPointsFor = Number(teamData.currentSeason?.totalPointsFor || 0);
+      const currentPointsAgainst = Number(teamData.currentSeason?.totalPointsAgainst || 0);
+      const hasScoringStats = currentPointsFor > 0 || currentPointsAgainst > 0;
+      
+      if (!hasScoringStats && typeof teamScore === 'number' && typeof opponentScore === 'number') {
+        updateData['currentSeason.totalPointsFor'] = teamScore;
+        updateData['currentSeason.totalPointsAgainst'] = opponentScore;
+        console.log(`📊 Scoring Stats Added for ${teamName}: ${teamScore} pts scored, ${opponentScore} pts allowed`);
+      }
+
+      // Update ATS record
+      const covered = coverPoints >= 1;
+      if (covered) {
+        updateData['currentSeason.atsWins'] = 1;
+        updateData['currentSeason.atsLosses'] = 0;
+        updateData['currentSeason.atsRecord'] = '1-0';
+      } else {
+        updateData['currentSeason.atsWins'] = 0;
+        updateData['currentSeason.atsLosses'] = 1;
+        updateData['currentSeason.atsRecord'] = '0-1';
+      }
+      
+      bw.update(teamRef, updateData);
+      
+      console.log(`📝 Updated ${teamName}: Week ${week}: ${basePoints} BASE pts, Season total: ${newGamePoints} pts`);
+      
+    } catch (error) {
+      console.error(`Error updating weekly points for ${teamName}:`, error);
     }
-    
-    bw.update(teamRef, updateData);
-    
-    console.log(`📝 Updated ${teamName}: Week ${week}: ${points} pts, Season total: ${newGamePoints} pts`);
-    
-  } catch (error) {
-    console.error(`Error updating weekly points for ${teamName}:`, error);
-  }
   }
 
-  /**
-   * Recalculate all member points based on their STARTER rosters only
-   * Works dynamically for any week by using the previous week as baseline
-   */
   async function recalculateAllMemberPoints(db, currentWeek) {
     try {
       let totalMembersUpdated = 0;
@@ -1761,7 +1764,7 @@
           const userId = memberDoc.id;
           const lineup = memberData.lineup || {};
           
-          // Only get STARTERS, not bench players
+          // Only get STARTERS
           const starterTeams = (lineup.starters || [])
             .filter(teamName => teamName && teamName.trim() !== '');
           
@@ -1770,12 +1773,13 @@
             continue;
           }
           
-          // Get captain directly from member document
+          // Get captain and trip play from member document
           const captainTeam = memberData.lineup?.captain || null;
+          const tripPlayTeam = memberData.lineup?.tripPlayTeam || null;
           
-          console.log(`📝 Member ${userId} has ${starterTeams.length} starters: [${starterTeams.join(', ')}]${captainTeam ? ` - Captain: ${captainTeam}` : ''}`);
+          console.log(`📝 Member ${userId} has ${starterTeams.length} starters: [${starterTeams.join(', ')}]${captainTeam ? ` - Captain: ${captainTeam}` : ''}${tripPlayTeam ? ` - Trip Play: ${tripPlayTeam}` : ''}`);
           
-          // Get previous week baseline from weeklyStandings (dynamic)
+          // Get previous week baseline from weeklyStandings
           const previousWeek = currentWeek - 1;
           let previousWeekBaselinePoints = 0;
           
@@ -1783,11 +1787,7 @@
             const weeklyStandingsRef = db.collection('leagues').doc(leagueId).collection('weeklyStandings').doc(userId);
             const weeklyStandingsSnap = await weeklyStandingsRef.get();
             
-            // Use proper Firestore existence check
-            const docExists = weeklyStandingsSnap.exists || (weeklyStandingsSnap.data() !== undefined);
-            console.log(`🔧 DEBUG: weeklyStandings document exists: ${docExists}`);
-            
-            if (docExists) {
+            if (weeklyStandingsSnap.exists) {
               const standingsData = weeklyStandingsSnap.data();
               
               if (standingsData && standingsData[`week${previousWeek}`]) {
@@ -1796,20 +1796,14 @@
                 if (previousWeekData && typeof previousWeekData.points === 'number') {
                   previousWeekBaselinePoints = previousWeekData.points;
                   console.log(`📋 Week ${previousWeek} baseline from weeklyStandings: ${previousWeekBaselinePoints} pts`);
-                } else {
-                  console.warn(`No valid Week ${previousWeek} points data for ${userId}`);
                 }
-              } else {
-                console.warn(`No Week ${previousWeek} data found for ${userId}`);
               }
-            } else {
-              console.warn(`No weeklyStandings document found for ${userId}`);
             }
           } catch (error) {
             console.error(`Error getting Week ${previousWeek} baseline for ${userId}:`, error);
           }
           
-          // Calculate current week activity from team documents
+          // Calculate current week activity WITH MULTIPLIERS
           let currentWeekPoints = 0;
           for (const teamName of starterTeams) {
             try {
@@ -1820,15 +1814,29 @@
               if (teamSnap.exists) {
                 const teamData = teamSnap.data();
                 const teamWeeklyPoints = teamData.currentSeason?.weeklyPoints || {};
-                const teamCurrentWeekPoints = teamWeeklyPoints[`week${currentWeek}`] || 0;
+                const teamBasePoints = teamWeeklyPoints[`week${currentWeek}`] || 0; // BASE POINTS from team doc
                 
-                // Apply captain bonus: double points for captain team
+                // Apply captain and trip play bonuses
                 const isCaptain = captainTeam === teamName;
-                const finalWeeklyPoints = isCaptain ? teamCurrentWeekPoints * 2 : teamCurrentWeekPoints;
-                
+                const isTripPlay = tripPlayTeam === teamName;
+
+                let finalWeeklyPoints = teamBasePoints;
+                let multiplierText = '';
+
+                if (isCaptain && isTripPlay) {
+                  finalWeeklyPoints = teamBasePoints * 5; // 5x combo
+                  multiplierText = ' × 5 (CAPTAIN + TRIP PLAY)';
+                } else if (isTripPlay) {
+                  finalWeeklyPoints = teamBasePoints * 3; // Trip play 3x
+                  multiplierText = ' × 3 (TRIP PLAY)';
+                } else if (isCaptain) {
+                  finalWeeklyPoints = teamBasePoints * 2; // Captain 2x
+                  multiplierText = ' × 2 (CAPTAIN)';
+                }
+
                 currentWeekPoints += finalWeeklyPoints;
-                
-                console.log(`📊 ${teamName}: ${teamCurrentWeekPoints} week ${currentWeek} pts${isCaptain ? ' × 2 (CAPTAIN)' : ''} = ${finalWeeklyPoints}`);
+
+                console.log(`📊 ${teamName}: ${teamBasePoints} base pts${multiplierText} = ${finalWeeklyPoints}`);
               } else {
                 console.warn(`⚠️ Team not found for member calculation: ${teamName} (${slug})`);
               }
@@ -1837,7 +1845,7 @@
             }
           }
           
-          // Calculate new season total: previous week baseline + current week activity
+          // Calculate new season total: previous week baseline + current week activity (with multipliers)
           const newSeasonTotal = previousWeekBaselinePoints + currentWeekPoints;
           
           // Queue member update
@@ -1847,7 +1855,7 @@
             weeklyPoints: currentWeekPoints
           });
           
-          console.log(`📊 Member ${userId} FINAL: ${newSeasonTotal} total pts (${previousWeekBaselinePoints} week ${previousWeek} baseline + ${currentWeekPoints} current week)`);
+          console.log(`📊 Member ${userId} FINAL: ${newSeasonTotal} total pts (${previousWeekBaselinePoints} week ${previousWeek} baseline + ${currentWeekPoints} current week WITH MULTIPLIERS)`);
         }
         
         // Batch update all members in this league
