@@ -176,9 +176,27 @@
     'sanjosest': 'sanjosestate',
     'pennstate': 'penn',
     'indianahoosiers': 'indiana',
+    'indianast': 'indianastate',
+    'nebraskacornhuskers': 'nebraska',
+    'houstonchristianhuskies': 'houstonchristian',
+    'coastalcarolinachanticleers': 'coastalcarolina',
+    'eastcarolinapirates': 'eastcarolina',
+    'mississippistatebulldogs': 'mississippistate',
+    'alcornstatebraves': 'alcornstate',
+    'cincinnatibearcats': 'cincinnati',
+    'northwesternstatedemons': 'northwesternstate',
+    'fresnostatebulldogs': 'fresnostate',
+    'southernjaguars': 'southern',
+    'hawaiirainbowwarriors': 'hawaii',
+    'portlandstatevikings': 'portlandstate',
+    'georgiastatepanthers': 'georgiastate',
+    'murraystateracers': 'murraystate',
+    'marshallthunderingherd': 'marshall',
+    'easternkentuckycolonels': 'easternkentucky',
+    'michiganstatespartans': 'michiganstate',
+      'youngstownstatepenguins': 'youngstownstate',
 
     'utsaroadrunners': 'utsa',  // ESPN normalized → Firestore normalized
-    
     'jax': 'jacksonville',              // "Jax State" → "Jacksonville State"
     'sfaustin': 'stephenfaustin',        // "SF Austin" → "Stephen F. Austin"  
     'oklahoma': 'oklahoma',              // "Oklahoma St" → "Oklahoma State" (both normalize to oklahoma)
