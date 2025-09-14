@@ -34,8 +34,10 @@ function MyLineup() {
   const [weekNumbers, setWeekNumbers] = useState([]);
   const [userData, setUserData] = useState(null);
   const [migrationNeeded, setMigrationNeeded] = useState(false);
+  const [currentWeekRank, setCurrentWeekRank] = useState(null);
   const [previousWeekRank, setPreviousWeekRank] = useState(null);
-  const [previousWeekPoints, setPreviousWeekPoints] = useState(0);
+  const [rankChange, setRankChange] = useState(0);
+  const [loadingRank, setLoadingRank] = useState(false);
 
   const getOrdinalSuffix = (rank) => {
     if (rank >= 11 && rank <= 13) return 'th';
@@ -45,6 +47,54 @@ function MyLineup() {
       case 3: return 'rd';
       default: return 'th';
     }
+  };
+
+  // New component for the ranking badge
+  const RankingBadge = ({ currentRank, rankChange, loading }) => {
+    if (loading) {
+      return (
+        <div className="text-2xl font-bold text-blue-400 mb-2 animate-pulse">
+          Loading rank...
+        </div>
+      );
+    }
+
+    if (!currentRank) {
+      return (
+        <div className="text-2xl font-bold text-blue-400 mb-2">
+          Season Start
+        </div>
+      );
+    }
+
+    const getTrendIcon = (change) => {
+      if (change < 0) return "↗"; // Improved (went up in rankings) 
+      if (change > 0) return "↘"; // Declined (went down in rankings)
+      return "→"; // No change
+    };
+
+    const getTrendColor = (change) => {
+      if (change < 0) return "text-green-400"; // Improved
+      if (change > 0) return "text-red-400"; // Declined  
+      return "text-blue-400"; // No change
+    };
+
+    const formatChange = (change) => {
+      if (change === 0) return "";
+      return Math.abs(change).toString();
+    };
+
+    return (
+      <div className="text-2xl font-bold text-blue-400 mb-2">
+        <span>{currentRank}{getOrdinalSuffix(currentRank)} Place</span>
+        {rankChange !== 0 && (
+          <span className={`ml-3 ${getTrendColor(rankChange)} text-lg inline-flex items-center gap-1`}>
+            <span>{getTrendIcon(rankChange)}</span>
+            <span className="text-sm">{formatChange(rankChange)}</span>
+          </span>
+        )}
+      </div>
+    );
   };
 
   // User Avatar Component with Points Badge
@@ -632,22 +682,58 @@ function MyLineup() {
       const currentUser = auth.currentUser;
       if (!currentUser) return;
 
-      const loadPreviousWeekRanking = async () => {
+      const loadLiveRanking = async () => {
         try {
+          setLoadingRank(true);
+          const currentUser = auth.currentUser;
+          if (!currentUser) return;
+
+          // Get current week from config
           const configRef = doc(db, "config", "season");
           const configSnap = await getDoc(configRef);
           const currentWeek = configSnap.data()?.currentWeek || 1;
-          
           const previousWeek = Math.max(1, currentWeek - 1);
+
+          // Get all league members for current week live ranking
+          const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
+          const allMembers = [];
           
-          const weeklyStandingsRef = doc(db, "leagues", leagueId, "weeklyStandings", auth.currentUser?.uid);
+          membersSnap.forEach(doc => {
+            const memberData = doc.data();
+            allMembers.push({
+              userId: doc.id,
+              points: memberData.points || 0,
+              teamName: memberData.teamName || "Unnamed Team"
+            });
+          });
+
+          // Sort by points descending to get live rankings
+          allMembers.sort((a, b) => b.points - a.points);
+          
+          // Find current user's live rank
+          const currentUserRankIndex = allMembers.findIndex(member => member.userId === currentUser.uid);
+          const liveRank = currentUserRankIndex !== -1 ? currentUserRankIndex + 1 : null;
+          setCurrentWeekRank(liveRank);
+
+          // Get previous week's final ranking for comparison
+          const weeklyStandingsRef = doc(db, "leagues", leagueId, "weeklyStandings", currentUser.uid);
           const weeklySnap = await getDoc(weeklyStandingsRef);
           const previousWeekData = weeklySnap.data()?.[`week${previousWeek}`];
-          
-          setPreviousWeekRank(previousWeekData?.rank || null);
-          setPreviousWeekPoints(previousWeekData?.points || 0);
+          const prevRank = previousWeekData?.rank || null;
+          setPreviousWeekRank(prevRank);
+
+          // Calculate rank change
+          if (liveRank && prevRank) {
+            const change = liveRank - prevRank;
+            setRankChange(change);
+          } else {
+            setRankChange(0);
+          }
+
         } catch (error) {
-          console.error("Error loading previous week ranking:", error);
+          console.error("Error loading live ranking:", error);
+        } finally {
+          setLoadingRank(false);
         }
       };
 
@@ -728,7 +814,7 @@ function MyLineup() {
 
         setLoading(false);
 
-        await loadPreviousWeekRanking();
+        await loadLiveRanking();
 
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -833,9 +919,11 @@ function MyLineup() {
                 {teamName}
               </span>
             </h1>
-            <div className="text-2xl font-bold text-blue-400 mb-2">
-              {previousWeekRank ? `${previousWeekRank}${getOrdinalSuffix(previousWeekRank)} Place` : 'Season Start'}
-            </div>
+              <RankingBadge 
+                currentRank={currentWeekRank} 
+                rankChange={rankChange} 
+                loading={loadingRank} 
+              />
           </div>
         </div>
       </div>

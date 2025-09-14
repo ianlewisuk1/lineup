@@ -157,7 +157,7 @@ function MyLeague() {
     });
     
     setScheduleData(gamesByTeam);
-    console.log('Schedule data loaded:', Object.keys(gamesByTeam));
+    // console.log('Schedule data loaded  :', Object.keys(gamesByTeam));
   } catch (error) {
     console.error("Error fetching schedule data:", error);
   } finally {
@@ -189,15 +189,21 @@ function MyLeague() {
 
   // NEW: Load historical standings for a specific week
   const loadWeeklyStandings = async (week) => {
+    console.log(`DEBUG: loadWeeklyStandings called for week ${week}`);
+    
     if (weeklyStandings[week]) {
+      console.log(`DEBUG: Week ${week} data already exists, skipping`);
       return; // Already loaded
     }
     
     try {
+      console.log(`DEBUG: Starting to load week ${week} standings...`);
       setStandingsLoading(true);
       
       const weeklyStandingsRef = collection(db, "leagues", leagueId, "weeklyStandings");
       const snapshot = await getDocs(weeklyStandingsRef);
+      
+      console.log(`DEBUG: Got snapshot with ${snapshot.docs.length} documents`);
       
       const weekStandings = [];
       
@@ -212,6 +218,8 @@ function MyLeague() {
           });
         }
       });
+      
+      console.log(`DEBUG: Found ${weekStandings.length} members with week ${week} data`);
       
       // Sort by rank
       weekStandings.sort((a, b) => (a.rank || 0) - (b.rank || 0));
@@ -241,41 +249,43 @@ function MyLeague() {
 
     const currentWeekNum = getCurrentWeekNumber();
 
+    // Create ordered list of all weeks (historical first, then current)
+    const orderedWeeks = [
+      ...availableWeeks.sort((a, b) => a - b), // Historical weeks in ascending order
+      currentWeekNum // Current live week at the end
+    ];
+
     return (
       <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20 mb-6">
         <div className="flex flex-wrap gap-2 justify-center items-center">
           <span className="text-sm font-medium text-white/80 mr-2">Week:</span>
           
-          {/* Current Live Week */}
-          <button
-            onClick={() => setViewMode('current')}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-              viewMode === 'current'
-                ? 'bg-green-600 text-white shadow-lg'
-                : 'bg-white/20 text-white/80 hover:bg-white/30'
-            }`}
-          >
-            {currentWeekNum} Live
-          </button>
-
-          {/* Historical Weeks */}
-          {availableWeeks.map(week => (
-            <button
-              key={week}
-              onClick={() => {
-                setViewMode('historical');
-                setSelectedWeek(week);
-                loadWeeklyStandings(week);
-              }}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                viewMode === 'historical' && selectedWeek === week
-                  ? 'bg-blue-600 text-white shadow-lg'
-                  : 'bg-white/20 text-white/80 hover:bg-white/30'
-              }`}
-            >
-              {week} Final
-            </button>
-          ))}
+          {orderedWeeks.map(week => {
+            const isCurrentWeek = week === currentWeekNum;
+            const isSelected = isCurrentWeek ? viewMode === 'current' : (viewMode === 'historical' && selectedWeek === week);
+            
+            return (
+              <button
+                key={week}
+                onClick={() => {
+                  if (isCurrentWeek) {
+                    setViewMode('current');
+                  } else {
+                    setViewMode('historical');
+                    setSelectedWeek(week);
+                    loadWeeklyStandings(week);
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  isSelected
+                    ? (isCurrentWeek ? 'bg-green-600 text-white shadow-lg' : 'bg-blue-600 text-white shadow-lg')
+                    : 'bg-white/20 text-white/80 hover:bg-white/30'
+                }`}
+              >
+                {week}
+              </button>
+            );
+          })}
         </div>
 
         {/* Loading indicator */}
@@ -329,6 +339,22 @@ function MyLeague() {
         // NEW: Load available historical weeks
         await loadAvailableWeeks();
 
+        // Load previous week data for ranking comparisons
+        if (weekData !== "Preseason") {  // Remove the string check
+          const getCurrentWeekNumber = () => {
+            if (typeof weekData === 'number') return weekData;
+            if (!weekData || typeof weekData !== 'string') return 1;
+            const weekMatch = weekData.match(/\d+/);
+            return weekMatch ? parseInt(weekMatch[0]) : 1;
+          };
+          const currentWeekNum = getCurrentWeekNumber();
+          
+          if (currentWeekNum > 1) {
+            const previousWeek = currentWeekNum - 1;
+            loadWeeklyStandings(previousWeek);
+          }
+        }
+
         // Fetch all teams first to get team logos and current season data
         const teamsRef = collection(db, "teams");
         const teamsSnapshot = await getDocs(teamsRef);
@@ -357,13 +383,7 @@ function MyLeague() {
         setAllTeams(teamsMap);
 
         // In your useEffect, right after you load the teams data
-        console.log('🏈 All teams loaded:', Object.keys(teamsMap));
-        console.log('🎯 Arizona entries:', Object.keys(teamsMap).filter(key => key.includes('arizona')));
-        console.log('🔍 Arizona State team data:', teamsMap['arizona-state']);
-
-        // Also log what normalize produces
-        console.log('Normalize "Arizona State":', normalize('Arizona State'));
-        console.log('Normalize "arizona-state":', normalize('arizona-state'));
+        // console.log('🏈 All teams loaded:', Object.keys(teamsMap));
 
         // Fetch league members with captain and trip play data
         const membersRef = collection(db, "leagues", leagueId, "members");
@@ -1843,27 +1863,49 @@ function MyLeague() {
 
         {/* Condensed Leaderboard Summary */}
         {displayData.length > 0 && (
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 mb-8">
-            <h2 className="text-lg font-bold text-white mb-4 text-center">
-              {viewMode === 'current' ? 'Quick Standings' : `Week ${selectedWeek} Final Results`}
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-3 border border-white/20 mb-8">
+            <h2 className="text-base font-bold text-white mb-3 text-center">
+              {viewMode === 'current' ? `Quick Standings - Week ${currentWeekNum}` : `Week ${selectedWeek} Final Results`}
             </h2>
-            <div className="space-y-2">
+
+            {/* Column Headers */}
+            {viewMode === 'current' && (
+              <div className="flex items-center py-1 px-2.5 mb-2 border-b border-white/20">
+                <div className="flex items-center gap-2 flex-1">
+                  <div className="w-6"></div> {/* Space for rank change indicator */}
+                  <span className="text-white/60 text-[10px] font-medium uppercase tracking-wider">Team</span>
+                </div>
+                <div className="flex items-center gap-1 text-right">
+                  <span className="text-white/60 text-[10px] font-medium uppercase tracking-wider w-8">Week</span>
+                  <span className="text-white/60 text-[10px] font-medium uppercase tracking-wider w-10">Total</span>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1">
             {displayData.map((member, idx) => {
-              const getRankColor = (position) => {
-                if (position === 0) return "text-yellow-400"; // Gold
-                if (position === 1) return "text-gray-300"; // Silver
-                if (position === 2) return "text-orange-400"; // Bronze
-                return "text-white/80"; // Default
-              };
+              // Calculate ranking change
+              const getCurrentRank = idx + 1;
+              let rankChange = null;
+
+              if (viewMode === 'current' && currentWeekNum > 1) {
+                const previousWeek = currentWeekNum - 1;
+                const previousWeekData = weeklyStandings[previousWeek];
+                
+                if (previousWeekData) {
+                  const memberPreviousData = previousWeekData.find(m => m.id === member.id);
+                  if (memberPreviousData) {
+                    const previousRank = memberPreviousData.rank;
+                    rankChange = previousRank - getCurrentRank; // Positive = moved up, negative = moved down
+                  }
+                }
+              }
 
               // Calculate playoff cutoff based on maxManagers
               const playoffSpots = maxManagers === 8 ? 4 : 6;
               const isPlayoffLine = idx === playoffSpots;
               const hasLiveGames = getMemberLiveStatus(member);
               const hasTripPlay = member.tripPlayTeam && viewMode === 'current';
-
-              // Use rank from historical data or calculate for current
-              const displayRank = viewMode === 'historical' ? member.rank : idx + 1;
 
               // Lightning Border Component for Trip Play
               const TripPlayBorder = ({ children }) => {
@@ -1892,29 +1934,48 @@ function MyLeague() {
               };
 
               const cardContent = (
-                <div className={`relative flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/10 transition-colors duration-200 ${
+                <div className={`relative flex items-center justify-between py-1.5 px-2.5 rounded-lg hover:bg-white/10 transition-colors duration-200 ${
                   viewMode === 'current' && idx < playoffSpots ? 'bg-green-400/10 border border-green-400/20' : 'bg-white/5'
                 }`}>
-                  {/* Rank and Team Name */}
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${getRankColor(displayRank - 1)}`}>
-                      {displayRank}
+                  {/* Rank Change and Team Name */}
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {/* Rank Change Indicator - always reserve space */}
+                    <div className="w-6 flex justify-center">
+                      {rankChange !== null && viewMode === 'current' && (
+                        <div className={`text-[10px] font-bold ${
+                          rankChange > 0 ? 'text-green-400' : 
+                          rankChange < 0 ? 'text-red-400' : 
+                          'text-gray-400'
+                        }`}>
+                          {rankChange > 0 ? `▲${rankChange}` : rankChange < 0 ? `▼${Math.abs(rankChange)}` : '▬'}
+                        </div>
+                      )}
                     </div>
-                    <span className="text-white font-medium truncate">
+                    
+                    <span className="text-white font-medium truncate text-sm">
                       {member.teamName || "Unnamed Team"}
                     </span>
+                    
                     {/* Live Games Indicator - Only for current view */}
                     {hasLiveGames && viewMode === 'current' && (
                       <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span className="text-xs text-green-400 font-medium">LIVE</span>
+                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                        <span className="text-[10px] text-green-400 font-medium">LIVE</span>
                       </div>
                     )}
                     {/* Captain Indicator - Only for current view */}
                     {member.captain && viewMode === 'current' && (
                       <div className="flex items-center gap-1">
                         <div className="text-xs text-yellow-400">👑</div>
-                        <span className="text-xs text-yellow-400 font-medium">{member.captain}</span>
+                        <div className="w-5 h-5 bg-white rounded-full p-0.5 flex items-center justify-center">
+                          <TeamLogo 
+                            teamName={member.captain} 
+                            size={21} 
+                            clickable={false}
+                            isCaptain={false}
+                            isTripPlay={false}
+                          />
+                        </div>
                       </div>
                     )}
                     {/* Trip Play Indicator - Only for current view */}
@@ -1922,16 +1983,26 @@ function MyLeague() {
                       <div className="flex items-center gap-1">
                         <div className="text-xs text-cyan-400">⚡</div>
                         <div className="text-center">
-                          <div className="text-xs text-cyan-400 font-bold leading-none">3X</div>
-                          <div className="text-[8px] text-cyan-400 font-medium leading-none">ACTIVE</div>
+                          <div className="text-[9px] text-cyan-400 font-bold leading-none">3X</div>
+                          <div className="text-[7px] text-cyan-400 font-medium leading-none">ACTIVE</div>
                         </div>
                       </div>
                     )}
                   </div>
 
                   {/* Points */}
-                  <div className="text-blue-400 font-bold text-lg">
-                    {member.points ?? 0}
+                  <div className="flex items-center gap-1 text-right">
+                    {/* Weekly Points */}
+                    {viewMode === 'current' && (
+                      <div className="text-white text-[12px] font-bold w-8 text-right">
+                          {member.weeklyPoints ?? 0}
+                      </div>
+                    )}
+                    
+                    {/* Total Points */}
+                    <div className="text-blue-400 font-bold text-base w-10 text-right">
+                      {member.points ?? 0}
+                    </div>
                   </div>
                 </div>
               );
@@ -2052,17 +2123,24 @@ function MyLeague() {
                         <h3 className="text-base font-bold text-white truncate">
                           {member.teamName || "Unnamed Team"}
                         </h3>
-                        {/* Enhanced Live Games Indicator for Manager - Only current view */}
-                        {hasLiveGames && viewMode === 'current' && (
-                          <div className="flex items-center gap-1 bg-green-500/20 px-2 py-1 rounded-full border border-green-400/30">
-                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                            <span className="text-xs text-green-300 font-medium">LIVE</span>
-                          </div>
-                        )}
                       </div>
-                      <p className="text-white/70 flex items-center gap-2">
-                        {member.firstName || "Unknown Manager"}
-                      </p>
+                        <p className="text-white/70 flex items-center gap-2">
+                          {member.firstName || "Unknown Manager"}
+                          {/* Freezes indicator - more compact */}
+                          {member.freezes > 0 && (
+                            <div className="flex items-center gap-0.5 bg-blue-500/20 px-1 py-0.5 rounded-full border border-blue-400/30">
+                              <span className="text-xs text-blue-300">❄️</span>
+                              <span className="text-xs text-blue-300 font-medium">{member.freezes}</span>
+                            </div>
+                          )}
+                          {/* Trip Play indicator - more compact */}
+                          {member.hasTripPlay && (
+                            <div className="flex items-center gap-0.5 bg-purple-500/20 px-1 py-0.5 rounded-full border border-purple-400/30">
+                              <span className="text-xs text-purple-300">⚡</span>
+                              <span className="text-xs text-purple-300 font-medium">3X</span>
+                            </div>
+                          )}
+                        </p>
                     </div>
 
                     {/* Points & Weekly Score */}

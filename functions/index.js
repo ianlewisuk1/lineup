@@ -1570,7 +1570,6 @@
         game.awayTeam
       );
 
-
       // FIXED: Check if this is a newly completed game to prevent duplicate ATS/scoring updates
       const isNewlyComplete = isComplete && !game.gameComplete;
 
@@ -1604,6 +1603,23 @@
     }
 
     await bw.commit();
+
+    // NEW: Recalculate ATS records if games were completed
+    if (gamesCompleted > 0) {
+      console.log(`🎯 Recalculating ATS records after ${gamesCompleted} games completed`);
+      try {
+        const { teamRecords } = await calculateATSRecordsFromGames(db, '2025');
+        if (teamRecords.size > 0) {
+          const atsBw = new BatchWriter(db);
+          const { teamsUpdated: atsTeamsUpdated } = await updateTeamATSFromCalculation(atsBw, db, teamRecords);
+          await atsBw.commit();
+          console.log(`✅ Updated ATS records for ${atsTeamsUpdated} teams after game completions`);
+        }
+      } catch (atsError) {
+        console.error('❌ ATS recalculation failed after game completion:', atsError);
+        // Don't throw - let the rest of live scoring continue
+      }
+    }
 
     if (gamesUpdated > 0) {
       console.log(`🔄 Recalculating member points`);
@@ -1736,18 +1752,6 @@
         updateData['currentSeason.totalPointsAgainst'] = opponentScore;
         console.log(`📊 Scoring Stats Added for ${teamName}: ${teamScore} pts scored, ${opponentScore} pts allowed`);
       }
-
-      // Update ATS record
-      const covered = coverPoints >= 1;
-      if (covered) {
-        updateData['currentSeason.atsWins'] = 1;
-        updateData['currentSeason.atsLosses'] = 0;
-        updateData['currentSeason.atsRecord'] = '1-0';
-      } else {
-        updateData['currentSeason.atsWins'] = 0;
-        updateData['currentSeason.atsLosses'] = 1;
-        updateData['currentSeason.atsRecord'] = '0-1';
-      }
       
       bw.update(teamRef, updateData);
       
@@ -1797,28 +1801,33 @@
           
           console.log(`📝 Member ${userId} has ${starterTeams.length} starters: [${starterTeams.join(', ')}]${captainTeam ? ` - Captain: ${captainTeam}` : ''}${tripPlayTeam ? ` - Trip Play: ${tripPlayTeam}` : ''}`);
           
-          // Get previous week baseline from weeklyStandings
-          const previousWeek = currentWeek - 1;
-          let previousWeekBaselinePoints = 0;
+          // FIXED: Get most recent complete week's total (single source of truth)
+          let baselinePoints = 0;
+          const mostRecentCompleteWeek = currentWeek - 1;
           
-          try {
-            const weeklyStandingsRef = db.collection('leagues').doc(leagueId).collection('weeklyStandings').doc(userId);
-            const weeklyStandingsSnap = await weeklyStandingsRef.get();
-            
-            if (weeklyStandingsSnap.exists) {
-              const standingsData = weeklyStandingsSnap.data();
+          if (mostRecentCompleteWeek >= 1) {
+            try {
+              const weeklyStandingsRef = db.collection('leagues').doc(leagueId).collection('weeklyStandings').doc(userId);
+              const weeklyStandingsSnap = await weeklyStandingsRef.get();
               
-              if (standingsData && standingsData[`week${previousWeek}`]) {
-                const previousWeekData = standingsData[`week${previousWeek}`];
+              if (weeklyStandingsSnap.exists) {
+                const standingsData = weeklyStandingsSnap.data();
+                const recentWeekData = standingsData[`week${mostRecentCompleteWeek}`];
                 
-                if (previousWeekData && typeof previousWeekData.points === 'number') {
-                  previousWeekBaselinePoints = previousWeekData.points;
-                  console.log(`📋 Week ${previousWeek} baseline from weeklyStandings: ${previousWeekBaselinePoints} pts`);
+                if (recentWeekData && typeof recentWeekData.points === 'number') {
+                  baselinePoints = recentWeekData.points;
+                  console.log(`📋 Week ${mostRecentCompleteWeek} baseline from snapshot: ${baselinePoints} points`);
+                } else {
+                  console.warn(`No valid Week ${mostRecentCompleteWeek} snapshot for ${userId}, using 0 baseline`);
                 }
+              } else {
+                console.warn(`No weeklyStandings document for ${userId}, using 0 baseline`);
               }
+            } catch (error) {
+              console.error(`Error getting Week ${mostRecentCompleteWeek} baseline for ${userId}:`, error);
             }
-          } catch (error) {
-            console.error(`Error getting Week ${previousWeek} baseline for ${userId}:`, error);
+          } else {
+            console.log(`Week ${currentWeek} is first week, starting from 0 baseline`);
           }
           
           // Calculate current week activity WITH MULTIPLIERS
@@ -1863,8 +1872,8 @@
             }
           }
           
-          // Calculate new season total: previous week baseline + current week activity (with multipliers)
-          const newSeasonTotal = previousWeekBaselinePoints + currentWeekPoints;
+          // FIXED: New season total = baseline from most recent complete week + current week activity
+          const newSeasonTotal = baselinePoints + currentWeekPoints;
           
           // Queue member update
           memberUpdates.push({
@@ -1873,7 +1882,7 @@
             weeklyPoints: currentWeekPoints
           });
           
-          console.log(`📊 Member ${userId} FINAL: ${newSeasonTotal} total pts (${previousWeekBaselinePoints} week ${previousWeek} baseline + ${currentWeekPoints} current week WITH MULTIPLIERS)`);
+          console.log(`📊 Member ${userId} FINAL: ${newSeasonTotal} total pts (${baselinePoints} Week ${mostRecentCompleteWeek} baseline + ${currentWeekPoints} current week WITH MULTIPLIERS)`);
         }
         
         // Batch update all members in this league
@@ -1903,6 +1912,50 @@
       return 0;
     }
   }
+
+exports.recalculateMemberPoints = onRequest(async (req, res) => {
+  try {
+    const week = parseInt(req.query.week) || 1;
+    
+    console.log(`🔄 Manual member points recalculation for week ${week}...`);
+    
+    const db = admin.firestore();
+    const membersUpdated = await recalculateAllMemberPoints(db, week);
+    
+    res.json({
+      success: true,
+      week,
+      membersUpdated,
+      message: `Recalculated points for ${membersUpdated} members`
+    });
+    
+  } catch (error) {
+    console.error('❌ Member points recalculation failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+exports.recalculateMemberPoints = onRequest(async (req, res) => {
+  try {
+    const week = parseInt(req.query.week) || 1;
+    
+    console.log(`🔄 Manual member points recalculation for week ${week}...`);
+    
+    const db = admin.firestore();
+    const membersUpdated = await recalculateAllMemberPoints(db, week);
+    
+    res.json({
+      success: true,
+      week,
+      membersUpdated,
+      message: `Recalculated points for ${membersUpdated} members`
+    });
+    
+  } catch (error) {
+    console.error('❌ Member points recalculation failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
   /* -------------------------------------------------------------------------- */
   /*                           Clear Future Game Scores                         */

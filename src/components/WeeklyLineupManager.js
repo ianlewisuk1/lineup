@@ -1473,19 +1473,6 @@ const WeeklyLineupContent = ({
                 lockStatus.locked ? 'text-red-300' : 'text-white'
               }`}>
                 {team.school}
-                {(isCaptain || isTripPlay) && (
-                  <span className="ml-2 text-xs font-bold">
-                    {isCaptain && isTripPlay && (
-                      <span className="text-purple-400">CAPTAIN + x3 PLAY</span>
-                    )}
-                    {isCaptain && !isTripPlay && (
-                      <span className="text-yellow-400">CAPTAIN</span>
-                    )}
-                    {!isCaptain && isTripPlay && (
-                      <span className="text-cyan-400">x3 PLAY</span>
-                    )}
-                  </span>
-                )}
                 {lockStatus.locked && (
                   <span className="ml-2 text-xs text-red-400">LOCKED</span>
                 )}
