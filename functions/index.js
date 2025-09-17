@@ -194,7 +194,10 @@
     'marshallthunderingherd': 'marshall',
     'easternkentuckycolonels': 'easternkentucky',
     'michiganstatespartans': 'michiganstate',
-      'youngstownstatepenguins': 'youngstownstate',
+    'youngstownstatepenguins': 'youngstownstate',
+    'woffordterriers': 'wofford',
+    'southcarolinastatebulldogs': 'southcarolinastate',
+    'gardnerwebbrunnin': 'gardnerwebb',
 
     'utsaroadrunners': 'utsa',  // ESPN normalized → Firestore normalized
     'jax': 'jacksonville',              // "Jax State" → "Jacksonville State"
