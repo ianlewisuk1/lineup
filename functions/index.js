@@ -86,11 +86,11 @@
       'Mississippi St': 'mississippistate',
       'Michigan St': 'michiganstate',        // FIXED: was 'michigan'
       'Illinois St': 'illinois',
-      'Colorado St': 'colorado',
+      'Colorado St': 'coloradostate',
       'Oregon St': 'oregonstate',
       'Washington St': 'washingtonstate',
       'Arizona St': 'arizonastate',
-      'Florida St': 'florida',
+      'Florida St': 'floridastate',
       'Georgia St': 'georgiastate',
       'NC State': 'nc',
       'Penn State': 'penn',
@@ -115,14 +115,15 @@
       'Mississippi State Bulldogs': 'mississippistate',
       'Michigan State Spartans': 'michiganstate', 
       'Illinois State Redbirds': 'illinois',
-      'Colorado State Rams': 'colorado',
+      'Colorado State Rams': 'coloradostate',
       'Oregon State Beavers': 'oregonstate',
       'Washington State Cougars': 'washingtonstate', 
       'Arizona State Sun Devils': 'arizonastate',
-      'Florida State Seminoles': 'florida',
+      'Florida State Seminoles': 'floridastate',
       'Georgia State Panthers': 'georgiastate',
       'Iowa State Cyclones': 'iowa',
       'Utah State Aggies': 'utah',
+      
       
       // Handle the tricky ones
       'UCF Knights': 'centralflorida',
@@ -198,6 +199,17 @@
     'woffordterriers': 'wofford',
     'southcarolinastatebulldogs': 'southcarolinastate',
     'gardnerwebbrunnin': 'gardnerwebb',
+    'kentstategoldenflashes': 'kentstate',
+    'kentstate': 'kentstate',  // In case it sometimes appears without the mascot
+    'emichigan': 'easternmichigan',
+    'easternmichiganeagles': 'easternmichigan',
+    'louisianaragincajuns': 'louisiana',
+    'gasouthern': 'georgiasouthern',  // For shortDisplayName "GA Southern"
+    'georgiasoutherneagles': 'georgiasouthern',  // For displayName "Georgia Southern Eagles"
+    'maineblackbears': 'maine',  // For displayName "Maine Black Bears"
+    'southalabamajaguars': 'southalabama',  // For displayName "South Alabama Jaguars"
+    'coastal': 'coastalcarolina',  // For shortDisplayName "Coastal" 
+    'coastalcarolinachanticleers': 'coastalcarolina',  // For displayName "Coastal Carolina Chanticleers"
 
     'utsaroadrunners': 'utsa',  // ESPN normalized → Firestore normalized
     'jax': 'jacksonville',              // "Jax State" → "Jacksonville State"
