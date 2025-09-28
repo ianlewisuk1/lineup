@@ -1805,6 +1805,21 @@ const WeeklyLineupContent = ({
         </div>
       )} */}
 
+      {canEdit && hasChanges && (
+        <div className="bg-green-600/20 border border-green-400/30 rounded-lg p-3 mb-4">
+          <div className="flex items-center justify-between">
+            <span className="text-white font-medium text-sm">You have unsaved changes</span>
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-3 py-1.5 rounded-md text-sm font-medium transition-colors uppercase"
+            >
+              {isSaving ? 'SAVING...' : 'SAVE'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mb-5">
         <h4 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
           🏈 Starters (5)
@@ -1826,21 +1841,6 @@ const WeeklyLineupContent = ({
           ))}
         </div>
       </div>
-
-      {canEdit && hasChanges && (
-        <div className="bg-white/10 border border-white/20 rounded-lg p-3">
-          <div className="flex items-center justify-between">
-            <span className="text-white font-medium text-sm">You have unsaved changes</span>
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
-            >
-              {isSaving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </div>
-      )}
 
       <ConfirmCutModal />
       <ReplaceTeamModal />

@@ -218,6 +218,17 @@
     'kansas': 'kansas',                  // "Kansas St" → "Kansas State" (both normalize to kansas)
     'delaware': 'delaware',              // Handle Delaware vs Delaware State conflict
     'arkansasrazorbacks': 'arkansas',
+    'pitt': 'pittsburgh',                    // "Pitt" → normalized
+    'louisvillecardinals': 'louisville',     // "Louisville Cardinals" → normalized
+
+    // Add these lines to your ESPN_TEAM_ALIASES map:
+    'sandiegostate': 'sandiego',                    // "San Diego State Aztecs" → normalized
+    'northernillinoishuskies': 'northernillinois',  // "Northern Illinois Huskies" → normalized
+    'sandiegost': 'sandiego',                       // "San Diego St" → normalized (shortDisplayName)
+    // Add these lines:
+    'middletennesseeraiders': 'middletennessee',  // "Middle Tennessee Blue Raiders" → normalized
+    'kennesawst': 'kennesawstate',                // "Kennesaw St" → normalized  
+    'kennesawstate': 'kennesawstate',             // "Kennesaw State Owls" → normalized
     
     // ESPN displayName → Firestore normalized mappings  
     'jacksonville': 'jacksonville',      // "Jacksonville State Gamecocks" → "Jacksonville State"

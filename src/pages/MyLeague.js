@@ -807,14 +807,14 @@ function MyLeague() {
               left: "50%",
               transform: "translateX(-50%)",
               backgroundColor: byeThisWeek
-                ? "#6b7280"                                        // BYE (neutral gray)
+                ? "#7c3aed"                                        // BYE (purple to distinguish from TBD)
                 : !spreadDisplay
-                  ? "#6b7280"                                      // TBD
+                  ? "#6b7280"                                      // TBD (gray)
                   : spreadDisplay.includes('-')
                     ? "#10b981"                                    // Favorite (green)
                     : spreadDisplay === "PK"
                       ? "#6366f1"                                  // Pick 'em (indigo) 
-                      : "#ef4444",                                 // Underdog (red)
+                      : "#ef4444",                                 // Underdog (red)                           // Underdog (red)
               color: "white",
               borderRadius: "8px",
               width: `${size}px`,           // Changed from minWidth: "28px" to match logo size
