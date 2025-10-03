@@ -892,7 +892,7 @@
   /* -------------------------------------------------------------------------- */
 
     exports.cfbIngestLinesScheduled = onSchedule(
-    { schedule: '*/30 * * * *', timeZone: 'America/New_York' }, // Every 30 minutes
+    { schedule: '*/20 * * * *', timeZone: 'America/New_York' }, // Every 20 minutes
     async () => {
       try {
         const key = CFB_KEY.value();
