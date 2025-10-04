@@ -210,7 +210,10 @@
     'southalabamajaguars': 'southalabama',  // For displayName "South Alabama Jaguars"
     'coastal': 'coastalcarolina',  // For shortDisplayName "Coastal" 
     'coastalcarolinachanticleers': 'coastalcarolina',  // For displayName "Coastal Carolina Chanticleers"
-
+    'floridainternational': 'florida-international',  // Note the hyphen
+    'fiu': 'florida-international',
+    'fiupanthers': 'florida-international',
+    'uconnhuskies': 'uconn',  // This one matches
     'utsaroadrunners': 'utsa',  // ESPN normalized → Firestore normalized
     'jax': 'jacksonville',              // "Jax State" → "Jacksonville State"
     'sfaustin': 'stephenfaustin',        // "SF Austin" → "Stephen F. Austin"  
