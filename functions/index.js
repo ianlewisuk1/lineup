@@ -103,7 +103,10 @@
       'Missouri State': 'missouristate',        // Full name
       'Missouri St': 'missouristate',           // Short name
       'Missouri State Bears': 'missouristate',  // With mascot
-      
+      'New Mexico St': 'newmexicostate',
+      'New Mexico State': 'newmexicostate', 
+      'New Mexico State Aggies': 'newmexicostate',
+        
       // ESPN displayName patterns  
       'Jacksonville State Gamecocks': 'jacksonvillestate',
       'Stephen F. Austin Lumberjacks': 'stephenfaustin', 
@@ -223,6 +226,13 @@
     'arkansasrazorbacks': 'arkansas',
     'pitt': 'pittsburgh',                    // "Pitt" → normalized
     'louisvillecardinals': 'louisville',     // "Louisville Cardinals" → normalized
+      // New Mexico State aliases
+    'nmstate': 'newmexicostate',
+    'newmexicostatefull': 'newmexicostate',
+    'newmexicostateaggies': 'newmexicostate',
+  
+    // Make sure regular New Mexico doesn't collide
+    'newmexicolobos': 'newmexico',
 
     // Add these lines to your ESPN_TEAM_ALIASES map:
     'sandiegostate': 'sandiego',                    // "San Diego State Aztecs" → normalized
@@ -1689,14 +1699,17 @@
       }
       
       let spreadPoints = 0;
-      if (coverPoints >= 20) {
+      if (Math.abs(coverPoints) < 0.5) {
+        // Push - within 0.5 points of the spread
+        spreadPoints = 0;        // Neutral, no penalty or bonus
+      } else if (coverPoints >= 20) {
         spreadPoints = 5;        // Covered by 20+ points
       } else if (coverPoints >= 14.5) {
         spreadPoints = 3;        // Covered by 14.5-19.5 points  
       } else if (coverPoints >= 7.5) {
         spreadPoints = 2;        // Covered by 7.5-14 points
       } else if (coverPoints >= 0.5) {
-        spreadPoints = 1;        // Covered by 1-7 points
+        spreadPoints = 1;        // Covered by 0.5-7 points
       } else {
         // Failed to cover - negative penalties
         const failAmount = Math.abs(coverPoints);
@@ -1707,7 +1720,7 @@
         } else if (failAmount >= 7.5) {
           spreadPoints = -2;     // Failed by 7.5-14 points  
         } else {
-          spreadPoints = -1;     // Failed by 1-7 points
+          spreadPoints = -1;     // Failed by 0.5-7 points
         }
       }
       
