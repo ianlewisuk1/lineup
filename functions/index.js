@@ -230,6 +230,13 @@
     'nmstate': 'newmexicostate',
     'newmexicostatefull': 'newmexicostate',
     'newmexicostateaggies': 'newmexicostate',
+    // Navy aliases
+    'navymidshipmen': 'navy',
+    'midshipmen': 'navy',
+
+    // Florida Atlantic aliases
+    'floridaatlanticowls': 'floridaatlantic',
+    'fau': 'floridaatlantic',
   
     // Make sure regular New Mexico doesn't collide
     'newmexicolobos': 'newmexico',
