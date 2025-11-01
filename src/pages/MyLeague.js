@@ -670,44 +670,10 @@ function MyLeague() {
     const teamState = getTeamDisplayState();
 
     // Get the spread for display - use nextOpponentSpreadDisplay or calculate from nextOpponentSpread
-    // const getSpreadDisplay = () => {
-    //   // Only show spread for current week
-    //   if (viewMode !== 'current') return null;
-
-    //   const spreadDisplay = team?.currentSeason?.nextOpponentSpreadDisplay;
-    //   const spreadNum = team?.currentSeason?.nextOpponentSpread;
-      
-    //   // If we have a formatted display string, use it
-    //   if (spreadDisplay && spreadDisplay !== "TBD") {
-    //     return spreadDisplay;
-    //   }
-      
-    //   // Otherwise format the number
-    //   if (typeof spreadNum === 'number' && !isNaN(spreadNum)) {
-    //     if (spreadNum === 0) return "PK";  // Pick 'em
-    //     return spreadNum > 0 ? `+${spreadNum}` : `${spreadNum}`;
-    //   }
-      
-    //   return null; // No spread available
-    // };
-
-    // Get the spread for display - fetch from schedule data with fallback to team document
     const getSpreadDisplay = () => {
       // Only show spread for current week
       if (viewMode !== 'current') return null;
 
-      // PRIMARY: Try to get spread from schedule data (most reliable source)
-      const scheduleGame = getScheduleEntry(scheduleData, teamName);
-      
-      if (scheduleGame && typeof scheduleGame.homeSpread === 'number') {
-        const isHome = scheduleGame.homeTeam === teamName;
-        const teamSpread = isHome ? scheduleGame.homeSpread : -scheduleGame.homeSpread;
-        
-        if (teamSpread === 0) return 'PK';
-        return teamSpread > 0 ? `+${teamSpread}` : `${teamSpread}`;
-      }
-      
-      // FALLBACK: If schedule data not available, use team document data
       const spreadDisplay = team?.currentSeason?.nextOpponentSpreadDisplay;
       const spreadNum = team?.currentSeason?.nextOpponentSpread;
       
