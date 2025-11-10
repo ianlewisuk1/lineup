@@ -5330,3 +5330,1064 @@ exports.debugTeamATS = onRequest(async (req, res) => {
     });
   }
 });
+
+
+/**
+ * 
+ * PLAYOFF FUNCTIONS
+ * Initialize playoff bracket after Week 11 completes
+ * Run this AFTER advancing from Week 11 → 12
+ * 
+ * Usage: /initializePlayoffs?leagueId=YOUR_LEAGUE_ID
+ */
+exports.initializePlayoffs = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    const leagueId = req.query.leagueId;
+    
+    if (!leagueId) {
+      return res.status(400).json({ error: 'leagueId required' });
+    }
+
+    console.log(`🏆 Initializing playoffs for league ${leagueId}...`);
+
+    // Get Week 11 final standings from weeklyStandings snapshots
+    const weeklyStandingsSnap = await db
+      .collection('leagues').doc(leagueId)
+      .collection('weeklyStandings')
+      .get();
+
+    const finalStandings = [];
+    
+    weeklyStandingsSnap.forEach(doc => {
+      const data = doc.data();
+      const week11Data = data.week11;
+      
+      if (week11Data) {
+        finalStandings.push({
+          userId: doc.id,
+          teamName: week11Data.teamName || 'Unnamed Team',
+          email: week11Data.email || 'Unknown',
+          points: week11Data.points || 0,
+          weeklyPoints: week11Data.weeklyPoints || 0,
+          rank: week11Data.rank || 999
+        });
+      }
+    });
+
+    // Sort by rank (should already be ranked, but double-check)
+    finalStandings.sort((a, b) => a.rank - b.rank);
+
+    if (finalStandings.length < 12) {
+      return res.status(400).json({ 
+        error: `Need 12 teams for playoffs. Found ${finalStandings.length}` 
+      });
+    }
+
+    // Assign seeds 1-12
+    const seededTeams = finalStandings.slice(0, 12).map((team, index) => ({
+      ...team,
+      seed: index + 1
+    }));
+
+    console.log('📊 Final Seeding:');
+    seededTeams.forEach(t => console.log(`  #${t.seed}: ${t.teamName} (${t.points} pts)`));
+
+    // Create playoff bracket structure
+    const playoffBracket = {
+      year: 2025,
+      leagueId: leagueId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      currentWeek: 12, // Playoff Week 1
+      
+      // Championship Bracket (Seeds 1-6)
+      championshipBracket: {
+        // Week 12 - Quarterfinals
+        week12: {
+          QF1: {
+            matchupId: 'QF1',
+            matchupName: 'Quarterfinal 1',
+            week: 12,
+            playoffWeek: 1,
+            team1: { // Seed 3
+              ...seededTeams[2],
+              role: 'seed3',
+              weeklyPoints: 0
+            },
+            team2: { // Seed 6
+              ...seededTeams[5],
+              role: 'seed6',
+              weeklyPoints: 0
+            },
+            winner: null, // Will be 'team1' or 'team2'
+            loserLabel: 'QFL1', // Loser becomes QFL1
+            completed: false
+          },
+          QF2: {
+            matchupId: 'QF2',
+            matchupName: 'Quarterfinal 2',
+            week: 12,
+            playoffWeek: 1,
+            team1: { // Seed 4
+              ...seededTeams[3],
+              role: 'seed4',
+              weeklyPoints: 0
+            },
+            team2: { // Seed 5
+              ...seededTeams[4],
+              role: 'seed5',
+              weeklyPoints: 0
+            },
+            winner: null, // Will be 'team1' or 'team2'
+            loserLabel: 'QFL2', // Loser becomes QFL2
+            completed: false
+          },
+          // Seeds 1 and 2 get byes
+          byes: [
+            { ...seededTeams[0], byeWeek: 12 }, // Seed 1
+            { ...seededTeams[1], byeWeek: 12 }  // Seed 2
+          ]
+        },
+        
+        // Week 13 - Semifinals + Consolation QF
+        week13: {
+          SF1: {
+            matchupId: 'SF1',
+            matchupName: 'Semifinal 1',
+            week: 13,
+            playoffWeek: 2,
+            team1: { // Seed 2
+              ...seededTeams[1],
+              role: 'seed2',
+              weeklyPoints: 0
+            },
+            team2: null, // Winner of QF1 (populated after Week 12)
+            team1WeeklyPoints: 0,
+            team2WeeklyPoints: 0,
+            winner: null,
+            loserLabel: 'SFL1', // Loser becomes SFL1
+            completed: false
+          },
+          SF2: {
+            matchupId: 'SF2',
+            matchupName: 'Semifinal 2',
+            week: 13,
+            playoffWeek: 2,
+            team1: { // Seed 1
+              ...seededTeams[0],
+              role: 'seed1',
+              weeklyPoints: 0
+            },
+            team2: null, // Winner of QF2 (populated after Week 12)
+            team1WeeklyPoints: 0,
+            team2WeeklyPoints: 0,
+            winner: null,
+            loserLabel: 'SFL2', // Loser becomes SFL2
+            completed: false
+          },
+          consolationQF: {
+            matchupId: 'consolationQF',
+            matchupName: 'Consolation Quarterfinal',
+            week: 13,
+            playoffWeek: 2,
+            team1: null, // QFL1 (loser of QF1)
+            team2: null, // QFL2 (loser of QF2)
+            team1WeeklyPoints: 0,
+            team2WeeklyPoints: 0,
+            winner: null, // Becomes QFLTS
+            loser: null,  // Becomes QFLBS
+            winnerLabel: 'QFLTS', // Third Seed
+            loserLabel: 'QFLBS',  // Bottom Seed
+            completed: false
+          }
+        },
+        
+        // Week 14 - Finals + Placement Games
+        week14: {
+          championship: {
+            matchupId: 'championship',
+            matchupName: 'CHAMPIONSHIP GAME',
+            week: 14,
+            playoffWeek: 3,
+            team1: null, // Winner of SF1
+            team2: null, // Winner of SF2
+            team1WeeklyPoints: 0,
+            team2WeeklyPoints: 0,
+            winner: null,
+            loser: null,
+            completed: false,
+            prizes: {
+              winner: { money: 175, draftPick: 12, title: 'CHAMPION' },
+              loser: { money: 100, draftPick: 11 }
+            }
+          },
+          thirdPlace: {
+            matchupId: 'thirdPlace',
+            matchupName: '3rd Place Game',
+            week: 14,
+            playoffWeek: 3,
+            team1: null, // QFLTS (winner of consolation QF)
+            team2: null, // Higher scorer of SFL1/SFL2 (determined after Week 13)
+            team1WeeklyPoints: 0,
+            team2WeeklyPoints: 0,
+            winner: null,
+            loser: null,
+            completed: false,
+            prizes: {
+              winner: { draftPick: 2 },
+              loser: { draftPick: 4 }
+            }
+          },
+          fifthPlace: {
+            matchupId: 'fifthPlace',
+            matchupName: '5th Place Game',
+            week: 14,
+            playoffWeek: 3,
+            team1: null, // QFLBS (loser of consolation QF)
+            team2: null, // Lower scorer of SFL1/SFL2 (determined after Week 13)
+            team1WeeklyPoints: 0,
+            team2WeeklyPoints: 0,
+            winner: null,
+            loser: null,
+            completed: false,
+            prizes: {
+              winner: { draftPick: 3 },
+              loser: { draftPick: 5 }
+            }
+          }
+        }
+      },
+      
+      // Loser Bracket (Seeds 7-12)
+      loserBracket: {
+        // Mini League (Seeds 7-11) - Weeks 12 & 13
+        miniLeague: {
+          description: 'Seeds 7-11 compete for cumulative points over Weeks 12-13',
+          participants: [
+            { ...seededTeams[6], miniLeagueRank: null },  // Seed 7
+            { ...seededTeams[7], miniLeagueRank: null },  // Seed 8
+            { ...seededTeams[8], miniLeagueRank: null },  // Seed 9
+            { ...seededTeams[9], miniLeagueRank: null },  // Seed 10
+            { ...seededTeams[10], miniLeagueRank: null }  // Seed 11
+          ],
+          week12Points: {}, // { userId: points }
+          week13Points: {}, // { userId: points }
+          totalPoints: {},  // { userId: total }
+          finalRankings: [], // Populated after Week 13 [{userId, totalPoints, rank: 1-5}]
+          completed: false
+        },
+        
+        // Seed 12 sits out Weeks 12-13
+        toiletBowlParticipant: {
+          ...seededTeams[11],
+          status: 'Awaits Toilet Bowl in Week 14'
+        },
+        
+        // Week 14 - Placement Games
+        week14: {
+          firstPickGame: {
+            matchupId: 'firstPickGame',
+            matchupName: '1st Pick Game',
+            week: 14,
+            playoffWeek: 3,
+            team1: null, // Rank 1 from mini league
+            team2: null, // Rank 2 from mini league
+            team1WeeklyPoints: 0,
+            team2WeeklyPoints: 0,
+            winner: null,
+            loser: null,
+            completed: false,
+            prizes: {
+              winner: { draftPick: 1, title: '1st Overall Pick' },
+              loser: { draftPick: 6 }
+            }
+          },
+          seventhPlace: {
+            matchupId: 'seventhPlace',
+            matchupName: '7th/8th Place Game',
+            week: 14,
+            playoffWeek: 3,
+            team1: null, // Rank 3 from mini league
+            team2: null, // Rank 4 from mini league
+            team1WeeklyPoints: 0,
+            team2WeeklyPoints: 0,
+            winner: null,
+            loser: null,
+            completed: false,
+            prizes: {
+              winner: { draftPick: 7 },
+              loser: { draftPick: 8 }
+            }
+          },
+          toiletBowl: {
+            matchupId: 'toiletBowl',
+            matchupName: 'TOILET BOWL 🚽',
+            week: 14,
+            playoffWeek: 3,
+            team1: null, // Rank 5 from mini league
+            team2: { // Seed 12
+              ...seededTeams[11],
+              role: 'seed12',
+              weeklyPoints: 0
+            },
+            team1WeeklyPoints: 0,
+            team2WeeklyPoints: 0,
+            winner: null,
+            loser: null,
+            completed: false,
+            prizes: {
+              winner: { draftPick: 9 },
+              loser: { draftPick: 10, title: 'ULTIMATE LOSER 🚽' }
+            }
+          }
+        }
+      }
+    };
+
+    // Save playoff bracket to Firestore
+    await db
+      .collection('leagues').doc(leagueId)
+      .collection('playoffs').doc('2025')
+      .set(playoffBracket);
+
+    console.log('✅ Playoff bracket created and saved to Firestore');
+
+    // Create a summary for response
+    const summary = {
+      championshipBracket: {
+        week12: [
+          `QF1: #3 ${seededTeams[2].teamName} vs #6 ${seededTeams[5].teamName}`,
+          `QF2: #4 ${seededTeams[3].teamName} vs #5 ${seededTeams[4].teamName}`,
+          `Byes: #1 ${seededTeams[0].teamName}, #2 ${seededTeams[1].teamName}`
+        ],
+        week13: [
+          `SF1: #2 ${seededTeams[1].teamName} vs Winner(QF1)`,
+          `SF2: #1 ${seededTeams[0].teamName} vs Winner(QF2)`,
+          `Consolation: Loser(QF1) vs Loser(QF2)`
+        ],
+        week14: [
+          `Championship: Winner(SF1) vs Winner(SF2)`,
+          `3rd Place: QFLTS vs Higher SFL`,
+          `5th Place: QFLBS vs Lower SFL`
+        ]
+      },
+      loserBracket: {
+        miniLeague: [
+          `#7 ${seededTeams[6].teamName}`,
+          `#8 ${seededTeams[7].teamName}`,
+          `#9 ${seededTeams[8].teamName}`,
+          `#10 ${seededTeams[9].teamName}`,
+          `#11 ${seededTeams[10].teamName}`,
+          `(Compete for cumulative points over Weeks 12-13)`
+        ],
+        toiletBowlParticipant: `#12 ${seededTeams[11].teamName} (sits out until Week 14)`,
+        week14: [
+          `1st Pick Game: Mini League Rank 1 vs Rank 2`,
+          `7th/8th Place: Mini League Rank 3 vs Rank 4`,
+          `Toilet Bowl: Mini League Rank 5 vs #12 Seed`
+        ]
+      }
+    };
+
+    res.json({
+      success: true,
+      message: '🏆 Playoffs initialized for Week 12',
+      seeding: seededTeams.map(t => ({ 
+        seed: t.seed, 
+        teamName: t.teamName, 
+        points: t.points 
+      })),
+      summary,
+      bracketId: '2025'
+    });
+
+  } catch (error) {
+    console.error('❌ Error initializing playoffs:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+/**
+ * Advance playoff week and determine matchups/winners
+ * Handles Week 12→13, Week 13→14, and Week 14→Complete
+ * 
+ * Usage: /advancePlayoffWeek?leagueId=YOUR_LEAGUE_ID
+ */
+exports.advancePlayoffWeek = onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    const leagueId = req.query.leagueId;
+    
+    if (!leagueId) {
+      return res.status(400).json({ error: 'leagueId required' });
+    }
+
+    // Get current week from config
+    const seasonRef = db.collection('config').doc('season');
+    const seasonSnap = await seasonRef.get();
+    const currentWeek = seasonSnap.data()?.currentWeek || 12;
+
+    if (currentWeek < 12 || currentWeek > 14) {
+      return res.status(400).json({ 
+        error: `Invalid week for playoff advancement: ${currentWeek}. Must be 12, 13, or 14.` 
+      });
+    }
+
+    console.log(`🏆 Advancing playoff week ${currentWeek} → ${currentWeek + 1}...`);
+
+    // Get playoff bracket
+    const playoffRef = db
+      .collection('leagues').doc(leagueId)
+      .collection('playoffs').doc('2025');
+    
+    const playoffSnap = await playoffRef.get();
+    
+    if (!playoffSnap.exists) {
+      return res.status(404).json({ 
+        error: 'Playoff bracket not found. Run initializePlayoffs first.' 
+      });
+    }
+
+    const bracket = playoffSnap.data();
+
+    // Route to appropriate handler based on current week
+    let result;
+    
+    if (currentWeek === 12) {
+      result = await advanceFromWeek12(db, leagueId, bracket, playoffRef);
+    } else if (currentWeek === 13) {
+      result = await advanceFromWeek13(db, leagueId, bracket, playoffRef);
+    } else if (currentWeek === 14) {
+      result = await finalizePlayoffs(db, leagueId, bracket, playoffRef);
+    }
+
+    // Advance global week
+    await seasonRef.update({
+      currentWeek: currentWeek + 1,
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      playoffWeekAdvanced: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Snapshot current week standings (like regular season)
+    await snapshotPlayoffWeek(db, leagueId, currentWeek, bracket);
+
+    res.json({
+      success: true,
+      previousWeek: currentWeek,
+      newWeek: currentWeek + 1,
+      ...result
+    });
+
+  } catch (error) {
+    console.error('❌ Error advancing playoff week:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
+/**
+ * Helper: Advance from Week 12 to Week 13
+ * Determines QF winners, populates SF matchups
+ */
+async function advanceFromWeek12(db, leagueId, bracket, playoffRef) {
+  console.log('📊 Processing Week 12 results...');
+
+  const week12 = bracket.championshipBracket.week12;
+  
+  // Get member data for current week 12 points
+  const membersSnap = await db
+    .collection('leagues').doc(leagueId)
+    .collection('members')
+    .get();
+  
+  const memberPoints = {};
+  membersSnap.forEach(doc => {
+    memberPoints[doc.id] = {
+      weeklyPoints: doc.data().weeklyPoints || 0,
+      seasonPoints: doc.data().points || 0
+    };
+  });
+
+  // --- Determine QF1 Winner ---
+  const QF1 = week12.QF1;
+  const qf1Team1Points = memberPoints[QF1.team1.userId]?.weeklyPoints || 0;
+  const qf1Team2Points = memberPoints[QF1.team2.userId]?.weeklyPoints || 0;
+  
+  const qf1Winner = determineWinner(
+    QF1.team1, qf1Team1Points,
+    QF1.team2, qf1Team2Points,
+    memberPoints
+  );
+  
+  const qf1Loser = qf1Winner.userId === QF1.team1.userId ? QF1.team2 : QF1.team1;
+  
+  console.log(`QF1 Result: ${qf1Winner.teamName} defeats ${qf1Loser.teamName} (${qf1Winner.weeklyPoints} - ${qf1Loser.weeklyPoints})`);
+
+  // --- Determine QF2 Winner ---
+  const QF2 = week12.QF2;
+  const qf2Team1Points = memberPoints[QF2.team1.userId]?.weeklyPoints || 0;
+  const qf2Team2Points = memberPoints[QF2.team2.userId]?.weeklyPoints || 0;
+  
+  const qf2Winner = determineWinner(
+    QF2.team1, qf2Team1Points,
+    QF2.team2, qf2Team2Points,
+    memberPoints
+  );
+  
+  const qf2Loser = qf2Winner.userId === QF2.team1.userId ? QF2.team2 : QF2.team1;
+  
+  console.log(`QF2 Result: ${qf2Winner.teamName} defeats ${qf2Loser.teamName} (${qf2Winner.weeklyPoints} - ${qf2Loser.weeklyPoints})`);
+
+  // --- Update Mini League Week 12 Points ---
+  const miniLeague = bracket.loserBracket.miniLeague;
+  const week12MiniPoints = {};
+  
+  miniLeague.participants.forEach(participant => {
+    const points = memberPoints[participant.userId]?.weeklyPoints || 0;
+    week12MiniPoints[participant.userId] = points;
+    console.log(`Mini League - ${participant.teamName}: ${points} pts (Week 12)`);
+  });
+
+  // --- Update Bracket for Week 13 ---
+  await playoffRef.update({
+    // Mark QF games as complete
+    'championshipBracket.week12.QF1.completed': true,
+    'championshipBracket.week12.QF1.winner': qf1Winner.userId === QF1.team1.userId ? 'team1' : 'team2',
+    'championshipBracket.week12.QF1.team1.weeklyPoints': qf1Team1Points,
+    'championshipBracket.week12.QF1.team2.weeklyPoints': qf1Team2Points,
+    
+    'championshipBracket.week12.QF2.completed': true,
+    'championshipBracket.week12.QF2.winner': qf2Winner.userId === QF2.team1.userId ? 'team1' : 'team2',
+    'championshipBracket.week12.QF2.team1.weeklyPoints': qf2Team1Points,
+    'championshipBracket.week12.QF2.team2.weeklyPoints': qf2Team2Points,
+    
+    // Populate Week 13 matchups
+    'championshipBracket.week13.SF1.team2': qf1Winner,
+    'championshipBracket.week13.SF2.team2': qf2Winner,
+    'championshipBracket.week13.consolationQF.team1': qf1Loser,
+    'championshipBracket.week13.consolationQF.team2': qf2Loser,
+    
+    // Update mini league Week 12 points
+    'loserBracket.miniLeague.week12Points': week12MiniPoints,
+    
+    'currentWeek': 13,
+    'lastUpdated': admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  return {
+    week12Results: {
+      QF1: { winner: qf1Winner.teamName, loser: qf1Loser.teamName, score: `${qf1Team1Points}-${qf1Team2Points}` },
+      QF2: { winner: qf2Winner.teamName, loser: qf2Loser.teamName, score: `${qf2Team1Points}-${qf2Team2Points}` }
+    },
+    week13Matchups: {
+      SF1: `${bracket.championshipBracket.week13.SF1.team1.teamName} vs ${qf1Winner.teamName}`,
+      SF2: `${bracket.championshipBracket.week13.SF2.team1.teamName} vs ${qf2Winner.teamName}`,
+      consolationQF: `${qf1Loser.teamName} vs ${qf2Loser.teamName}`
+    },
+    miniLeagueWeek12: week12MiniPoints
+  };
+}
+
+/**
+ * Helper: Advance from Week 13 to Week 14
+ * Determines SF winners, finalizes mini league, creates dynamic Week 14 matchups
+ */
+async function advanceFromWeek13(db, leagueId, bracket, playoffRef) {
+  console.log('📊 Processing Week 13 results...');
+
+  const week13 = bracket.championshipBracket.week13;
+  
+  // Get member data for current week 13 points
+  const membersSnap = await db
+    .collection('leagues').doc(leagueId)
+    .collection('members')
+    .get();
+  
+  const memberPoints = {};
+  membersSnap.forEach(doc => {
+    memberPoints[doc.id] = {
+      weeklyPoints: doc.data().weeklyPoints || 0,
+      seasonPoints: doc.data().points || 0
+    };
+  });
+
+  // --- Determine SF1 Winner ---
+  const SF1 = week13.SF1;
+  const sf1Team1Points = memberPoints[SF1.team1.userId]?.weeklyPoints || 0;
+  const sf1Team2Points = memberPoints[SF1.team2.userId]?.weeklyPoints || 0;
+  
+  const sf1Winner = determineWinner(
+    SF1.team1, sf1Team1Points,
+    SF1.team2, sf1Team2Points,
+    memberPoints
+  );
+  
+  const SF1Loser = sf1Winner.userId === SF1.team1.userId ? SF1.team2 : SF1.team1;
+  SF1Loser.week13Points = sf1Winner.userId === SF1.team1.userId ? sf1Team2Points : sf1Team1Points;
+  
+  console.log(`SF1 Result: ${sf1Winner.teamName} defeats ${SF1Loser.teamName} (${sf1Winner.weeklyPoints} - ${SF1Loser.weeklyPoints})`);
+
+  // --- Determine SF2 Winner ---
+  const SF2 = week13.SF2;
+  const sf2Team1Points = memberPoints[SF2.team1.userId]?.weeklyPoints || 0;
+  const sf2Team2Points = memberPoints[SF2.team2.userId]?.weeklyPoints || 0;
+  
+  const sf2Winner = determineWinner(
+    SF2.team1, sf2Team1Points,
+    SF2.team2, sf2Team2Points,
+    memberPoints
+  );
+  
+  const SF2Loser = sf2Winner.userId === SF2.team1.userId ? SF2.team2 : SF2.team1;
+  SF2Loser.week13Points = sf2Winner.userId === SF2.team1.userId ? sf2Team2Points : sf2Team1Points;
+  
+  console.log(`SF2 Result: ${sf2Winner.teamName} defeats ${SF2Loser.teamName} (${sf2Winner.weeklyPoints} - ${SF2Loser.weeklyPoints})`);
+
+  // --- Determine Consolation QF Winner (QFLTS/QFLBS) ---
+  const consolationQF = week13.consolationQF;
+  const cqfTeam1Points = memberPoints[consolationQF.team1.userId]?.weeklyPoints || 0;
+  const cqfTeam2Points = memberPoints[consolationQF.team2.userId]?.weeklyPoints || 0;
+  
+  const QFLTS = determineWinner(
+    consolationQF.team1, cqfTeam1Points,
+    consolationQF.team2, cqfTeam2Points,
+    memberPoints
+  );
+  
+  const QFLBS = QFLTS.userId === consolationQF.team1.userId ? consolationQF.team2 : consolationQF.team1;
+  
+  console.log(`Consolation QF: ${QFLTS.teamName} (QFLTS) defeats ${QFLBS.teamName} (QFLBS)`);
+
+  // --- Dynamic SFL Matchup Assignment ---
+  // "QFLTS v SFL1/SFL2 depending on who scored more in the previous week"
+  let higherSFL, lowerSFL;
+  
+  if (SF1Loser.week13Points > SF2Loser.week13Points) {
+    higherSFL = SF1Loser;
+    lowerSFL = SF2Loser;
+    higherSFL.label = 'SFL1';
+    lowerSFL.label = 'SFL2';
+  } else if (SF2Loser.week13Points > SF1Loser.week13Points) {
+    higherSFL = SF2Loser;
+    lowerSFL = SF1Loser;
+    higherSFL.label = 'SFL2';
+    lowerSFL.label = 'SFL1';
+  } else {
+    // Tie - use season points as tiebreaker
+    const sf1SeasonPoints = memberPoints[SF1Loser.userId]?.seasonPoints || 0;
+    const sf2SeasonPoints = memberPoints[SF2Loser.userId]?.seasonPoints || 0;
+    
+    if (sf1SeasonPoints > sf2SeasonPoints) {
+      higherSFL = SF1Loser;
+      lowerSFL = SF2Loser;
+    } else {
+      higherSFL = SF2Loser;
+      lowerSFL = SF1Loser;
+    }
+    
+    higherSFL.label = higherSFL.userId === SF1Loser.userId ? 'SFL1' : 'SFL2';
+    lowerSFL.label = lowerSFL.userId === SF1Loser.userId ? 'SFL1' : 'SFL2';
+  }
+  
+  console.log(`Dynamic matchups: Higher SFL (${higherSFL.label}: ${higherSFL.teamName}) vs QFLTS for 3rd place`);
+  console.log(`Dynamic matchups: Lower SFL (${lowerSFL.label}: ${lowerSFL.teamName}) vs QFLBS for 5th place`);
+
+  // --- Finalize Mini League Rankings ---
+  const miniLeague = bracket.loserBracket.miniLeague;
+  const week13MiniPoints = {};
+  const totalMiniPoints = {};
+  
+  miniLeague.participants.forEach(participant => {
+    const week12Pts = miniLeague.week12Points[participant.userId] || 0;
+    const week13Pts = memberPoints[participant.userId]?.weeklyPoints || 0;
+    const total = week12Pts + week13Pts;
+    
+    week13MiniPoints[participant.userId] = week13Pts;
+    totalMiniPoints[participant.userId] = total;
+    
+    console.log(`Mini League - ${participant.teamName}: Week 12: ${week12Pts}, Week 13: ${week13Pts}, Total: ${total}`);
+  });
+
+  // Sort mini league by total points
+  const miniLeagueRankings = miniLeague.participants
+    .map(p => ({
+      ...p,
+      totalPoints: totalMiniPoints[p.userId],
+      week12Points: miniLeague.week12Points[p.userId] || 0,
+      week13Points: week13MiniPoints[p.userId]
+    }))
+    .sort((a, b) => {
+      if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+      // Tiebreaker: season points
+      const aSeasonPts = memberPoints[a.userId]?.seasonPoints || 0;
+      const bSeasonPts = memberPoints[b.userId]?.seasonPoints || 0;
+      return bSeasonPts - aSeasonPts;
+    })
+    .map((p, idx) => ({
+      ...p,
+      miniLeagueRank: idx + 1
+    }));
+
+  console.log('Mini League Final Rankings:');
+  miniLeagueRankings.forEach(p => {
+    console.log(`  #${p.miniLeagueRank}: ${p.teamName} (${p.totalPoints} pts)`);
+  });
+
+  // --- Update Bracket for Week 14 ---
+  await playoffRef.update({
+    // Mark Week 13 games as complete
+    'championshipBracket.week13.SF1.completed': true,
+    'championshipBracket.week13.SF1.winner': sf1Winner.userId === SF1.team1.userId ? 'team1' : 'team2',
+    'championshipBracket.week13.SF1.team1.weeklyPoints': sf1Team1Points,
+    'championshipBracket.week13.SF1.team2.weeklyPoints': sf1Team2Points,
+    
+    'championshipBracket.week13.SF2.completed': true,
+    'championshipBracket.week13.SF2.winner': sf2Winner.userId === SF2.team1.userId ? 'team1' : 'team2',
+    'championshipBracket.week13.SF2.team1.weeklyPoints': sf2Team1Points,
+    'championshipBracket.week13.SF2.team2.weeklyPoints': sf2Team2Points,
+    
+    'championshipBracket.week13.consolationQF.completed': true,
+    'championshipBracket.week13.consolationQF.winner': QFLTS.userId === consolationQF.team1.userId ? 'team1' : 'team2',
+    'championshipBracket.week13.consolationQF.team1.weeklyPoints': cqfTeam1Points,
+    'championshipBracket.week13.consolationQF.team2.weeklyPoints': cqfTeam2Points,
+    
+    // Populate Week 14 Championship bracket matchups
+    'championshipBracket.week14.championship.team1': sf1Winner,
+    'championshipBracket.week14.championship.team2': sf2Winner,
+    'championshipBracket.week14.thirdPlace.team1': QFLTS,
+    'championshipBracket.week14.thirdPlace.team2': higherSFL,
+    'championshipBracket.week14.fifthPlace.team1': QFLBS,
+    'championshipBracket.week14.fifthPlace.team2': lowerSFL,
+    
+    // Finalize mini league
+    'loserBracket.miniLeague.week13Points': week13MiniPoints,
+    'loserBracket.miniLeague.totalPoints': totalMiniPoints,
+    'loserBracket.miniLeague.finalRankings': miniLeagueRankings,
+    'loserBracket.miniLeague.completed': true,
+    
+    // Populate Week 14 Loser bracket matchups
+    'loserBracket.week14.firstPickGame.team1': miniLeagueRankings[0],
+    'loserBracket.week14.firstPickGame.team2': miniLeagueRankings[1],
+    'loserBracket.week14.seventhPlace.team1': miniLeagueRankings[2],
+    'loserBracket.week14.seventhPlace.team2': miniLeagueRankings[3],
+    'loserBracket.week14.toiletBowl.team1': miniLeagueRankings[4],
+    
+    'currentWeek': 14,
+    'lastUpdated': admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  return {
+    week13Results: {
+      SF1: { winner: sf1Winner.teamName, loser: SF1Loser.teamName, score: `${sf1Team1Points}-${sf1Team2Points}` },
+      SF2: { winner: sf2Winner.teamName, loser: SF2Loser.teamName, score: `${sf2Team1Points}-${sf2Team2Points}` },
+      consolationQF: { QFLTS: QFLTS.teamName, QFLBS: QFLBS.teamName, score: `${cqfTeam1Points}-${cqfTeam2Points}` }
+    },
+    week14Matchups: {
+      championship: `${sf1Winner.teamName} vs ${sf2Winner.teamName}`,
+      thirdPlace: `${QFLTS.teamName} (QFLTS) vs ${higherSFL.teamName} (${higherSFL.label})`,
+      fifthPlace: `${QFLBS.teamName} (QFLBS) vs ${lowerSFL.teamName} (${lowerSFL.label})`,
+      firstPickGame: `${miniLeagueRankings[0].teamName} vs ${miniLeagueRankings[1].teamName}`,
+      seventhPlace: `${miniLeagueRankings[2].teamName} vs ${miniLeagueRankings[3].teamName}`,
+      toiletBowl: `${miniLeagueRankings[4].teamName} vs ${bracket.loserBracket.toiletBowlParticipant.teamName}`
+    },
+    miniLeagueFinalRankings: miniLeagueRankings.map(p => ({ 
+      rank: p.miniLeagueRank, 
+      teamName: p.teamName, 
+      totalPoints: p.totalPoints 
+    }))
+  };
+}
+
+/**
+ * Helper: Finalize playoffs after Week 14
+ * Crown champion, assign all draft picks
+ */
+async function finalizePlayoffs(db, leagueId, bracket, playoffRef) {
+  console.log('🏆 Finalizing playoffs after Week 14...');
+
+  const week14Champ = bracket.championshipBracket.week14;
+  const week14Loser = bracket.loserBracket.week14;
+  
+  // Get member data for week 14 points
+  const membersSnap = await db
+    .collection('leagues').doc(leagueId)
+    .collection('members')
+    .get();
+  
+  const memberPoints = {};
+  membersSnap.forEach(doc => {
+    memberPoints[doc.id] = {
+      weeklyPoints: doc.data().weeklyPoints || 0,
+      seasonPoints: doc.data().points || 0
+    };
+  });
+
+  const results = {};
+  const draftOrder = new Array(12).fill(null);
+
+  // --- Championship Game ---
+  const champ = week14Champ.championship;
+  const champTeam1Points = memberPoints[champ.team1.userId]?.weeklyPoints || 0;
+  const champTeam2Points = memberPoints[champ.team2.userId]?.weeklyPoints || 0;
+  
+  const champion = determineWinner(
+    champ.team1, champTeam1Points,
+    champ.team2, champTeam2Points,
+    memberPoints
+  );
+  
+  const runnerUp = champion.userId === champ.team1.userId ? champ.team2 : champ.team1;
+  
+  draftOrder[11] = { ...champion, pick: 12, prize: '$175', title: 'CHAMPION 🏆' };
+  draftOrder[10] = { ...runnerUp, pick: 11, prize: '$100', title: 'Runner-Up' };
+  
+  results.championship = { 
+    champion: champion.teamName, 
+    runnerUp: runnerUp.teamName, 
+    score: `${champTeam1Points}-${champTeam2Points}` 
+  };
+
+  // --- 3rd Place Game ---
+  const third = week14Champ.thirdPlace;
+  const thirdTeam1Points = memberPoints[third.team1.userId]?.weeklyPoints || 0;
+  const thirdTeam2Points = memberPoints[third.team2.userId]?.weeklyPoints || 0;
+  
+  const thirdPlaceWinner = determineWinner(
+    third.team1, thirdTeam1Points,
+    third.team2, thirdTeam2Points,
+    memberPoints
+  );
+  
+  const fourthPlace = thirdPlaceWinner.userId === third.team1.userId ? third.team2 : third.team1;
+  
+  draftOrder[1] = { ...thirdPlaceWinner, pick: 2, title: '3rd Place' };
+  draftOrder[3] = { ...fourthPlace, pick: 4, title: '4th Place' };
+  
+  results.thirdPlace = { 
+    winner: thirdPlaceWinner.teamName, 
+    loser: fourthPlace.teamName, 
+    score: `${thirdTeam1Points}-${thirdTeam2Points}` 
+  };
+
+  // --- 5th Place Game ---
+  const fifth = week14Champ.fifthPlace;
+  const fifthTeam1Points = memberPoints[fifth.team1.userId]?.weeklyPoints || 0;
+  const fifthTeam2Points = memberPoints[fifth.team2.userId]?.weeklyPoints || 0;
+  
+  const fifthPlaceWinner = determineWinner(
+    fifth.team1, fifthTeam1Points,
+    fifth.team2, fifthTeam2Points,
+    memberPoints
+  );
+  
+  const sixthPlace = fifthPlaceWinner.userId === fifth.team1.userId ? fifth.team2 : fifth.team1;
+  
+  draftOrder[2] = { ...fifthPlaceWinner, pick: 3, title: '5th Place' };
+  draftOrder[4] = { ...sixthPlace, pick: 5, title: '6th Place' };
+  
+  results.fifthPlace = { 
+    winner: fifthPlaceWinner.teamName, 
+    loser: sixthPlace.teamName, 
+    score: `${fifthTeam1Points}-${fifthTeam2Points}` 
+  };
+
+  // --- 1st Pick Game ---
+  const firstPick = week14Loser.firstPickGame;
+  const fpTeam1Points = memberPoints[firstPick.team1.userId]?.weeklyPoints || 0;
+  const fpTeam2Points = memberPoints[firstPick.team2.userId]?.weeklyPoints || 0;
+  
+  const firstPickWinner = determineWinner(
+    firstPick.team1, fpTeam1Points,
+    firstPick.team2, fpTeam2Points,
+    memberPoints
+  );
+  
+  const sixthPickTeam = firstPickWinner.userId === firstPick.team1.userId ? firstPick.team2 : firstPick.team1;
+  
+  draftOrder[0] = { ...firstPickWinner, pick: 1, title: '1st Overall Pick' };
+  draftOrder[5] = { ...sixthPickTeam, pick: 6, title: '6th Pick' };
+  
+  results.firstPickGame = { 
+    winner: firstPickWinner.teamName, 
+    loser: sixthPickTeam.teamName, 
+    score: `${fpTeam1Points}-${fpTeam2Points}` 
+  };
+
+  // --- 7th/8th Place Game ---
+  const seventh = week14Loser.seventhPlace;
+  const sevTeam1Points = memberPoints[seventh.team1.userId]?.weeklyPoints || 0;
+  const sevTeam2Points = memberPoints[seventh.team2.userId]?.weeklyPoints || 0;
+  
+  const seventhPlaceWinner = determineWinner(
+    seventh.team1, sevTeam1Points,
+    seventh.team2, sevTeam2Points,
+    memberPoints
+  );
+  
+  const eighthPlace = seventhPlaceWinner.userId === seventh.team1.userId ? seventh.team2 : seventh.team1;
+  
+  draftOrder[6] = { ...seventhPlaceWinner, pick: 7, title: '7th Place' };
+  draftOrder[7] = { ...eighthPlace, pick: 8, title: '8th Place' };
+  
+  results.seventhPlace = { 
+    winner: seventhPlaceWinner.teamName, 
+    loser: eighthPlace.teamName, 
+    score: `${sevTeam1Points}-${sevTeam2Points}` 
+  };
+
+  // --- Toilet Bowl ---
+  const toilet = week14Loser.toiletBowl;
+  const toiletTeam1Points = memberPoints[toilet.team1.userId]?.weeklyPoints || 0;
+  const toiletTeam2Points = memberPoints[toilet.team2.userId]?.weeklyPoints || 0;
+  
+  const toiletWinner = determineWinner(
+    toilet.team1, toiletTeam1Points,
+    toilet.team2, toiletTeam2Points,
+    memberPoints
+  );
+  
+  const ultimateLoser = toiletWinner.userId === toilet.team1.userId ? toilet.team2 : toilet.team1;
+  
+  draftOrder[8] = { ...toiletWinner, pick: 9, title: '9th Place' };
+  draftOrder[9] = { ...ultimateLoser, pick: 10, title: 'ULTIMATE LOSER 🚽' };
+  
+  results.toiletBowl = { 
+    winner: toiletWinner.teamName, 
+    loser: ultimateLoser.teamName, 
+    score: `${toiletTeam1Points}-${toiletTeam2Points}` 
+  };
+
+  // --- Save Final Results ---
+  await playoffRef.update({
+    // Mark all Week 14 games complete
+    'championshipBracket.week14.championship.completed': true,
+    'championshipBracket.week14.championship.winner': champion.userId === champ.team1.userId ? 'team1' : 'team2',
+    'championshipBracket.week14.championship.team1.weeklyPoints': champTeam1Points,
+    'championshipBracket.week14.championship.team2.weeklyPoints': champTeam2Points,
+    
+    'championshipBracket.week14.thirdPlace.completed': true,
+    'championshipBracket.week14.thirdPlace.winner': thirdPlaceWinner.userId === third.team1.userId ? 'team1' : 'team2',
+    'championshipBracket.week14.thirdPlace.team1.weeklyPoints': thirdTeam1Points,
+    'championshipBracket.week14.thirdPlace.team2.weeklyPoints': thirdTeam2Points,
+    
+    'championshipBracket.week14.fifthPlace.completed': true,
+    'championshipBracket.week14.fifthPlace.winner': fifthPlaceWinner.userId === fifth.team1.userId ? 'team1' : 'team2',
+    'championshipBracket.week14.fifthPlace.team1.weeklyPoints': fifthTeam1Points,
+    'championshipBracket.week14.fifthPlace.team2.weeklyPoints': fifthTeam2Points,
+    
+    'loserBracket.week14.firstPickGame.completed': true,
+    'loserBracket.week14.firstPickGame.winner': firstPickWinner.userId === firstPick.team1.userId ? 'team1' : 'team2',
+    'loserBracket.week14.firstPickGame.team1.weeklyPoints': fpTeam1Points,
+    'loserBracket.week14.firstPickGame.team2.weeklyPoints': fpTeam2Points,
+    
+    'loserBracket.week14.seventhPlace.completed': true,
+    'loserBracket.week14.seventhPlace.winner': seventhPlaceWinner.userId === seventh.team1.userId ? 'team1' : 'team2',
+    'loserBracket.week14.seventhPlace.team1.weeklyPoints': sevTeam1Points,
+    'loserBracket.week14.seventhPlace.team2.weeklyPoints': sevTeam2Points,
+    
+    'loserBracket.week14.toiletBowl.completed': true,
+    'loserBracket.week14.toiletBowl.winner': toiletWinner.userId === toilet.team1.userId ? 'team1' : 'team2',
+    'loserBracket.week14.toiletBowl.team1.weeklyPoints': toiletTeam1Points,
+    'loserBracket.week14.toiletBowl.team2.weeklyPoints': toiletTeam2Points,
+    
+    'finalDraftOrder': draftOrder,
+    'playoffsComplete': true,
+    'completedAt': admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  console.log('🏆 PLAYOFFS COMPLETE!');
+  console.log(`Champion: ${champion.teamName}`);
+  console.log(`Ultimate Loser: ${ultimateLoser.teamName}`);
+
+  return {
+    results,
+    finalDraftOrder: draftOrder.map(d => ({ 
+      pick: d.pick, 
+      teamName: d.teamName, 
+      title: d.title,
+      prize: d.prize 
+    }))
+  };
+}
+
+/**
+ * Helper: Determine winner with tiebreaker logic
+ */
+function determineWinner(team1, team1WeeklyPoints, team2, team2WeeklyPoints, memberPoints) {
+  // Add weekly points to team objects for logging
+  team1 = { ...team1, weeklyPoints: team1WeeklyPoints };
+  team2 = { ...team2, weeklyPoints: team2WeeklyPoints };
+  
+  if (team1WeeklyPoints > team2WeeklyPoints) {
+    return team1;
+  } else if (team2WeeklyPoints > team1WeeklyPoints) {
+    return team2;
+  } else {
+    // Tiebreaker 1: Season points
+    const team1SeasonPoints = memberPoints[team1.userId]?.seasonPoints || 0;
+    const team2SeasonPoints = memberPoints[team2.userId]?.seasonPoints || 0;
+    
+    if (team1SeasonPoints > team2SeasonPoints) {
+      console.log(`  Tiebreaker (season pts): ${team1.teamName} (${team1SeasonPoints}) > ${team2.teamName} (${team2SeasonPoints})`);
+      return team1;
+    } else if (team2SeasonPoints > team1SeasonPoints) {
+      console.log(`  Tiebreaker (season pts): ${team2.teamName} (${team2SeasonPoints}) > ${team1.teamName} (${team1SeasonPoints})`);
+      return team2;
+    } else {
+      // Tiebreaker 2: Coin flip
+      const coinFlip = Math.random() > 0.5;
+      console.log(`  Tiebreaker (coin flip): ${coinFlip ? team1.teamName : team2.teamName} wins`);
+      return coinFlip ? team1 : team2;
+    }
+  }
+}
+
+/**
+ * Helper: Snapshot playoff week like regular season
+ */
+async function snapshotPlayoffWeek(db, leagueId, week, bracket) {
+  console.log(`📸 Snapshotting playoff week ${week}...`);
+  
+  const membersSnap = await db
+    .collection('leagues').doc(leagueId)
+    .collection('members')
+    .get();
+  
+  for (const memberDoc of membersSnap.docs) {
+    const memberData = memberDoc.data();
+    const userId = memberDoc.id;
+    
+    const weeklyStandingsRef = db
+      .collection('leagues').doc(leagueId)
+      .collection('weeklyStandings').doc(userId);
+    
+    const snapshotData = {
+      [`week${week}`]: {
+        points: memberData.points || 0,
+        weeklyPoints: memberData.weeklyPoints || 0,
+        rank: null, // Not applicable in playoffs
+        teamName: memberData.teamName || 'Unknown Team',
+        email: memberData.email || 'Unknown',
+        snapshotAt: admin.firestore.FieldValue.serverTimestamp(),
+        playoffWeek: true,
+        lineup: {
+          starters: memberData.lineup?.starters || [],
+          bench: memberData.lineup?.bench || [],
+          captain: memberData.lineup?.captain || null,
+          tripPlayTeam: memberData.lineup?.tripPlayTeam || null
+        }
+      }
+    };
+    
+    await weeklyStandingsRef.set(snapshotData, { merge: true });
+  }
+  
+  console.log(`✅ Week ${week} playoff snapshot complete`);
+}
