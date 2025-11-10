@@ -679,7 +679,7 @@ const PlayoffBracketDiagram = ({ bracket, currentWeek }) => {
                       {getWinnerDisplay(champ.week13?.SF2, 'team1')}
                     </>
                   ) : (
-                    <div className="text-[10px] text-white/50 italic">Highest Scoring QF Winner</div>
+                    <div className="text-[10px] text-white/50 italic">Top Scoring QF Winner</div>
                   )}
                 </div>
                 <div className="text-center text-[8px] text-white/40">vs</div>
