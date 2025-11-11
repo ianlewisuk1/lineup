@@ -87,7 +87,7 @@ const PlayoffBracket = ({ bracket, allTeams, TeamLogo, viewMode, selectedWeek, c
         {displayWeek >= 12 && displayWeek <= 13 && (
           <div className="mb-8">
             <h3 className="text-lg font-semibold text-purple-400 mb-4">
-              Mini League (Week 12-13)
+              #1 Pick Shootout (Week 12-13)
             </h3>
               <MiniLeagueStandings 
                 miniLeague={loser.miniLeague} 
@@ -773,7 +773,7 @@ const PlayoffBracketDiagram = ({ bracket, currentWeek }) => {
             <div className="text-[10px] font-bold text-purple-400 text-center mb-2">WEEK 12-13</div>
             
             <div className="bg-purple-500/20 border border-purple-400/40 rounded-lg p-3">
-              <div className="text-[9px] text-purple-400 font-bold mb-2 text-center">MINI LEAGUE</div>
+              <div className="text-[9px] text-purple-400 font-bold mb-2 text-center">#1 Pick Shootout</div>
               <div className="space-y-1">
                 {standingsWithPoints.map((participant, idx) => {
                   const isTop2 = idx < 2;
