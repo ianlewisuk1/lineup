@@ -30,8 +30,8 @@ const PlayoffBracket = ({ bracket, allTeams, TeamLogo, viewMode, selectedWeek, c
           🏆 Championship Bracket
         </h2>
 
-        {/* Week 12 - Quarterfinals */}
-        {displayWeek >= 12 && (
+        {/* Week 12 - Quarterfinals - Only show during Week 12 */}
+        {displayWeek === 12 && (
           <div className="mb-8">
             <h3 className="text-lg font-semibold text-green-400 mb-4">Week 12 - Quarterfinals</h3>
             <div className="grid md:grid-cols-2 gap-4">
@@ -125,12 +125,17 @@ const PlayoffBracket = ({ bracket, allTeams, TeamLogo, viewMode, selectedWeek, c
   );
 };
 
-// Matchup Card Component
 const MatchupCard = ({ matchup, allTeams, TeamLogo, featured = false, members }) => {
   if (!matchup) return null;
 
   const team1 = matchup.team1;
   const team2 = matchup.team2;
+
+  // ADD THIS NEW HELPER FUNCTION
+  const getMemberCurrentWeeklyPoints = (userId) => {
+    const member = members?.find(m => m.id === userId);
+    return member?.weeklyPoints || 0;
+  };
 
   // Helper to get full member data
   const getMemberData = (userId) => {
@@ -217,7 +222,7 @@ const MatchupCard = ({ matchup, allTeams, TeamLogo, featured = false, members })
 
           {/* Weekly Points */}
           {typeof team.weeklyPoints === 'number' && (
-            <div className="text-2xl font-black text-white">{team.weeklyPoints}</div>
+            <div className="text-2xl font-black text-white">{getMemberCurrentWeeklyPoints(team.userId)}</div>
           )}
         </div>
 
@@ -349,12 +354,17 @@ const MatchupCard = ({ matchup, allTeams, TeamLogo, featured = false, members })
   );
 };
 
-// Mini League Standings
 const MiniLeagueStandings = ({ miniLeague, currentWeek, allTeams, TeamLogo, members }) => {
   const participants = miniLeague.participants || [];
   const week12Pts = miniLeague.week12Points || {};
   const week13Pts = miniLeague.week13Points || {};
   const totalPts = miniLeague.totalPoints || {};
+
+  // ADD THIS NEW HELPER FUNCTION
+  const getMemberCurrentWeeklyPoints = (userId) => {
+    const member = members?.find(m => m.id === userId);
+    return member?.weeklyPoints || 0;
+  };
 
   // Helper to get full member data
   const getMemberData = (userId) => {
@@ -384,12 +394,17 @@ const MiniLeagueStandings = ({ miniLeague, currentWeek, allTeams, TeamLogo, memb
     };
   };
 
-  const standings = participants.map(p => ({
-    ...p,
-    week12: week12Pts[p.userId] || 0,
-    week13: week13Pts[p.userId] || 0,
-    total: totalPts[p.userId] || (week12Pts[p.userId] || 0) + (week13Pts[p.userId] || 0)
-  })).sort((a, b) => b.total - a.total);
+  const standings = participants.map(p => {
+      // Use live weekly points for Week 13 if we're currently in Week 13
+      const week13Points = currentWeek >= 13 ? getMemberCurrentWeeklyPoints(p.userId) : (week13Pts[p.userId] || 0);
+      
+      return {
+        ...p,
+        week12: week12Pts[p.userId] || 0,
+        week13: week13Points,
+        total: (week12Pts[p.userId] || 0) + week13Points
+      };
+    }).sort((a, b) => b.total - a.total);
 
   return (
     <div className="space-y-3">
@@ -549,24 +564,39 @@ const MiniLeagueStandings = ({ miniLeague, currentWeek, allTeams, TeamLogo, memb
 };
 
 // Playoff Bracket Diagram Component
-const PlayoffBracketDiagram = ({ bracket, currentWeek }) => {
+const PlayoffBracketDiagram = ({ bracket, currentWeek, members }) => {
   const [activeTab, setActiveTab] = useState('championship');
 
   const displayWeek = typeof currentWeek === 'number' ? currentWeek : 
     (currentWeek && typeof currentWeek === 'string' ? parseInt(currentWeek.match(/\d+/)?.[0] || '1') : 1);
+
+  const getMemberCurrentWeeklyPoints = (userId) => {
+    const member = members?.find(m => m.id === userId);
+    return member?.weeklyPoints || 0;
+  };
 
   // Championship Bracket Diagram
   const ChampionshipDiagram = () => {
     const champ = bracket?.championshipBracket;
     if (!champ) return null;
 
-    const getTeamDisplay = (team) => {
+    const getTeamDisplay = (team, weekNumber) => {
       if (!team) return <div className="text-xs text-white/40 italic">TBD</div>;
+      
+      // For completed past weeks, show historical stored points
+      // For current/future weeks, show live points
+      const shouldShowLivePoints = displayWeek === weekNumber;
+      const pointsToShow = shouldShowLivePoints 
+        ? getMemberCurrentWeeklyPoints(team.userId)
+        : (team.weeklyPoints ?? 0);
+      
       return (
-        <div className="text-xs font-semibold text-white truncate">
-          {team.teamName}
+        <div className="text-xs font-semibold text-white flex items-center">
+          <span className="truncate min-w-0 flex-1">{team.teamName}</span>
           {typeof team.weeklyPoints === 'number' && displayWeek >= 12 && (
-            <span className="ml-1 text-blue-400">({team.weeklyPoints})</span>
+            <span className="ml-1 text-blue-400 flex-shrink-0">
+              ({pointsToShow})
+            </span>
           )}
         </div>
       );
@@ -591,7 +621,7 @@ const PlayoffBracketDiagram = ({ bracket, currentWeek }) => {
             {champ.week12?.byes?.[0] && (
               <div className="bg-yellow-500/20 border border-yellow-400/40 rounded-lg p-2">
                 <div className="text-[9px] text-yellow-400 font-bold mb-0.5">BYE - Seed 1</div>
-                {getTeamDisplay(champ.week12.byes[0])}
+                {getTeamDisplay(champ.week12.byes[0], 12)}
               </div>
             )}
 
@@ -599,14 +629,20 @@ const PlayoffBracketDiagram = ({ bracket, currentWeek }) => {
             <div className="bg-white/10 border border-white/20 rounded-lg p-2">
               <div className="text-[9px] text-white/60 font-bold mb-1">QF1</div>
               <div className="space-y-1">
-                <div className="relative bg-white/5 rounded p-1">
-                  {getTeamDisplay(champ.week12?.QF1?.team1)}
-                  {getWinnerDisplay(champ.week12?.QF1, 'team1')}
+                <div className={`relative rounded p-1 ${
+                  champ.week12?.QF1?.completed && champ.week12?.QF1?.winner === 'team1' 
+                    ? 'bg-green-500/20' 
+                    : 'bg-white/5'
+                }`}>
+                  {getTeamDisplay(champ.week12?.QF1?.team1, 12)}
                 </div>
                 <div className="text-center text-[8px] text-white/40">vs</div>
-                <div className="relative bg-white/5 rounded p-1">
-                  {getTeamDisplay(champ.week12?.QF1?.team2)}
-                  {getWinnerDisplay(champ.week12?.QF1, 'team2')}
+                <div className={`relative rounded p-1 ${
+                  champ.week12?.QF1?.completed && champ.week12?.QF1?.winner === 'team2' 
+                    ? 'bg-green-500/20' 
+                    : 'bg-white/5'
+                }`}>
+                  {getTeamDisplay(champ.week12?.QF1?.team2, 12)}
                 </div>
               </div>
             </div>
@@ -615,14 +651,20 @@ const PlayoffBracketDiagram = ({ bracket, currentWeek }) => {
             <div className="bg-white/10 border border-white/20 rounded-lg p-2">
               <div className="text-[9px] text-white/60 font-bold mb-1">QF2</div>
               <div className="space-y-1">
-                <div className="relative bg-white/5 rounded p-1">
-                  {getTeamDisplay(champ.week12?.QF2?.team1)}
-                  {getWinnerDisplay(champ.week12?.QF2, 'team1')}
+                <div className={`relative rounded p-1 ${
+                  champ.week12?.QF2?.completed && champ.week12?.QF2?.winner === 'team1' 
+                    ? 'bg-green-500/20' 
+                    : 'bg-white/5'
+                }`}>
+                  {getTeamDisplay(champ.week12?.QF2?.team1, 12)}
                 </div>
                 <div className="text-center text-[8px] text-white/40">vs</div>
-                <div className="relative bg-white/5 rounded p-1">
-                  {getTeamDisplay(champ.week12?.QF2?.team2)}
-                  {getWinnerDisplay(champ.week12?.QF2, 'team2')}
+                <div className={`relative rounded p-1 ${
+                  champ.week12?.QF2?.completed && champ.week12?.QF2?.winner === 'team2' 
+                    ? 'bg-green-500/20' 
+                    : 'bg-white/5'
+                }`}>
+                  {getTeamDisplay(champ.week12?.QF2?.team2, 12)}
                 </div>
               </div>
             </div>
@@ -631,7 +673,7 @@ const PlayoffBracketDiagram = ({ bracket, currentWeek }) => {
             {champ.week12?.byes?.[1] && (
               <div className="bg-yellow-500/20 border border-yellow-400/40 rounded-lg p-2">
                 <div className="text-[9px] text-yellow-400 font-bold mb-0.5">BYE - Seed 2</div>
-                {getTeamDisplay(champ.week12.byes[1])}
+                {getTeamDisplay(champ.week12.byes[1], 12)}
               </div>
             )}
           </div>
@@ -640,61 +682,65 @@ const PlayoffBracketDiagram = ({ bracket, currentWeek }) => {
           <div className="flex flex-col gap-2">
             <div className="text-[10px] font-bold text-blue-400 text-center mb-1">WEEK 13</div>
             
-            {/* SF1 */}
-            <div className="bg-white/10 border border-white/20 rounded-lg p-2">
-              <div className="text-[9px] text-white/60 font-bold mb-1">SF1</div>
-              <div className="space-y-1">
-                <div className="relative bg-white/5 rounded p-1">
-                  {displayWeek >= 13 ? (
-                    <>
-                      {getTeamDisplay(champ.week13?.SF1?.team1)}
-                      {getWinnerDisplay(champ.week13?.SF1, 'team1')}
-                    </>
-                  ) : (
-                    <div className="text-[10px] text-yellow-400 italic">#1 Seed</div>
-                  )}
-                </div>
-                <div className="text-center text-[8px] text-white/40">vs</div>
-                <div className="relative bg-white/5 rounded p-1">
-                  {displayWeek >= 13 ? (
-                    <>
-                      {getTeamDisplay(champ.week13?.SF1?.team2)}
-                      {getWinnerDisplay(champ.week13?.SF1, 'team2')}
-                    </>
-                  ) : (
-                    <div className="text-[10px] text-white/50 italic">Lowest Scoring QF Winner</div>
-                  )}
-                </div>
+{/* SF1 */}
+          <div className="bg-white/10 border border-white/20 rounded-lg p-2">
+            <div className="text-[9px] text-white/60 font-bold mb-1">SF1</div>
+            <div className="space-y-1">
+              <div className={`relative rounded p-1 ${
+                displayWeek >= 13 && champ.week13?.SF1?.completed && champ.week13?.SF1?.winner === 'team1' 
+                  ? 'bg-green-500/20' 
+                  : 'bg-white/5'
+              }`}>
+                {displayWeek >= 13 ? (
+                  getTeamDisplay(champ.week13?.SF1?.team1, 13)
+                ) : (
+                  <div className="text-[10px] text-yellow-400 italic">#1 Seed</div>
+                )}
+              </div>
+              <div className="text-center text-[8px] text-white/40">vs</div>
+              <div className={`relative rounded p-1 ${
+                displayWeek >= 13 && champ.week13?.SF1?.completed && champ.week13?.SF1?.winner === 'team2' 
+                  ? 'bg-green-500/20' 
+                  : 'bg-white/5'
+              }`}>
+                {displayWeek >= 13 ? (
+                  getTeamDisplay(champ.week13?.SF1?.team2, 13)
+                ) : (
+                  <div className="text-[10px] text-white/50 italic">Lowest Scoring QF Winner</div>
+                )}
               </div>
             </div>
+          </div>
 
-            {/* SF2 */}
-            <div className="bg-white/10 border border-white/20 rounded-lg p-2">
-              <div className="text-[9px] text-white/60 font-bold mb-1">SF2</div>
-              <div className="space-y-1">
-                <div className="relative bg-white/5 rounded p-1">
-                  {displayWeek >= 13 ? (
-                    <>
-                      {getTeamDisplay(champ.week13?.SF2?.team1)}
-                      {getWinnerDisplay(champ.week13?.SF2, 'team1')}
-                    </>
-                  ) : (
-                    <div className="text-[10px] text-white/50 italic">Top Scoring QF Winner</div>
-                  )}
-                </div>
-                <div className="text-center text-[8px] text-white/40">vs</div>
-                <div className="relative bg-white/5 rounded p-1">
-                  {displayWeek >= 13 ? (
-                    <>
-                      {getTeamDisplay(champ.week13?.SF2?.team2)}
-                      {getWinnerDisplay(champ.week13?.SF2, 'team2')}
-                    </>
-                  ) : (
-                    <div className="text-[10px] text-yellow-400 italic">#2 Seed</div>
-                  )}
-                </div>
+          {/* SF2 */}
+          <div className="bg-white/10 border border-white/20 rounded-lg p-2">
+            <div className="text-[9px] text-white/60 font-bold mb-1">SF2</div>
+            <div className="space-y-1">
+              <div className={`relative rounded p-1 ${
+                displayWeek >= 13 && champ.week13?.SF2?.completed && champ.week13?.SF2?.winner === 'team1' 
+                  ? 'bg-green-500/20' 
+                  : 'bg-white/5'
+              }`}>
+                {displayWeek >= 13 ? (
+                  getTeamDisplay(champ.week13?.SF2?.team1, 13)
+                ) : (
+                  <div className="text-[10px] text-white/50 italic">Top Scoring QF Winner</div>
+                )}
+              </div>
+              <div className="text-center text-[8px] text-white/40">vs</div>
+              <div className={`relative rounded p-1 ${
+                displayWeek >= 13 && champ.week13?.SF2?.completed && champ.week13?.SF2?.winner === 'team2' 
+                  ? 'bg-green-500/20' 
+                  : 'bg-white/5'
+              }`}>
+                {displayWeek >= 13 ? (
+                  getTeamDisplay(champ.week13?.SF2?.team2, 13)
+                ) : (
+                  <div className="text-[10px] text-yellow-400 italic">#2 Seed</div>
+                )}
               </div>
             </div>
+          </div>
 
             {/* Consolation QF placeholder */}
             {displayWeek >= 13 && (
@@ -717,12 +763,12 @@ const PlayoffBracketDiagram = ({ bracket, currentWeek }) => {
                 </div>
                 <div className="space-y-1">
                   <div className="relative bg-white/10 rounded p-1">
-                    {getTeamDisplay(champ.week14?.championship?.team1)}
+                    {getTeamDisplay(champ.week14?.championship?.team1, 14)}
                     {getWinnerDisplay(champ.week14?.championship, 'team1')}
                   </div>
                   <div className="text-center text-[8px] text-white/40">vs</div>
                   <div className="relative bg-white/10 rounded p-1">
-                    {getTeamDisplay(champ.week14?.championship?.team2)}
+                    {getTeamDisplay(champ.week14?.championship?.team2, 14)}
                     {getWinnerDisplay(champ.week14?.championship, 'team2')}
                   </div>
                 </div>
@@ -2824,7 +2870,7 @@ function MyLeague() {
 
         {/* NEW: Playoff Bracket Diagram - Only show for weeks 12+ */}
         {currentWeekNum >= 12 && playoffBracket && viewMode === 'current' && (
-          <PlayoffBracketDiagram bracket={playoffBracket} currentWeek={currentWeek} />
+          <PlayoffBracketDiagram bracket={playoffBracket} currentWeek={currentWeek} members={members} />
         )}
 
         {/* Live Game Status Key - Only show for current week */}

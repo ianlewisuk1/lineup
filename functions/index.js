@@ -1946,18 +1946,166 @@
             });
           });
           
-          await memberBatch.commit();
-          totalMembersUpdated += memberUpdates.length;
-          
-          console.log(`✅ Updated ${memberUpdates.length} members in league ${leagueId}`);
+      await memberBatch.commit();
+      totalMembersUpdated += memberUpdates.length;
+      
+      console.log(`✅ Updated ${memberUpdates.length} members in league ${leagueId}`);
+      
+      // NEW: Update playoff bracket if we're in playoff weeks
+      if (currentWeek >= 12 && currentWeek <= 14) {
+        try {
+          const bracketPointsUpdated = await updatePlayoffBracketPoints(db, leagueId, currentWeek);
+          if (bracketPointsUpdated > 0) {
+            console.log(`🏆 Updated ${bracketPointsUpdated} bracket points for league ${leagueId}`);
+          }
+        } catch (playoffError) {
+          // Don't fail the entire member update if playoff bracket update fails
+          console.warn(`⚠️ Could not update playoff bracket for league ${leagueId}:`, playoffError.message);
+          // Continue processing other leagues
         }
       }
+    }
+  }
       
       console.log(`✅ Total members updated across all leagues: ${totalMembersUpdated}`);
       return totalMembersUpdated;
       
     } catch (error) {
       console.error('❌ Error recalculating member points:', error);
+      return 0;
+    }
+  }
+
+  async function updatePlayoffBracketPoints(db, leagueId, currentWeek) {
+    try {
+      // Only run during playoff weeks
+      if (currentWeek < 12 || currentWeek > 14) {
+        return 0; // Silent return during regular season
+      }
+
+      console.log(`🏆 Updating playoff bracket points for league ${leagueId}, week ${currentWeek}...`);
+      
+      // Get playoff bracket - check if it exists first
+      const playoffRef = db
+        .collection('leagues').doc(leagueId)
+        .collection('playoffs').doc('2025');
+      
+      const playoffSnap = await playoffRef.get();
+      
+      if (!playoffSnap.exists) {
+        // Playoff bracket doesn't exist yet - this is OK during weeks 12-14 before initialization
+        console.log(`No playoff bracket found for league ${leagueId} - may not be initialized yet`);
+        return 0;
+      }
+
+      const bracket = playoffSnap.data();
+      
+      // Additional safety: Check if playoffs have actually been initialized
+      if (!bracket.championshipBracket || !bracket.loserBracket) {
+        console.log(`Playoff bracket exists but not fully initialized for league ${leagueId}`);
+        return 0;
+      }
+
+      // Get all current member points
+      const membersSnap = await db
+        .collection('leagues').doc(leagueId)
+        .collection('members')
+        .get();
+      
+      const memberPoints = {};
+      membersSnap.forEach(doc => {
+        memberPoints[doc.id] = doc.data().weeklyPoints || 0;
+      });
+
+      const updates = {};
+      let pointsUpdated = 0;
+
+      // Helper to update a matchup's team points
+      const updateMatchupPoints = (path, matchup) => {
+        if (!matchup) return;
+        
+        if (matchup.team1 && matchup.team1.userId) {
+          const team1Points = memberPoints[matchup.team1.userId] || 0;
+          updates[`${path}.team1.weeklyPoints`] = team1Points;
+          pointsUpdated++;
+          console.log(`  ${path}.team1: ${matchup.team1.teamName} = ${team1Points} pts`);
+        }
+        
+        if (matchup.team2 && matchup.team2.userId) {
+          const team2Points = memberPoints[matchup.team2.userId] || 0;
+          updates[`${path}.team2.weeklyPoints`] = team2Points;
+          pointsUpdated++;
+          console.log(`  ${path}.team2: ${matchup.team2.teamName} = ${team2Points} pts`);
+        }
+      };
+
+      // Update based on current week
+      if (currentWeek === 12) {
+        // Week 12: QF1, QF2, Mini League
+        updateMatchupPoints('championshipBracket.week12.QF1', bracket.championshipBracket?.week12?.QF1);
+        updateMatchupPoints('championshipBracket.week12.QF2', bracket.championshipBracket?.week12?.QF2);
+        
+        // Update mini league Week 12 points
+        if (bracket.loserBracket?.miniLeague?.participants) {
+          const week12MiniPoints = {};
+          bracket.loserBracket.miniLeague.participants.forEach(participant => {
+            week12MiniPoints[participant.userId] = memberPoints[participant.userId] || 0;
+            console.log(`  Mini League: ${participant.teamName} = ${week12MiniPoints[participant.userId]} pts`);
+          });
+          updates['loserBracket.miniLeague.week12Points'] = week12MiniPoints;
+          pointsUpdated += Object.keys(week12MiniPoints).length;
+        }
+        
+      } else if (currentWeek === 13) {
+        // Week 13: SF1, SF2, Consolation QF, Mini League Week 13
+        updateMatchupPoints('championshipBracket.week13.SF1', bracket.championshipBracket?.week13?.SF1);
+        updateMatchupPoints('championshipBracket.week13.SF2', bracket.championshipBracket?.week13?.SF2);
+        updateMatchupPoints('championshipBracket.week13.consolationQF', bracket.championshipBracket?.week13?.consolationQF);
+        
+        // Update mini league Week 13 points AND totals
+        if (bracket.loserBracket?.miniLeague?.participants) {
+          const week13MiniPoints = {};
+          const totalMiniPoints = {};
+          const week12Points = bracket.loserBracket.miniLeague.week12Points || {};
+          
+          bracket.loserBracket.miniLeague.participants.forEach(participant => {
+            const week13Pts = memberPoints[participant.userId] || 0;
+            const week12Pts = week12Points[participant.userId] || 0;
+            
+            week13MiniPoints[participant.userId] = week13Pts;
+            totalMiniPoints[participant.userId] = week12Pts + week13Pts;
+            
+            console.log(`  Mini League: ${participant.teamName} = Week 13: ${week13Pts}, Total: ${totalMiniPoints[participant.userId]} pts`);
+          });
+          
+          updates['loserBracket.miniLeague.week13Points'] = week13MiniPoints;
+          updates['loserBracket.miniLeague.totalPoints'] = totalMiniPoints;
+          pointsUpdated += Object.keys(week13MiniPoints).length * 2;
+        }
+        
+      } else if (currentWeek === 14) {
+        // Week 14: All finals
+        updateMatchupPoints('championshipBracket.week14.championship', bracket.championshipBracket?.week14?.championship);
+        updateMatchupPoints('championshipBracket.week14.thirdPlace', bracket.championshipBracket?.week14?.thirdPlace);
+        updateMatchupPoints('championshipBracket.week14.fifthPlace', bracket.championshipBracket?.week14?.fifthPlace);
+        updateMatchupPoints('loserBracket.week14.firstPickGame', bracket.loserBracket?.week14?.firstPickGame);
+        updateMatchupPoints('loserBracket.week14.seventhPlace', bracket.loserBracket?.week14?.seventhPlace);
+        updateMatchupPoints('loserBracket.week14.toiletBowl', bracket.loserBracket?.week14?.toiletBowl);
+      }
+
+      // Apply updates if we have any
+      if (Object.keys(updates).length > 0) {
+        updates.lastPointsUpdate = admin.firestore.FieldValue.serverTimestamp();
+        await playoffRef.update(updates);
+        console.log(`✅ Updated ${pointsUpdated} playoff bracket points for league ${leagueId}`);
+      } else {
+        console.log(`No playoff bracket points to update for league ${leagueId}`);
+      }
+
+      return pointsUpdated;
+      
+    } catch (error) {
+      console.error(`❌ Error updating playoff bracket points for league ${leagueId}:`, error);
       return 0;
     }
   }
