@@ -46,8 +46,8 @@ const PlayoffBracket = ({ bracket, allTeams, TeamLogo, viewMode, selectedWeek, c
           </div>
         )}
 
-        {/* Week 13 - Semifinals */}
-        {displayWeek >= 13 && (
+        {/* Week 13 - Semifinals - Only show during Week 13 */}
+        {displayWeek === 13 && (
           <div className="mb-8">
             <h3 className="text-lg font-semibold text-blue-400 mb-4">Week 13 - Semifinals</h3>
             <div className="grid md:grid-cols-3 gap-4">
@@ -58,8 +58,8 @@ const PlayoffBracket = ({ bracket, allTeams, TeamLogo, viewMode, selectedWeek, c
           </div>
         )}
 
-        {/* Week 14 - Finals */}
-        {displayWeek >= 14 && (
+        {/* Week 14 - Finals - Only show during Week 14 */}
+        {displayWeek === 14 && (
           <div>
             <h3 className="text-lg font-semibold text-yellow-400 mb-4">Week 14 - Finals</h3>
             <div className="grid md:grid-cols-3 gap-4">
@@ -83,33 +83,33 @@ const PlayoffBracket = ({ bracket, allTeams, TeamLogo, viewMode, selectedWeek, c
           🎯 Loser Bracket
         </h2>
 
-        {/* Mini League Standings */}
-        {displayWeek >= 12 && displayWeek <= 13 && (
+        {/* Mini League Standings - Only show during Weeks 12-13 */}
+        {(displayWeek === 12 || displayWeek === 13) && (
           <div className="mb-8">
             <h3 className="text-lg font-semibold text-purple-400 mb-4">
               #1 Pick Shootout (Week 12-13)
             </h3>
-              <MiniLeagueStandings 
-                miniLeague={loser.miniLeague} 
-                currentWeek={displayWeek}
-                allTeams={allTeams}
-                TeamLogo={TeamLogo}
-                members={members}
-              />
+            <MiniLeagueStandings 
+              miniLeague={loser.miniLeague} 
+              currentWeek={displayWeek}
+              allTeams={allTeams}
+              TeamLogo={TeamLogo}
+              members={members}
+            />
             <div className="mt-4 text-center text-white/60 text-sm">
               Toilet Bowl Participant: {loser.toiletBowlParticipant.teamName} (sits out until Week 14)
             </div>
           </div>
         )}
 
-        {/* Week 14 - Placement Games */}
-        {displayWeek >= 14 && (
+        {/* Week 14 - Placement Games - Only show during Week 14 */}
+        {displayWeek === 14 && (
           <div>
             <h3 className="text-lg font-semibold text-orange-400 mb-4">Week 14 - Placement Games</h3>
             <div className="grid md:grid-cols-3 gap-4">
-              <MatchupCard matchup={loser.week14.firstPickGame} allTeams={allTeams} TeamLogo={TeamLogo} />
-              <MatchupCard matchup={loser.week14.seventhPlace} allTeams={allTeams} TeamLogo={TeamLogo} />
-              <MatchupCard matchup={loser.week14.toiletBowl} allTeams={allTeams} TeamLogo={TeamLogo} featured />
+              <MatchupCard matchup={loser.week14.firstPickGame} allTeams={allTeams} TeamLogo={TeamLogo} members={members}/>
+              <MatchupCard matchup={loser.week14.seventhPlace} allTeams={allTeams} TeamLogo={TeamLogo} members={members}/>
+              <MatchupCard matchup={loser.week14.toiletBowl} allTeams={allTeams} TeamLogo={TeamLogo} featured members={members}/>
             </div>
           </div>
         )}
@@ -751,7 +751,7 @@ const PlayoffBracketDiagram = ({ bracket, currentWeek, members }) => {
             )}
           </div>
 
-          {/* Week 14 - Finals */}
+        {/* Week 14 - Finals */}
           {displayWeek >= 14 && (
             <div className="flex flex-col gap-2 col-span-2 md:col-span-1">
               <div className="text-[10px] font-bold text-yellow-400 text-center mb-1">WEEK 14</div>
@@ -775,18 +775,38 @@ const PlayoffBracketDiagram = ({ bracket, currentWeek, members }) => {
               </div>
 
               {/* 3rd Place */}
-              <div className="bg-white/5 border border-white/10 rounded-lg p-2">
-                <div className="text-[9px] text-white/40 font-bold mb-1 text-center">3rd Place</div>
-                <div className="text-[8px] text-white/40 text-center">SF Losers</div>
+              <div className="bg-white/10 border border-white/20 rounded-lg p-2">
+                <div className="text-[9px] text-white/60 font-bold mb-1 text-center">3rd Place</div>
+                <div className="space-y-1">
+                  <div className="relative bg-white/10 rounded p-1">
+                    {getTeamDisplay(champ.week14?.thirdPlace?.team1, 14)}
+                    {getWinnerDisplay(champ.week14?.thirdPlace, 'team1')}
+                  </div>
+                  <div className="text-center text-[8px] text-white/40">vs</div>
+                  <div className="relative bg-white/10 rounded p-1">
+                    {getTeamDisplay(champ.week14?.thirdPlace?.team2, 14)}
+                    {getWinnerDisplay(champ.week14?.thirdPlace, 'team2')}
+                  </div>
+                </div>
               </div>
 
               {/* 5th Place */}
-              <div className="bg-white/5 border border-white/10 rounded-lg p-2">
-                <div className="text-[9px] text-white/40 font-bold mb-1 text-center">5th Place</div>
-                <div className="text-[8px] text-white/40 text-center">Consolation</div>
+              <div className="bg-white/10 border border-white/20 rounded-lg p-2">
+                <div className="text-[9px] text-white/60 font-bold mb-1 text-center">5th Place</div>
+                <div className="space-y-1">
+                  <div className="relative bg-white/10 rounded p-1">
+                    {getTeamDisplay(champ.week14?.fifthPlace?.team1, 14)}
+                    {getWinnerDisplay(champ.week14?.fifthPlace, 'team1')}
+                  </div>
+                  <div className="text-center text-[8px] text-white/40">vs</div>
+                  <div className="relative bg-white/10 rounded p-1">
+                    {getTeamDisplay(champ.week14?.fifthPlace?.team2, 14)}
+                    {getWinnerDisplay(champ.week14?.fifthPlace, 'team2')}
+                  </div>
+                </div>
               </div>
             </div>
-          )}
+          )}      
         </div>
       </div>
     );
