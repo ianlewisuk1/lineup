@@ -35,17 +35,16 @@ function SignUp() {
     }
 
     try {
-      const { data: { user }, error: signUpError } = await supabase.auth.signUp({ email, password });
+      const { error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { first_name: firstName, last_name: lastName, dob },
+        },
+      });
       if (signUpError) throw signUpError;
 
-      // The auth trigger auto-creates the users row; we update it with profile data
-      await supabase.from("users").update({
-        first_name: firstName,
-        last_name: lastName,
-        dob,
-      }).eq("id", user.id);
-
-      navigate("/home");
+      navigate("/verify-email", { state: { email } });
     } catch (err) {
       setError(err.message);
     }

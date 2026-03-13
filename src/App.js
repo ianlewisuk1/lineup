@@ -8,6 +8,7 @@ import {
 import { supabase } from "./supabase/supabase";
 
 import SignUp from "./pages/SignUp";
+import VerifyEmail from "./pages/VerifyEmail";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import CreateLeague from "./pages/CreateLeague";
@@ -107,6 +108,7 @@ function App() {
       <Route path="/signup" element={<SignUp />} />
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/home" element={<Home />} />
       <Route path="/create-league" element={<CreateLeague />} />
       <Route path="/join-league" element={<JoinLeague />} />
