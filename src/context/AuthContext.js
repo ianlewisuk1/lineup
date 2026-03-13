@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { auth } from "../firebase/firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { supabase } from "../supabase/supabase";
+import { initPushNotifications } from "../capacitor/pushNotifications";
 
 const AuthContext = createContext();
 
@@ -9,12 +9,22 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+    // Get the current session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentUser(session?.user ?? null);
       setLoading(false);
+      if (session?.user) initPushNotifications();
     });
 
-    return unsubscribe;
+    // Listen for sign-in / sign-out / token refresh events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setCurrentUser(session?.user ?? null);
+        if (session?.user) initPushNotifications();
+      }
+    );
+
+    return () => subscription.unsubscribe();
   }, []);
 
   return (

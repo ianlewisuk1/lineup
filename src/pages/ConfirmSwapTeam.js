@@ -1,8 +1,7 @@
 // src/pages/ConfirmSwapTeam.js
 import React from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { auth, db } from "../firebase/firebase";
-import { doc, updateDoc, getDoc, increment } from "firebase/firestore";
+import { supabase } from "../supabase/supabase";
 import LeagueNavBar from "../components/LeagueNavBar";
 
 function ConfirmSwapTeam() {
@@ -10,16 +9,12 @@ function ConfirmSwapTeam() {
   const navigate = useNavigate();
 
   const handleConfirmSwap = async () => {
-    const user = auth.currentUser;
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
-    const memberSnap = await getDoc(memberRef);
-    const data = memberSnap.data();
-    const lineup = data.lineup || {};
-
-    const starters = lineup.starters || [];
-    const bench = lineup.bench || [];
+    const { data: memberData } = await supabase.from("league_members").select("*").eq("league_id", leagueId).eq("user_id", user.id).single();
+    const starters = memberData.starters || [];
+    const bench = memberData.bench || [];
     const currentRoster = [...starters, ...bench];
 
     if (!currentRoster.includes(dropTeam)) return;
@@ -36,11 +31,11 @@ function ConfirmSwapTeam() {
       return;
     }
 
-    await updateDoc(memberRef, {
-      "lineup.starters": newStarters,
-      "lineup.bench": newBench,
-      freeAgentMoves: increment(1)  // Increment the free agent moves counter
-    });
+    await supabase.from("league_members").update({
+      starters: newStarters,
+      bench: newBench,
+      free_agent_moves: (memberData.free_agent_moves || 0) + 1
+    }).eq("league_id", leagueId).eq("user_id", user.id);
 
     navigate(`/${leagueId}/my-lineup`);
   };

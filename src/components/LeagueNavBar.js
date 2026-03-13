@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { supabase } from "../supabase/supabase";
 
 function LeagueNavBar() {
   const { leagueId } = useParams();
@@ -11,10 +10,8 @@ function LeagueNavBar() {
   useEffect(() => {
     const fetchDraftStatus = async () => {
       try {
-        const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-        const draftSnap = await getDoc(draftRef);
-        const draftData = draftSnap.data();
-        setDraftComplete(draftData?.draftComplete || false);
+        const { data: leagueData } = await supabase.from('leagues').select('draft_complete').eq('id', leagueId).single();
+        setDraftComplete(leagueData?.draft_complete || false);
       } catch (err) {
         console.error("Error fetching draft status:", err);
       } finally {

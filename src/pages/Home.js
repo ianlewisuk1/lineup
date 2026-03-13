@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { auth, db } from "../firebase/firebase";
-import { doc, onSnapshot } from "firebase/firestore";
+import { supabase } from "../supabase/supabase";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Trophy, Users, ArrowRight, Plus, Wifi, WifiOff } from "lucide-react";
 import ProfileDropdown from "../components/ProfileDropdown";
@@ -15,19 +14,19 @@ function Home() {
   const navigate = useNavigate();
   const location = useLocation();
   const flashMessage = location.state?.message;
-  
+
   // Refs to store unsubscribe functions
-  const userListener = useRef(null);
-  const leagueListeners = useRef([]);
+  const userChannel = useRef(null);
+  const leagueChannels = useRef([]);
 
   // Connection status tracking
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
-    
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -37,57 +36,78 @@ function Home() {
   // Cleanup listeners on unmount
   useEffect(() => {
     return () => {
-      if (userListener.current) {
-        userListener.current();
+      if (userChannel.current) {
+        supabase.removeChannel(userChannel.current);
       }
-      if (leagueListeners.current) {
-        leagueListeners.current.forEach(unsubscribe => unsubscribe());
-      }
+      leagueChannels.current.forEach(ch => supabase.removeChannel(ch));
     };
   }, []);
 
   useEffect(() => {
-    const setupUserListener = () => {
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
+    const setupUserListener = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
         setLoading(false);
         return;
       }
 
       try {
-        const userRef = doc(db, "users", currentUser.uid);
-        
-        // Set up real-time listener for user data
-        userListener.current = onSnapshot(userRef, (userSnap) => {
-          if (!userSnap.exists()) {
-            setLoading(false);
-            return;
-          }
-          
-          const userData = userSnap.data();
-          const adminStatus = userData?.isAdmin || false;
-          setIsAdmin(adminStatus);
+        // Initial fetch of user data
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', user.id)
+          .single();
 
-          // Set user name for greeting
-          if (userData?.firstName) {
-            setUserName(userData.firstName);
-          } else {
-            setUserName(currentUser.email?.split('@')[0] || 'there');
-          }
-
-          if (adminStatus) {
-            navigate("/admin");
-            return;
-          }
-
-          // Set up listeners for each league
-          const leagueIds = userData?.leagueIds || [];
-          setupLeagueListeners(leagueIds);
+        if (userError || !userData) {
           setLoading(false);
-        }, (error) => {
-          console.error("Error with user listener:", error);
-          setLoading(false);
-        });
+          return;
+        }
+
+        const adminStatus = userData?.is_admin || false;
+        setIsAdmin(adminStatus);
+
+        // Set user name for greeting
+        if (userData?.first_name) {
+          setUserName(userData.first_name);
+        } else {
+          setUserName(user.email?.split('@')[0] || 'there');
+        }
+
+        if (adminStatus) {
+          navigate("/admin");
+          return;
+        }
+
+        // Fetch leagues for this user via league_members
+        const { data: memberRows } = await supabase
+          .from('league_members')
+          .select('league_id')
+          .eq('user_id', user.id);
+
+        const leagueIds = (memberRows || []).map(row => row.league_id);
+        await setupLeagueListeners(leagueIds, user.id);
+        setLoading(false);
+
+        // Set up realtime listener for user data changes
+        userChannel.current = supabase
+          .channel(`user-${user.id}`)
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'users',
+            filter: `id=eq.${user.id}`
+          }, async (payload) => {
+            const updatedUser = payload.new;
+            if (updatedUser?.is_admin) {
+              navigate("/admin");
+              return;
+            }
+            if (updatedUser?.first_name) {
+              setUserName(updatedUser.first_name);
+            }
+          })
+          .subscribe();
 
       } catch (error) {
         console.error("Error setting up user listener:", error);
@@ -95,12 +115,10 @@ function Home() {
       }
     };
 
-    const setupLeagueListeners = (leagueIds) => {
-      // Clean up existing league listeners
-      if (leagueListeners.current) {
-        leagueListeners.current.forEach(unsubscribe => unsubscribe());
-        leagueListeners.current = [];
-      }
+    const setupLeagueListeners = async (leagueIds, userId) => {
+      // Clean up existing league channels
+      leagueChannels.current.forEach(ch => supabase.removeChannel(ch));
+      leagueChannels.current = [];
 
       // Clear league list if no leagues
       if (leagueIds.length === 0) {
@@ -108,37 +126,55 @@ function Home() {
         return;
       }
 
-      // Set up listener for each league
-      leagueIds.forEach(leagueId => {
-        const leagueRef = doc(db, "leagues", leagueId);
-        
-        const unsubscribe = onSnapshot(leagueRef, (leagueSnap) => {
-          if (leagueSnap.exists()) {
-            const leagueData = leagueSnap.data();
-            const memberCount = leagueData.members ? leagueData.members.length : 0;
-            
-            const updatedLeague = { 
-              id: leagueId, 
-              ...leagueData, 
-              memberCount: memberCount 
-            };
+      // Initial fetch of all leagues
+      const { data: leaguesData } = await supabase
+        .from('leagues')
+        .select('*')
+        .in('id', leagueIds);
 
-            // Update the specific league in the list
+      // Fetch member counts for each league
+      const leaguesWithCounts = await Promise.all(
+        (leaguesData || []).map(async (league) => {
+          const { count } = await supabase
+            .from('league_members')
+            .select('*', { count: 'exact', head: true })
+            .eq('league_id', league.id);
+          return { ...league, memberCount: count || 0 };
+        })
+      );
+
+      setLeagueList(leaguesWithCounts.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+
+      // Set up realtime listeners for each league
+      leagueIds.forEach(leagueId => {
+        const ch = supabase
+          .channel(`league-${leagueId}`)
+          .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'leagues',
+            filter: `id=eq.${leagueId}`
+          }, async (payload) => {
+            if (payload.eventType === 'DELETE') {
+              setLeagueList(prev => prev.filter(league => league.id !== leagueId));
+              return;
+            }
+            const updatedLeague = payload.new;
+            // Fetch member count
+            const { count } = await supabase
+              .from('league_members')
+              .select('*', { count: 'exact', head: true })
+              .eq('league_id', leagueId);
+
             setLeagueList(prev => {
               const filtered = prev.filter(league => league.id !== leagueId);
-              const newList = [...filtered, updatedLeague];
-              // Sort by name for consistent ordering
+              const newList = [...filtered, { ...updatedLeague, memberCount: count || 0 }];
               return newList.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
             });
-          } else {
-            // Remove league if it no longer exists
-            setLeagueList(prev => prev.filter(league => league.id !== leagueId));
-          }
-        }, (error) => {
-          console.error(`Error with league listener for ${leagueId}:`, error);
-        });
+          })
+          .subscribe();
 
-        leagueListeners.current.push(unsubscribe);
+        leagueChannels.current.push(ch);
       });
     };
 
@@ -148,15 +184,13 @@ function Home() {
   const handleLogout = async () => {
     if (window.confirm("Are you sure you want to log out?")) {
       try {
-        // Clean up listeners before logout
-        if (userListener.current) {
-          userListener.current();
+        // Clean up channels before logout
+        if (userChannel.current) {
+          supabase.removeChannel(userChannel.current);
         }
-        if (leagueListeners.current) {
-          leagueListeners.current.forEach(unsubscribe => unsubscribe());
-        }
-        
-        await auth.signOut();
+        leagueChannels.current.forEach(ch => supabase.removeChannel(ch));
+
+        await supabase.auth.signOut();
         navigate("/");
       } catch (err) {
         console.error("Logout error:", err);
@@ -216,7 +250,7 @@ function Home() {
         </Link>
         <div className="flex items-center space-x-4">
           {/* Refresh Button for Mobile */}
-          <button 
+          <button
             onClick={handleRefresh}
             disabled={refreshing}
             className="p-2 text-white/60 hover:text-white transition-colors duration-300 md:hidden"
@@ -226,7 +260,7 @@ function Home() {
               ⟳
             </div>
           </button>
-          
+
           {/* Connection Status */}
           <div className="hidden sm:flex items-center space-x-2 text-white/60">
             {isOnline ? (
@@ -235,7 +269,7 @@ function Home() {
               <WifiOff size={16} className="text-red-400" />
             )}
           </div>
-          
+
           <ProfileDropdown />
         </div>
       </nav>
@@ -255,8 +289,8 @@ function Home() {
             </span>
           </h1>
           <p className="text-lg sm:text-xl text-white/80 max-w-2xl mx-auto">
-            {leagueList.length === 0 
-              ? "Ready to start your fantasy journey?" 
+            {leagueList.length === 0
+              ? "Ready to start your fantasy journey?"
               : "Here are your fantasy leagues. Ready to dominate?"
             }
           </p>
@@ -294,7 +328,7 @@ function Home() {
 
             <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
               {/* Create League Card */}
-              <div 
+              <div
                 onClick={() => navigate("/create-league")}
                 className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group active:scale-95"
               >
@@ -302,14 +336,14 @@ function Home() {
                   <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300">
                     <Trophy size={32} className="text-white" />
                   </div>
-                  
+
                   <h3 className="text-2xl font-bold text-white mb-4">
                     Create a League
                   </h3>
                   <p className="text-white/80 mb-6 leading-relaxed">
                     Start your own fantasy league and invite friends to compete. You'll be the commissioner!
                   </p>
-                  
+
                   <div className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full text-white font-semibold group-hover:from-purple-600 group-hover:to-blue-600 transition-all duration-300">
                     Get Started
                     <ArrowRight size={16} className="ml-2" />
@@ -318,7 +352,7 @@ function Home() {
               </div>
 
               {/* Join League Card */}
-              <div 
+              <div
                 onClick={() => navigate("/join-league")}
                 className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group active:scale-95"
               >
@@ -326,14 +360,14 @@ function Home() {
                   <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform duration-300">
                     <Users size={32} className="text-white" />
                   </div>
-                  
+
                   <h3 className="text-2xl font-bold text-white mb-4">
                     Join a League
                   </h3>
                   <p className="text-white/80 mb-6 leading-relaxed">
                     Got an invite code? Join an existing fantasy league and start competing right away!
                   </p>
-                  
+
                   <div className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full text-white font-semibold group-hover:from-green-600 group-hover:to-emerald-600 transition-all duration-300">
                     Join Now
                     <ArrowRight size={16} className="ml-2" />
@@ -356,7 +390,7 @@ function Home() {
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {leagueList.map((league) => (
-                <div 
+                <div
                   key={league.id}
                   onClick={() => navigate(`/${league.id}/my-lineup`)}
                   className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 hover:bg-white/20 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group active:scale-95"
@@ -411,7 +445,7 @@ function Home() {
               ))}
 
               {/* Add New League Cards */}
-              <div 
+              <div
                 onClick={() => navigate("/create-league")}
                 className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border-2 border-dashed border-white/30 hover:border-white/60 hover:bg-white/10 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group active:scale-95"
               >
@@ -419,21 +453,21 @@ function Home() {
                   <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
                     <Plus size={24} className="text-white" />
                   </div>
-                  
+
                   <h3 className="text-lg font-bold text-white mb-2">
                     Create League
                   </h3>
                   <p className="text-white/60 text-sm mb-4">
                     Start a new fantasy league
                   </p>
-                  
+
                   <div className="text-purple-400 font-medium text-sm">
                     Get Started
                   </div>
                 </div>
               </div>
 
-              <div 
+              <div
                 onClick={() => navigate("/join-league")}
                 className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border-2 border-dashed border-white/30 hover:border-white/60 hover:bg-white/10 transition-all duration-300 transform hover:-translate-y-2 cursor-pointer group active:scale-95"
               >
@@ -441,14 +475,14 @@ function Home() {
                   <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
                     <Users size={24} className="text-white" />
                   </div>
-                  
+
                   <h3 className="text-lg font-bold text-white mb-2">
                     Join League
                   </h3>
                   <p className="text-white/60 text-sm mb-4">
                     Got an invite code?
                   </p>
-                  
+
                   <div className="text-green-400 font-medium text-sm">
                     Join Now
                   </div>

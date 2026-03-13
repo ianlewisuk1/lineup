@@ -1,12 +1,6 @@
 // src/components/ManualDraftEntry.js
 import React, { useState, useEffect } from "react";
-import { db } from "../firebase/firebase";
-import {
-  doc,
-  updateDoc,
-  collection,
-  getDocs
-} from "firebase/firestore";
+import { supabase } from "../supabase/supabase";
 
 function ManualDraftEntry({ leagueId, userMap, userFirstNames, draftData, onConfirmPick }) {
   const [selectedManager, setSelectedManager] = useState("");
@@ -36,16 +30,15 @@ function ManualDraftEntry({ leagueId, userMap, userFirstNames, draftData, onConf
 
   useEffect(() => {
     const fetchTeams = async () => {
-      const teamsSnap = await getDocs(collection(db, "teams"));
+      const { data: teamsData } = await supabase.from("teams").select("*");
       const teams = [];
       const teamDataMap = {};
 
-      teamsSnap.docs.forEach(doc => {
-        const data = doc.data();
-        teamDataMap[doc.id] = data;
-        
+      (teamsData || []).forEach(data => {
+        teamDataMap[data.id] = data;
+
         if (data.classification?.toLowerCase() === "fbs" && data.school) {
-          teams.push({ id: doc.id, school: data.school });
+          teams.push({ id: data.id, school: data.school });
         }
       });
 
@@ -59,8 +52,8 @@ function ManualDraftEntry({ leagueId, userMap, userFirstNames, draftData, onConf
   // Get teams already picked by any manager
   const getAllPickedTeams = () => {
     const pickedTeams = new Set();
-    if (draftData?.teams) {
-      Object.values(draftData.teams).forEach(managerTeams => {
+    if (draftData?.selected_teams) {
+      Object.values(draftData.selected_teams).forEach(managerTeams => {
         managerTeams.forEach(teamId => pickedTeams.add(teamId));
       });
     }
@@ -69,7 +62,7 @@ function ManualDraftEntry({ leagueId, userMap, userFirstNames, draftData, onConf
 
   // Get teams for a specific manager
   const getManagerTeams = (managerId) => {
-    return draftData?.teams?.[managerId] || [];
+    return draftData?.selected_teams?.[managerId] || [];
   };
 
   // Check if manager has completed their draft (7 teams)
@@ -179,7 +172,7 @@ function ManualDraftEntry({ leagueId, userMap, userFirstNames, draftData, onConf
         <div className="flex items-center justify-between mb-3">
           <h4 className="text-white font-semibold">Manual Draft Entry</h4>
           <span className="text-white/70 text-sm">
-            Progress: {(draftData.managersCompleted || []).length} of {Object.keys(userMap).length} managers completed
+            Progress: {(draftData.managers_completed || []).length} of {Object.keys(userMap).length} managers completed
           </span>
         </div>
         
@@ -188,7 +181,7 @@ function ManualDraftEntry({ leagueId, userMap, userFirstNames, draftData, onConf
           <div 
             className="bg-gradient-to-r from-green-500 to-emerald-500 h-2 rounded-full transition-all duration-500 ease-out"
             style={{ 
-              width: `${((draftData.managersCompleted || []).length / Object.keys(userMap).length) * 100}%` 
+              width: `${((draftData.managers_completed || []).length / Object.keys(userMap).length) * 100}%` 
             }}
           ></div>
         </div>

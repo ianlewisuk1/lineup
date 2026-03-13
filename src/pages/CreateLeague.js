@@ -1,14 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { db, auth } from "../firebase/firebase";
-import {
-  collection,
-  addDoc,
-  doc,
-  setDoc,
-  updateDoc,
-  arrayUnion,
-  getDoc
-} from "firebase/firestore";
+import { supabase } from "../supabase/supabase";
 import { useNavigate, Link } from "react-router-dom";
 
 function CreateLeague() {
@@ -29,10 +20,9 @@ function CreateLeague() {
   useEffect(() => {
     const fetchCurrentWeek = async () => {
       try {
-        const configDoc = await getDoc(doc(db, "config", "season"));
-        if (configDoc.exists()) {
-          const data = configDoc.data();
-          setCurrentWeek(data.currentWeek || "Preseason");
+        const { data: configData } = await supabase.from('config').select('value').eq('key', 'season').single();
+        if (configData) {
+          setCurrentWeek(configData.value?.currentWeek || "Preseason");
         }
       } catch (error) {
         console.warn("Could not fetch current week:", error);
@@ -58,7 +48,7 @@ function CreateLeague() {
     e.preventDefault();
     setLoading(true);
     try {
-      const user = auth.currentUser;
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not logged in");
 
       if (!teamName.trim()) {
@@ -75,68 +65,59 @@ function CreateLeague() {
 
       const leagueData = {
         name: leagueName,
-        createdAt: new Date(),
-        createdBy: user.uid,
-        admin: user.uid,
-        maxManagers: maxManagers,
-        draftComplete: false,
-        draftType,
-        draftOrderType,
-        scoringType: "cumulative",
-        members: [user.uid],
-        currentWeek: currentWeek,
+        created_by: user.id,
+        admin_id: user.id,
+        max_managers: maxManagers,
+        draft_complete: false,
+        draft_type: draftType,
+        draft_order_type: draftOrderType,
+        scoring_type: "cumulative",
+        current_week: currentWeek,
       };
 
       if (draftType === "live") {
         const [year, month, day] = draftDate.split('-').map(Number);
         const [hours, minutes] = draftTime.split(':').map(Number);
-        
+
         const draftDateTime = new Date(year, month - 1, day, hours, minutes, 0);
-        
+
         const now = new Date();
         const minTime = new Date(now.getTime() + 15 * 60 * 1000);
-        
+
         if (draftDateTime < minTime) {
           alert("Draft must be scheduled at least 15 minutes in the future.");
           setLoading(false);
           return;
         }
-        
+
         if (!isNaN(draftDateTime)) {
-          leagueData.draftDate = draftDateTime;
+          leagueData.draft_date = draftDateTime;
         }
 
         const parsedPickTime = Number(timePerPick);
         if (!isNaN(parsedPickTime)) {
-          leagueData.timePerPick = parsedPickTime;
+          leagueData.time_per_pick = parsedPickTime;
         }
       }
 
-      const leagueRef = await addDoc(collection(db, "leagues"), leagueData);
-
-      await updateDoc(doc(db, "users", user.uid), {
-        leagueIds: arrayUnion(leagueRef.id)
-      });
+      const { data: newLeague, error: leagueError } = await supabase.from('leagues').insert(leagueData).select('id').single();
+      if (leagueError) throw leagueError;
 
       // Note: displayName removed, using user's first name from auth/user profile instead
-      await setDoc(doc(db, "leagues", leagueRef.id, "members", user.uid), {
-        teamName: teamName.trim(),
-        email: user.email || "",
-        lineup: {
-          starters: [],
-          bench: [],
-          drafted: []
-        },
+      await supabase.from('league_members').insert({
+        league_id: newLeague.id,
+        user_id: user.id,
+        team_name: teamName.trim(),
         points: 0,
-        weeklyPoints: 0,
-        weeklyPointsHistory: {},
-        freeAgentMoves: 0,
-        smackTalk: "",
-        joinedAt: new Date()
+        weekly_points: 0,
+        weekly_points_history: {},
+        free_agent_moves: 0,
+        starters: [],
+        bench: []
       });
 
       navigate("/home", {
-        state: { message: "✅ League created successfully!" }
+        state: { message: "✅ League created successfully!", leagueId: newLeague.id }
       });
     } catch (err) {
       alert("Error: " + err.message);

@@ -1,26 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { db, auth } from "../firebase/firebase";
+import { supabase } from "../supabase/supabase";
 import {
-  doc,
-  getDoc,
-  collection,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-  arrayRemove
-} from "firebase/firestore";
-import { 
-  Settings, 
-  Users, 
-  Calendar, 
-  Trophy, 
-  Shield, 
-  Clock, 
-  ChevronUp, 
-  ChevronDown, 
-  Shuffle, 
-  Save, 
+  Settings,
+  Users,
+  Calendar,
+  Trophy,
+  Shield,
+  Clock,
+  ChevronUp,
+  ChevronDown,
+  Shuffle,
+  Save,
   Trash2,
   AlertTriangle,
   CheckCircle,
@@ -76,18 +67,22 @@ function LeagueRules() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const user = auth.currentUser;
-        if (user) setCurrentUserId(user.uid);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) setCurrentUserId(user.id);
 
-        const leagueRef = doc(db, "leagues", leagueId);
-        const leagueSnap = await getDoc(leagueRef);
-        const data = leagueSnap.data();
+        const { data: leagueRow, error: leagueError } = await supabase
+          .from('leagues')
+          .select('*')
+          .eq('id', leagueId)
+          .single();
+        if (leagueError) throw leagueError;
+        const data = leagueRow;
         setLeagueData(data);
-        
+
         // Handle draftDate properly for datetime-local input
         let formattedDraftDate = "";
-        if (data.draftDate) {
-          const draftDateTime = data.draftDate.toDate();
+        if (data.draft_date) {
+          const draftDateTime = new Date(data.draft_date);
           const year = draftDateTime.getFullYear();
           const month = String(draftDateTime.getMonth() + 1).padStart(2, '0');
           const day = String(draftDateTime.getDate()).padStart(2, '0');
@@ -98,52 +93,65 @@ function LeagueRules() {
 
         setFormState({
           name: data.name,
-          draftType: data.draftType,
-          draftOrderType: data.draftOrderType || "random",
+          draftType: data.draft_type,
+          draftOrderType: data.draft_order_type || "random",
           draftDate: formattedDraftDate,
-          timePerPick: data.timePerPick || 5,
-          maxManagers: data.maxManagers
+          timePerPick: data.time_per_pick || 5,
+          maxManagers: data.max_managers
         });
 
         // Check if draft has started
-        const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-        const draftSnap = await getDoc(draftRef);
-        setDraftStarted(draftSnap.exists() || data.draftComplete);
+        const { data: draftRow } = await supabase
+          .from('drafts')
+          .select('id, draft_started, draft_complete')
+          .eq('league_id', leagueId)
+          .single();
+        setDraftStarted(!!(draftRow) || data.draft_complete);
 
-        if (data?.createdBy) {
-          const userSnap = await getDoc(doc(db, "users", data.createdBy));
-          const userData = userSnap.data();
-          setAdminName(`${userData.firstName || ""} ${userData.lastName || ""}`.trim());
+        if (data?.created_by) {
+          const { data: userData } = await supabase
+            .from('users')
+            .select('first_name, last_name')
+            .eq('id', data.created_by)
+            .single();
+          if (userData) {
+            setAdminName(`${userData.first_name || ""} ${userData.last_name || ""}`.trim());
+          }
         }
 
-        const membersRef = collection(db, "leagues", leagueId, "members");
-        const memberDocs = await getDocs(membersRef);
+        const { data: memberRows, error: membersError } = await supabase
+          .from('league_members')
+          .select('*')
+          .eq('league_id', leagueId);
+        if (membersError) throw membersError;
 
         const memberList = await Promise.all(
-          memberDocs.docs.map(async (memberDoc) => {
-            const userId = memberDoc.id;
-            const memberData = memberDoc.data();
-            const userSnap = await getDoc(doc(db, "users", userId));
-            const userData = userSnap.exists() ? userSnap.data() : {};
+          (memberRows || []).map(async (memberRow) => {
+            const userId = memberRow.user_id;
+            const { data: userData } = await supabase
+              .from('users')
+              .select('first_name, last_name, email')
+              .eq('id', userId)
+              .single();
 
             return {
               uid: userId,
-              name: `${userData.firstName || ""} ${userData.lastName || ""}`.trim(),
-              username: userData.username || userData.email || "Unknown",
-              teamName: memberData.teamName || "Untitled Team",
+              name: `${userData?.first_name || ""} ${userData?.last_name || ""}`.trim(),
+              username: userData?.email || "Unknown",
+              teamName: memberRow.team_name || "Untitled Team",
             };
           })
         );
 
         setMembers(memberList);
-        
+
         // Initialize draft order
-        if (data.draftOrderType === "admin" && data.customDraftOrder) {
-          const orderedMembers = data.customDraftOrder.map(uid => 
+        if (data.draft_order_type === "admin" && data.custom_draft_order) {
+          const orderedMembers = data.custom_draft_order.map(uid =>
             memberList.find(m => m.uid === uid)
           ).filter(Boolean);
           setDraftOrder(orderedMembers);
-        } else if (data.draftOrderType === "admin") {
+        } else if (data.draft_order_type === "admin") {
           setDraftOrder([...memberList]);
         }
 
@@ -159,23 +167,23 @@ function LeagueRules() {
 
   // Handle member changes and refresh draft order
   useEffect(() => {
-    if (leagueData?.draftOrderType === "admin" && members.length > 0 && !draftStarted) {
-      if (leagueData.customDraftOrder && leagueData.customDraftOrder.length > 0) {
-        const orderedMembers = leagueData.customDraftOrder
+    if (leagueData?.draft_order_type === "admin" && members.length > 0 && !draftStarted) {
+      if (leagueData.custom_draft_order && leagueData.custom_draft_order.length > 0) {
+        const orderedMembers = leagueData.custom_draft_order
           .map(uid => members.find(m => m.uid === uid))
           .filter(Boolean);
-        
+
         const orderedUids = new Set(orderedMembers.map(m => m.uid));
         const missingMembers = members.filter(m => !orderedUids.has(m.uid));
-        
+
         const newDraftOrder = [...orderedMembers, ...missingMembers];
-        
+
         const currentMemberIds = new Set(draftOrder.map(m => m.uid));
         const newMemberIds = new Set(newDraftOrder.map(m => m.uid));
         const memberCountChanged = currentMemberIds.size !== newMemberIds.size;
-        const membersChanged = [...currentMemberIds].some(id => !newMemberIds.has(id)) || 
+        const membersChanged = [...currentMemberIds].some(id => !newMemberIds.has(id)) ||
                               [...newMemberIds].some(id => !currentMemberIds.has(id));
-        
+
         if (memberCountChanged || membersChanged) {
           setDraftOrder(newDraftOrder);
         }
@@ -183,18 +191,18 @@ function LeagueRules() {
         const currentMemberIds = new Set(draftOrder.map(m => m.uid));
         const newMemberIds = new Set(members.map(m => m.uid));
         const memberCountChanged = currentMemberIds.size !== newMemberIds.size;
-        const membersChanged = [...currentMemberIds].some(id => !newMemberIds.has(id)) || 
+        const membersChanged = [...currentMemberIds].some(id => !newMemberIds.has(id)) ||
                               [...newMemberIds].some(id => !currentMemberIds.has(id));
-        
+
         if (memberCountChanged || membersChanged) {
           setDraftOrder([...members]);
         }
       }
     }
-  }, [members, leagueData?.draftOrderType, leagueData?.customDraftOrder, draftStarted]);
+  }, [members, leagueData?.draft_order_type, leagueData?.custom_draft_order, draftStarted]);
 
-  const isAdmin = currentUserId && leagueData?.admin === currentUserId;
-  const isLeagueFull = members.length === leagueData?.maxManagers;
+  const isAdmin = currentUserId && leagueData?.admin_id === currentUserId;
+  const isLeagueFull = members.length === leagueData?.max_managers;
 
   const handleInputChange = (field, value) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
@@ -215,9 +223,11 @@ function LeagueRules() {
 
     try {
       const orderUids = draftOrder.map(member => member.uid);
-      await updateDoc(doc(db, "leagues", leagueId), {
-        customDraftOrder: orderUids
-      });
+      const { error: updateError } = await supabase
+        .from('leagues')
+        .update({ custom_draft_order: orderUids })
+        .eq('id', leagueId);
+      if (updateError) throw updateError;
       setError("");
       showSuccess("Draft Order Saved!", "The draft order has been successfully saved.");
     } catch (error) {
@@ -233,38 +243,19 @@ function LeagueRules() {
 
   const handleRemoveManager = async (uid, memberName) => {
     try {
-      await deleteDoc(doc(db, "leagues", leagueId, "members", uid));
-      
-      const leagueRef = doc(db, "leagues", leagueId);
-      const currentMembers = leagueData.members || [];
-      const updatedMembers = currentMembers.filter(memberId => memberId !== uid);
-      
-      await updateDoc(leagueRef, {
-        members: updatedMembers
-      });
-      
-      const userRef = doc(db, "users", uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) {
-        const userData = userSnap.data();
-        const currentLeagueIds = userData.leagueIds || [];
-        const updatedLeagueIds = currentLeagueIds.filter(id => id !== leagueId);
-        
-        await updateDoc(userRef, {
-          leagueIds: updatedLeagueIds
-        });
-      }
-      
+      const { error: deleteError } = await supabase
+        .from('league_members')
+        .delete()
+        .eq('league_id', leagueId)
+        .eq('user_id', uid);
+      if (deleteError) throw deleteError;
+
       const updatedMembersList = members.filter((m) => m.uid !== uid);
       setMembers(updatedMembersList);
       setDraftOrder((prev) => prev.filter((m) => m.uid !== uid));
-      setLeagueData((prev) => ({
-        ...prev,
-        members: updatedMembers
-      }));
 
       showSuccess("Manager Removed", `${memberName} has been successfully removed from the league.`);
-      
+
     } catch (error) {
       console.error("Error removing manager:", error);
       showError("Error", "Failed to remove manager. Please try again.");
@@ -273,33 +264,24 @@ function LeagueRules() {
 
   const handleDeleteLeague = async () => {
     try {
-      const membersToUpdate = leagueData.members || [];
-      
-      for (const memberId of membersToUpdate) {
-        try {
-          const userRef = doc(db, "users", memberId);
-          await updateDoc(userRef, {
-            leagueIds: arrayRemove(leagueId)
-          });
-        } catch (error) {
-          console.warn(`Failed to update user ${memberId}:`, error);
-        }
-      }
+      // Delete all league members
+      await supabase
+        .from('league_members')
+        .delete()
+        .eq('league_id', leagueId);
 
-      const membersRef = collection(db, "leagues", leagueId, "members");
-      const memberDocs = await getDocs(membersRef);
-      for (const memberDoc of memberDocs.docs) {
-        await deleteDoc(memberDoc.ref);
-      }
+      // Delete draft data
+      await supabase
+        .from('drafts')
+        .delete()
+        .eq('league_id', leagueId);
 
-      try {
-        const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-        await deleteDoc(draftRef);
-      } catch (error) {
-        console.warn("No draft metadata to delete:", error);
-      }
-
-      await deleteDoc(doc(db, "leagues", leagueId));
+      // Delete the league
+      const { error: deleteError } = await supabase
+        .from('leagues')
+        .delete()
+        .eq('id', leagueId);
+      if (deleteError) throw deleteError;
 
       showSuccess("League Deleted", "League has been permanently deleted!");
       setTimeout(() => navigate("/home"), 2000);
@@ -320,7 +302,7 @@ function LeagueRules() {
       const [datePart, timePart] = formState.draftDate.split('T');
       const [year, month, day] = datePart.split('-').map(Number);
       const [hours, minutes] = timePart.split(':').map(Number);
-      
+
       const draftDateTime = new Date(year, month - 1, day, hours, minutes, 0);
       const now = new Date();
       const minTime = new Date(now.getTime() + 15 * 60 * 1000);
@@ -333,26 +315,30 @@ function LeagueRules() {
 
     const update = {
       name: formState.name,
-      draftType: formState.draftType,
-      draftOrderType: formState.draftOrderType,
-      maxManagers: formState.maxManagers,
-      scoringType: leagueData.scoringType
+      draft_type: formState.draftType,
+      draft_order_type: formState.draftOrderType,
+      max_managers: formState.maxManagers,
+      scoring_type: leagueData.scoring_type
     };
 
     if (formState.draftType === "live" && formState.draftDate) {
       const [datePart, timePart] = formState.draftDate.split('T');
       const [year, month, day] = datePart.split('-').map(Number);
       const [hours, minutes] = timePart.split(':').map(Number);
-      
-      update.draftDate = new Date(year, month - 1, day, hours, minutes, 0);
-      update.timePerPick = Number(formState.timePerPick);
+
+      update.draft_date = new Date(year, month - 1, day, hours, minutes, 0).toISOString();
+      update.time_per_pick = Number(formState.timePerPick);
     } else {
-      update.draftDate = null;
-      update.timePerPick = null;
+      update.draft_date = null;
+      update.time_per_pick = null;
     }
 
     try {
-      await updateDoc(doc(db, "leagues", leagueId), update);
+      const { error: updateError } = await supabase
+        .from('leagues')
+        .update(update)
+        .eq('id', leagueId);
+      if (updateError) throw updateError;
       setError("");
       showSuccess("Settings Updated!", "League settings have been successfully updated.");
       setTimeout(() => window.location.reload(), 1500);
@@ -450,7 +436,7 @@ function LeagueRules() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white overflow-x-hidden">
-      
+
       {/* Animated Background Elements */}
       <div className="absolute inset-0 opacity-10">
         <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
@@ -468,7 +454,7 @@ function LeagueRules() {
           </span>
         </Link>
         <div className="flex items-center space-x-4">
-          <button 
+          <button
             onClick={() => navigate(`/${leagueId}/my-lineup`)}
             className="flex items-center space-x-2 px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
           >
@@ -498,24 +484,24 @@ function LeagueRules() {
         {/* Draft Status Alert */}
         {draftStarted && (
           <div className={`mb-8 p-6 rounded-2xl border backdrop-blur-lg w-full ${
-            leagueData?.draftComplete 
-              ? 'bg-green-500/20 border-green-400/30' 
+            leagueData?.draft_complete
+              ? 'bg-green-500/20 border-green-400/30'
               : 'bg-yellow-500/20 border-yellow-400/30'
           }`}>
             <div className="flex items-center space-x-4">
-              {leagueData?.draftComplete ? (
+              {leagueData?.draft_complete ? (
                 <CheckCircle size={32} className="text-green-400 flex-shrink-0" />
               ) : (
                 <Lock size={32} className="text-yellow-400 flex-shrink-0" />
               )}
               <div className="min-w-0 flex-1">
                 <div className={`text-xl font-bold mb-2 ${
-                  leagueData?.draftComplete ? 'text-green-300' : 'text-yellow-300'
+                  leagueData?.draft_complete ? 'text-green-300' : 'text-yellow-300'
                 }`}>
-                  {leagueData?.draftComplete ? "Draft Completed" : "Draft In Progress"}
+                  {leagueData?.draft_complete ? "Draft Completed" : "Draft In Progress"}
                 </div>
                 <div className={`text-sm ${
-                  leagueData?.draftComplete ? 'text-green-200' : 'text-yellow-200'
+                  leagueData?.draft_complete ? 'text-green-200' : 'text-yellow-200'
                 }`}>
                   League settings are now locked and cannot be changed.
                 </div>
@@ -550,8 +536,8 @@ function LeagueRules() {
                     <label className="block text-sm font-medium text-white/80 mb-2">
                       League Name
                     </label>
-                    <input 
-                      value={formState.name || ''} 
+                    <input
+                      value={formState.name || ''}
                       onChange={(e) => handleInputChange("name", e.target.value)}
                       disabled={draftStarted}
                       className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:border-purple-400 focus:outline-none transition-colors disabled:opacity-50"
@@ -563,8 +549,8 @@ function LeagueRules() {
                     <label className="block text-sm font-medium text-white/80 mb-2">
                       Draft Type
                     </label>
-                    <select 
-                      value={formState.draftType || ''} 
+                    <select
+                      value={formState.draftType || ''}
                       onChange={(e) => handleInputChange("draftType", e.target.value)}
                       disabled={draftStarted}
                       className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:border-purple-400 focus:outline-none transition-colors disabled:opacity-50"
@@ -579,8 +565,8 @@ function LeagueRules() {
                     <label className="block text-sm font-medium text-white/80 mb-2">
                       Draft Order
                     </label>
-                    <select 
-                      value={formState.draftOrderType || ''} 
+                    <select
+                      value={formState.draftOrderType || ''}
                       onChange={(e) => handleInputChange("draftOrderType", e.target.value)}
                       disabled={draftStarted}
                       className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:border-purple-400 focus:outline-none transition-colors disabled:opacity-50"
@@ -597,9 +583,9 @@ function LeagueRules() {
                         <label className="block text-sm font-medium text-white/80 mb-2">
                           Draft Date & Time
                         </label>
-                        <input 
-                          type="datetime-local" 
-                          value={formState.draftDate || ''} 
+                        <input
+                          type="datetime-local"
+                          value={formState.draftDate || ''}
                           onChange={(e) => handleInputChange("draftDate", e.target.value)}
                           min={getMinDateTime()}
                           max={getMaxDate()}
@@ -615,8 +601,8 @@ function LeagueRules() {
                         <label className="block text-sm font-medium text-white/80 mb-2">
                           Time Per Pick (minutes)
                         </label>
-                        <select 
-                          value={formState.timePerPick || ''} 
+                        <select
+                          value={formState.timePerPick || ''}
                           onChange={(e) => handleInputChange("timePerPick", e.target.value)}
                           disabled={draftStarted}
                           className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:border-purple-400 focus:outline-none transition-colors disabled:opacity-50"
@@ -636,8 +622,8 @@ function LeagueRules() {
                     <label className="block text-sm font-medium text-white/80 mb-2">
                       Max Managers
                     </label>
-                    <select 
-                      value={formState.maxManagers || ''} 
+                    <select
+                      value={formState.maxManagers || ''}
                       onChange={(e) => handleInputChange("maxManagers", parseInt(e.target.value))}
                       disabled={draftStarted}
                       className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:border-purple-400 focus:outline-none transition-colors disabled:opacity-50"
@@ -651,7 +637,7 @@ function LeagueRules() {
 
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row gap-4 mt-8 w-full">
-                  <button 
+                  <button
                     onClick={handleConfirmChanges}
                     disabled={draftStarted}
                     className="flex items-center justify-center space-x-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 disabled:from-gray-500 disabled:to-gray-600 text-white font-semibold rounded-xl transition-all duration-300 disabled:cursor-not-allowed"
@@ -659,8 +645,8 @@ function LeagueRules() {
                     <Save size={16} />
                     <span>{draftStarted ? "Settings Locked" : "Save Changes"}</span>
                   </button>
-                  
-                  <button 
+
+                  <button
                     onClick={() => setShowDeleteModal(true)}
                     className="flex items-center justify-center space-x-2 px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold rounded-xl transition-all duration-300"
                   >
@@ -677,7 +663,7 @@ function LeagueRules() {
                     <Trophy size={32} className="text-yellow-400 flex-shrink-0" />
                     <h2 className="text-2xl font-bold text-white min-w-0">Draft Order Management</h2>
                   </div>
-                  
+
                   {!isLeagueFull ? (
                     <div className="p-6 rounded-2xl border bg-yellow-500/20 border-yellow-400/30 backdrop-blur-lg mb-6 w-full">
                       <div className="flex items-center space-x-4">
@@ -687,7 +673,7 @@ function LeagueRules() {
                             League must be full before setting draft order
                           </div>
                           <div className="text-yellow-200">
-                            Current: {members.length}/{leagueData.maxManagers} managers
+                            Current: {members.length}/{leagueData.max_managers} managers
                           </div>
                         </div>
                       </div>
@@ -697,17 +683,17 @@ function LeagueRules() {
                       <p className="text-white/70 mb-6">
                         Drag and drop to reorder managers. Position 1 gets the first pick.
                       </p>
-                      
+
                       <div className="flex flex-col sm:flex-row gap-4 mb-6 w-full">
-                        <button 
+                        <button
                           onClick={randomizeDraftOrder}
                           className="flex items-center justify-center space-x-2 px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white font-medium hover:bg-white/20 transition-all duration-300"
                         >
                           <Shuffle size={16} />
                           <span>Randomize Order</span>
                         </button>
-                        
-                        <button 
+
+                        <button
                           onClick={saveDraftOrder}
                           className="flex items-center justify-center space-x-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-medium rounded-xl transition-all duration-300"
                         >
@@ -722,7 +708,7 @@ function LeagueRules() {
                             <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-lg mr-4 flex-shrink-0">
                               {index + 1}
                             </div>
-                            
+
                             <div className="flex-1 min-w-0">
                               <div className="text-white font-semibold text-lg truncate">
                                 {member.name || member.username}
@@ -731,16 +717,16 @@ function LeagueRules() {
                                 {member.teamName}
                               </div>
                             </div>
-                            
+
                             <div className="flex flex-col space-y-2 flex-shrink-0">
-                              <button 
+                              <button
                                 onClick={() => handleDraftOrderChange(index, Math.max(0, index - 1))}
                                 disabled={index === 0}
                                 className="p-2 bg-white/10 border border-white/20 rounded-lg text-white hover:bg-white/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 <ChevronUp size={16} />
                               </button>
-                              <button 
+                              <button
                                 onClick={() => handleDraftOrderChange(index, Math.min(draftOrder.length - 1, index + 1))}
                                 disabled={index === draftOrder.length - 1}
                                 className="p-2 bg-white/10 border border-white/20 rounded-lg text-white hover:bg-white/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -769,43 +755,43 @@ function LeagueRules() {
                   <span className="text-white/70 font-medium">League Name:</span>
                   <span className="text-white break-words text-right">{leagueData.name}</span>
                 </div>
-                
+
                 <div className="flex justify-between items-center py-3 border-b border-white/10">
                   <span className="text-white/70 font-medium">Commissioner:</span>
                   <span className="text-white break-words text-right">{adminName || "Unknown"}</span>
                 </div>
-                
+
                 <div className="flex justify-between items-center py-3 border-b border-white/10">
                   <span className="text-white/70 font-medium">Draft Type:</span>
-                  <span className="text-white break-words text-right">{getDraftDisplayText(leagueData.draftType)}</span>
-                </div>
-                
-                <div className="flex justify-between items-center py-3 border-b border-white/10">
-                  <span className="text-white/70 font-medium">Draft Order:</span>
-                  <span className="text-white break-words text-right">{getDraftOrderTypeDisplay(leagueData.draftOrderType)}</span>
+                  <span className="text-white break-words text-right">{getDraftDisplayText(leagueData.draft_type)}</span>
                 </div>
 
-                {leagueData.draftType === "live" && leagueData.draftDate && (
+                <div className="flex justify-between items-center py-3 border-b border-white/10">
+                  <span className="text-white/70 font-medium">Draft Order:</span>
+                  <span className="text-white break-words text-right">{getDraftOrderTypeDisplay(leagueData.draft_order_type)}</span>
+                </div>
+
+                {leagueData.draft_type === "live" && leagueData.draft_date && (
                   <>
                     <div className="flex justify-between items-center py-3 border-b border-white/10">
                       <span className="text-white/70 font-medium">Draft Date:</span>
                       <span className="text-white text-sm break-words text-right">
-                        {leagueData.draftDate?.toDate().toLocaleString("en-US", {
+                        {new Date(leagueData.draft_date).toLocaleString("en-US", {
                           timeZone: "America/New_York",
                           weekday: "long",
-                          year: "numeric", 
-                          month: "long", 
+                          year: "numeric",
+                          month: "long",
                           day: "numeric",
-                          hour: "numeric", 
+                          hour: "numeric",
                           minute: "2-digit",
                           timeZoneName: "short"
                         })}
                       </span>
                     </div>
-                    
+
                     <div className="flex justify-between items-center py-3">
                       <span className="text-white/70 font-medium">Time Per Pick:</span>
-                      <span className="text-white break-words text-right">{leagueData.timePerPick} minutes</span>
+                      <span className="text-white break-words text-right">{leagueData.time_per_pick} minutes</span>
                     </div>
                   </>
                 )}
@@ -818,7 +804,7 @@ function LeagueRules() {
             <div className="flex items-center space-x-4 mb-6">
               <Users size={32} className="text-green-400 flex-shrink-0" />
               <h2 className="text-2xl font-bold text-white min-w-0">
-                League Members ({members.length}/{leagueData.maxManagers})
+                League Members ({members.length}/{leagueData.max_managers})
               </h2>
             </div>
 
@@ -838,9 +824,9 @@ function LeagueRules() {
                         {member.teamName} • @{member.username}
                       </div>
                     </div>
-                    
+
                     {isAdmin && (
-                      <button 
+                      <button
                         onClick={() => handleRemoveManager(member.uid, member.name || member.username)}
                         disabled={draftStarted}
                         className="px-4 py-2 bg-red-500/20 border border-red-400/30 text-red-300 font-medium rounded-lg hover:bg-red-500/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
@@ -923,7 +909,7 @@ function LeagueRules() {
               <p className="text-white/80 text-sm leading-relaxed mb-3">
                 Teams in your starting lineup accumulate points based on their real-world performance each week. Points can be positive or negative depending on how the team performs. For detailed scoring information:
               </p>
-              <button 
+              <button
                 onClick={() => setShowScoringModal(true)}
                 className="px-4 py-2 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-medium rounded-lg transition-all duration-300"
               >
@@ -997,7 +983,7 @@ function LeagueRules() {
 
       {/* Scoring System Modal */}
       {showScoringModal && (
-        <ScoringSystemModal 
+        <ScoringSystemModal
           onClose={() => setShowScoringModal(false)}
         />
       )}
@@ -1014,7 +1000,7 @@ function LeagueRules() {
               <h3 className="text-2xl font-bold text-white mb-4">
                 Delete League "{leagueData.name}"?
               </h3>
-              
+
               <div className="text-white/70 text-left mb-6">
                 <p className="mb-4">This will permanently:</p>
                 <ul className="list-disc list-inside space-y-2 mb-4">
@@ -1058,7 +1044,7 @@ function LeagueRules() {
               <h3 className="text-xl font-bold text-white mb-3">
                 {modalTitle}
               </h3>
-              
+
               <p className="text-white/70 mb-6">
                 {modalMessage}
               </p>
@@ -1086,7 +1072,7 @@ function LeagueRules() {
               <h3 className="text-xl font-bold text-white mb-3">
                 {modalTitle}
               </h3>
-              
+
               <p className="text-white/70 mb-6">
                 {modalMessage}
               </p>
@@ -1101,7 +1087,7 @@ function LeagueRules() {
           </div>
         </div>
       )}
-      <BottomNavBar leagueId={leagueId} isDraftComplete={leagueData?.draftComplete || false} />
+      <BottomNavBar leagueId={leagueId} isDraftComplete={leagueData?.draft_complete || false} />
     </div>
   );
 }

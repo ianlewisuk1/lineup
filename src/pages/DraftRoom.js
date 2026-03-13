@@ -1,18 +1,6 @@
 // src/pages/DraftRoom.js
 import React, { useEffect, useState } from "react";
-import { db, auth } from "../firebase/firebase";
-import {
-  doc,
-  getDoc,
-  updateDoc,
-  onSnapshot,
-  collection,
-  getDocs,
-  arrayUnion,
-  setDoc,
-  deleteDoc,
-  serverTimestamp
-} from "firebase/firestore";
+import { supabase } from "../supabase/supabase";
 import DraftBoard from "../components/DraftBoard";
 import ManualDraftEntry from "../components/ManualDraftEntry";
 import { useParams, useNavigate, Link } from "react-router-dom";
@@ -43,31 +31,23 @@ function DraftRoom() {
 
     const fetchDraft = async () => {
       try {
-        const leagueDoc = await getDoc(doc(db, "leagues", leagueId));
-        const leagueData = leagueDoc.exists() ? leagueDoc.data() : null;
-        setLeagueData(leagueData);
+        const { data: leagueDoc } = await supabase.from("leagues").select("*").eq("id", leagueId).single();
+        setLeagueData(leagueDoc);
 
-        const user = auth.currentUser;
+        const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
-        setUserId(user.uid);
+        setUserId(user.id);
 
-        const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
+        const { data: membersSnap } = await supabase.from("league_members").select("*").eq("league_id", leagueId);
         const userMapData = {};
         const userFirstNamesData = {};
 
-        const userFetches = [];
-
-        membersSnap.forEach((memberDoc) => {
-          const memberData = memberDoc.data();
-          userMapData[memberDoc.id] = memberData;
-          userFetches.push(
-            getDoc(doc(db, "users", memberDoc.id)).then((userDoc) => {
-              if (userDoc.exists()) {
-                const userData = userDoc.data();
-                userFirstNamesData[memberDoc.id] = userData.firstName || 'Unknown';
-              }
-            })
-          );
+        const userFetches = (membersSnap || []).map(async (memberDoc) => {
+          userMapData[memberDoc.user_id] = memberDoc;
+          const { data: userData } = await supabase.from("users").select("*").eq("id", memberDoc.user_id).single();
+          if (userData) {
+            userFirstNamesData[memberDoc.user_id] = userData.first_name || 'Unknown';
+          }
         });
 
         await Promise.all(userFetches);
@@ -78,13 +58,13 @@ function DraftRoom() {
         console.log("✅ setUserMap:", userMapData);
         console.log("✅ setUserFirstNames:", userFirstNamesData);
 
-        setIsLeagueAdmin(user.uid === leagueData?.admin);
-        setMaxManagers(leagueData?.maxManagers || 8);
+        setIsLeagueAdmin(user.id === leagueDoc?.admin_id);
+        setMaxManagers(leagueDoc?.max_managers || 8);
 
-        const teamsSnap = await getDocs(collection(db, "teams"));
+        const { data: teamsData } = await supabase.from("teams").select("*");
         const teamDataMap = {};
-        teamsSnap.forEach((teamDoc) => {
-          teamDataMap[teamDoc.id] = teamDoc.data();
+        (teamsData || []).forEach((teamDoc) => {
+          teamDataMap[teamDoc.id] = teamDoc;
         });
         setAllTeams(teamDataMap);
       } catch (error) {
@@ -94,48 +74,34 @@ function DraftRoom() {
 
     fetchDraft();
 
-    const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-    const unsubscribe = onSnapshot(draftRef, (snap) => {
-      const data = snap.data();
+    const fetchDraftData = async () => {
+      const { data } = await supabase.from("drafts").select("*").eq("league_id", leagueId).single();
       const newDraftData = data || null;
 
-      if (newDraftData?.draftComplete && (!draftData || !draftData.draftComplete)) {
+      if (newDraftData?.draft_complete && (!draftData || !draftData.draft_complete)) {
         setShowCompletionModal(true);
       }
 
       setDraftData(newDraftData);
       setLoading(false);
-    });
+    };
+
+    fetchDraftData();
+
+    const channel = supabase.channel(`draft-room-${leagueId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'drafts', filter: `league_id=eq.${leagueId}` }, fetchDraftData)
+      .subscribe();
 
     return () => {
-      unsubscribe(); // ✅ Clean up listener on unmount
+      supabase.removeChannel(channel);
     };
   }, [leagueId]);
 
   // Server time synchronization
   const syncServerTime = async () => {
     try {
-      const before = Date.now();
-      
-      // Create a temporary document with server timestamp to get server time
-      const tempRef = doc(db, "temp", "timeSync");
-      await setDoc(tempRef, {
-        timestamp: serverTimestamp()
-      });
-      
-      const tempSnap = await getDoc(tempRef);
-      const serverTime = tempSnap.data().timestamp.toDate().getTime();
-      
-      // Clean up temp document
-      await deleteDoc(tempRef);
-      
-      const after = Date.now();
-      const networkDelay = (after - before) / 2;
-      const offset = serverTime - before - networkDelay;
-      
-      setServerTimeOffset(offset);
-      console.log(`🕐 Server time synced. Offset: ${offset}ms`);
-      
+      // Use local time as fallback since Supabase doesn't have a simple server timestamp endpoint
+      setServerTimeOffset(0);
     } catch (error) {
       console.warn("Failed to sync server time, using local time:", error);
       setServerTimeOffset(0);
@@ -149,8 +115,8 @@ function DraftRoom() {
 
   // Pre-draft countdown timer effect
   useEffect(() => {
-    if (leagueData?.draftType === "live" && leagueData.draftDate && !draftData) {
-      const draftStartTime = leagueData.draftDate.toDate().getTime();
+    if (leagueData?.draft_type === "live" && leagueData.draft_date && !draftData) {
+      const draftStartTime = new Date(leagueData.draft_date).getTime();
       
       // Clear existing countdown
       if (countdownInterval) {
@@ -189,16 +155,16 @@ function DraftRoom() {
       }
       setDraftCountdown(0);
     }
-  }, [leagueData?.draftDate, draftData, isLeagueAdmin, userMap, maxManagers, serverTimeOffset]);
+  }, [leagueData?.draft_date, draftData, isLeagueAdmin, userMap, maxManagers, serverTimeOffset]);
 
   // Timer effect for live drafts
   useEffect(() => {
-    if (draftData && leagueData?.draftType === "live" && !draftData.draftComplete) {
-      const timePerPick = leagueData.timePerPick || 2; // minutes
-      const pickStartTime = draftData.currentPickStartTime;
-      
+    if (draftData && leagueData?.draft_type === "live" && !draftData.draft_complete) {
+      const timePerPick = leagueData.time_per_pick || 2; // minutes
+      const pickStartTime = draftData.draft_start_time;
+
       if (pickStartTime) {
-        const startTime = pickStartTime.toDate ? pickStartTime.toDate().getTime() : new Date(pickStartTime).getTime();
+        const startTime = new Date(pickStartTime).getTime();
         const timeLimit = timePerPick * 60 * 1000; // convert to milliseconds
         
         // Clear existing timer
@@ -235,7 +201,7 @@ function DraftRoom() {
       }
       setTimeRemaining(0);
     }
-  }, [draftData?.currentPickIndex, draftData?.currentPickStartTime, leagueData?.timePerPick]);
+  }, [draftData?.current_pick_index, draftData?.draft_start_time, leagueData?.time_per_pick]);
 
   // Helper function to get current picker using snake draft logic
   const getCurrentPicker = (draftOrder, currentPickIndex) => {
@@ -255,31 +221,31 @@ function DraftRoom() {
   };
 
   const handleAutoPick = async () => {
-    if (!draftData || draftData.draftComplete) return;
+    if (!draftData || draftData.draft_complete) return;
 
     // ✅ RACE CONDITION PROTECTION: Prevent multiple autopicks
     if (window.autoPickInProgress) {
       console.log("🚫 Auto-pick already in progress, skipping...");
       return;
     }
-    
+
     window.autoPickInProgress = true;
 
     try {
-      const currentIndex = draftData.currentPickIndex;
-      const draftOrder = draftData.draftOrder;
-      
+      const currentIndex = draftData.current_pick_index;
+      const draftOrder = draftData.draft_order;
+
       // Use snake draft logic to get current picker
       const currentUid = getCurrentPicker(draftOrder, currentIndex);
-      const availableTeamIds = draftData.availableTeams; // These are document IDs
-      
+      const availableTeamIds = draftData.selected_teams ? Object.keys(draftData.selected_teams).length > 0 ? draftData.available_teams : [] : [];
+
       if (!currentUid || availableTeamIds.length === 0) {
         console.error("Auto-pick failed - no current UID or no available teams");
         return;
       }
 
       // ✅ CHECK: Make sure user doesn't already have 7 teams
-      const currentUserTeams = draftData.selectedTeams[currentUid] || [];
+      const currentUserTeams = (draftData.selected_teams || {})[currentUid] || [];
       if (currentUserTeams.length >= 7) {
         console.log(`🚫 User ${currentUid} already has 7 teams, skipping auto-pick`);
         return;
@@ -288,24 +254,24 @@ function DraftRoom() {
       // ✅ CRITICAL FIX: Ensure allTeams is populated before proceeding
       if (!allTeams || Object.keys(allTeams).length === 0) {
         console.warn("⚠️ allTeams not loaded yet, fetching fresh team data...");
-        
+
         // Fetch fresh team data if allTeams is not populated
-        const teamsSnap = await getDocs(collection(db, "teams"));
+        const { data: teamsData } = await supabase.from("teams").select("*");
         const freshTeamData = {};
-        teamsSnap.forEach((teamDoc) => {
-          freshTeamData[teamDoc.id] = teamDoc.data();
+        (teamsData || []).forEach((teamDoc) => {
+          freshTeamData[teamDoc.id] = teamDoc;
         });
-        
+
         // Use fresh data for rankings
         const teamRankings = {};
         availableTeamIds.forEach(teamId => {
           const teamData = freshTeamData[teamId];
-          if (teamData && teamData.philMetricDraftRank !== undefined) {
-            teamRankings[teamId] = teamData.philMetricDraftRank;
+          if (teamData && teamData.phil_metrics !== undefined) {
+            teamRankings[teamId] = teamData.phil_metrics;
           }
         });
 
-        // Filter available teams and sort by philMetricDraftRank (lowest = best)
+        // Filter available teams and sort by phil_metrics (lowest = best)
         const availableTeamsWithRanks = availableTeamIds
           .map(teamId => ({
             id: teamId,
@@ -313,31 +279,31 @@ function DraftRoom() {
           }))
           .sort((a, b) => a.rank - b.rank); // Sort ascending (lower rank = better)
 
-        // Pick the best available team (lowest philMetricDraftRank)
+        // Pick the best available team (lowest phil_metrics)
         const bestTeam = availableTeamsWithRanks[0];
         const teamData = freshTeamData[bestTeam.id];
         const teamDisplayName = teamData?.school || bestTeam.id;
-        
+
         const fallbackName = userMap[currentUid]?.displayName || "Unknown";
         const firstName = userFirstNames?.[currentUid];
         const displayName = firstName || fallbackName;
 
         console.log(`🤖 Auto-picking best available team (fresh data): ${teamDisplayName} (rank: ${bestTeam.rank}) for ${displayName}`);
-        
+
         // ✅ Use the document ID (bestTeam.id) for the pick
         await performPick(bestTeam.id, currentUid, true);
         return;
       }
 
-      // ✅ USE EXISTING allTeams STATE: Map document IDs to their philMetricDraftRank scores
+      // ✅ USE EXISTING allTeams STATE: Map document IDs to their phil_metrics scores
       const teamRankings = {};
-      
+
       // Verify we have ranking data for available teams
       let teamsWithRankings = 0;
       availableTeamIds.forEach(teamId => {
         const teamData = allTeams[teamId];
-        if (teamData && teamData.philMetricDraftRank !== undefined) {
-          teamRankings[teamId] = teamData.philMetricDraftRank;
+        if (teamData && teamData.phil_metrics !== undefined) {
+          teamRankings[teamId] = teamData.phil_metrics;
           teamsWithRankings++;
         }
       });
@@ -349,7 +315,7 @@ function DraftRoom() {
         console.warn("⚠️ Missing ranking data for most teams, this may indicate allTeams state is stale");
       }
 
-      // Filter available teams and sort by philMetricDraftRank (lowest = best)
+      // Filter available teams and sort by phil_metrics (lowest = best)
       const availableTeamsWithRanks = availableTeamIds
         .map(teamId => ({
           id: teamId,
@@ -357,11 +323,11 @@ function DraftRoom() {
         }))
         .sort((a, b) => a.rank - b.rank); // Sort ascending (lower rank = better)
 
-      // Pick the best available team (lowest philMetricDraftRank)
+      // Pick the best available team (lowest phil_metrics)
       const bestTeam = availableTeamsWithRanks[0];
       const teamData = allTeams[bestTeam.id];
       const teamDisplayName = teamData?.school || bestTeam.id;
-      
+
       const fallbackName = userMap[currentUid]?.displayName || "Unknown";
       const firstName = userFirstNames?.[currentUid];
       const displayName = firstName || fallbackName;
@@ -374,12 +340,12 @@ function DraftRoom() {
 
     } catch (error) {
       console.error("Error in smart auto-pick, falling back to random:", error);
-      
+
       // Fallback to random selection if something goes wrong
-      const availableTeamIds = draftData.availableTeams;
+      const availableTeamIds = draftData.available_teams || [];
       if (availableTeamIds.length > 0) {
         const randomTeam = availableTeamIds[Math.floor(Math.random() * availableTeamIds.length)];
-        await performPick(randomTeam, getCurrentPicker(draftData.draftOrder, draftData.currentPickIndex), true);
+        await performPick(randomTeam, getCurrentPicker(draftData.draft_order, draftData.current_pick_index), true);
       }
     } finally {
       // ✅ CLEANUP: Always clear the flag
@@ -391,17 +357,15 @@ function DraftRoom() {
     if (!draftData) return;
 
     // CRITICAL: Fetch fresh draft data before making any pick to prevent overwrites
-    const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-    const freshDraftSnap = await getDoc(draftRef);
-    const freshDraftData = freshDraftSnap.data();
-    
+    const { data: freshDraftData } = await supabase.from("drafts").select("*").eq("league_id", leagueId).single();
+
     if (!freshDraftData) {
       console.error("No fresh draft data found");
       return;
     }
 
     // Use fresh data for all calculations
-    const alreadyPicked = freshDraftData.selectedTeams[pickingUserId] || [];
+    const alreadyPicked = (freshDraftData.selected_teams || {})[pickingUserId] || [];
     if (alreadyPicked.length >= 7) return;
 
     // ✅ DUPLICATE CHECK: Prevent same team being picked twice by same user
@@ -411,13 +375,13 @@ function DraftRoom() {
     }
 
     // ✅ AVAILABILITY CHECK: Make sure team is still available
-    if (!freshDraftData.availableTeams.includes(teamName)) {
+    if (!(freshDraftData.available_teams || []).includes(teamName)) {
       console.warn(`Team ${teamName} is no longer available. Skipping.`);
       return;
     }
 
     // Verify this user should actually be picking right now
-    const expectedCurrentPicker = getCurrentPicker(freshDraftData.draftOrder, freshDraftData.currentPickIndex);
+    const expectedCurrentPicker = getCurrentPicker(freshDraftData.draft_order, freshDraftData.current_pick_index);
     if (!isAutoPick && expectedCurrentPicker !== pickingUserId) {
       console.warn(`Pick rejected: Expected ${expectedCurrentPicker} but ${pickingUserId} tried to pick`);
       alert("It's not your turn! The draft may have updated. Please refresh the page.");
@@ -426,27 +390,27 @@ function DraftRoom() {
 
     // ✅ Construct new selected teams object
     const newSelected = {
-      ...freshDraftData.selectedTeams,
+      ...(freshDraftData.selected_teams || {}),
       [pickingUserId]: [...alreadyPicked, teamName]
     };
 
-    const newAvailable = freshDraftData.availableTeams.filter(t => t !== teamName);
-    const newIndex = freshDraftData.currentPickIndex + 1;
+    const newAvailable = (freshDraftData.available_teams || []).filter(t => t !== teamName);
+    const newIndex = freshDraftData.current_pick_index + 1;
 
     const totalPicks = Object.values(newSelected).reduce((sum, picks) => sum + picks.length, 0);
-    const totalRequiredPicks = freshDraftData.draftOrder.length * 7;
+    const totalRequiredPicks = (freshDraftData.draft_order || []).length * 7;
     const draftComplete = totalPicks >= totalRequiredPicks;
 
     const updateData = {
-      selectedTeams: newSelected,
-      availableTeams: newAvailable,
-      currentPickIndex: newIndex,
-      draftComplete
+      selected_teams: newSelected,
+      available_teams: newAvailable,
+      current_pick_index: newIndex,
+      draft_complete: draftComplete
     };
 
     // Set new pick start time if not complete
-    if (!draftComplete && leagueData?.draftType === "live") {
-      updateData.currentPickStartTime = serverTimestamp();
+    if (!draftComplete && leagueData?.draft_type === "live") {
+      updateData.draft_start_time = new Date().toISOString();
     }
 
     // ✅ Get proper display name using first name fallback
@@ -456,13 +420,16 @@ function DraftRoom() {
 
     console.log(`✅ Making pick: ${teamName} for ${displayName} (Pick ${newIndex})`);
 
-    await updateDoc(draftRef, updateData);
+    await supabase.from("drafts").update(updateData).eq("league_id", leagueId);
 
     // Update member lineup
-    const memberRef = doc(db, "leagues", leagueId, "members", pickingUserId);
-    await updateDoc(memberRef, {
-      "lineup.drafted": arrayUnion(teamName)
-    });
+    const { data: memberData } = await supabase.from("league_members").select("starters,bench").eq("league_id", leagueId).eq("user_id", pickingUserId).single();
+    const existingStarters = memberData?.starters || [];
+    const existingBench = memberData?.bench || [];
+    const drafted = [...existingStarters, ...existingBench];
+    if (!drafted.includes(teamName)) {
+      await supabase.from("league_members").update({ starters: [...existingStarters, teamName] }).eq("league_id", leagueId).eq("user_id", pickingUserId);
+    }
 
     if (draftComplete) {
       // Auto-complete the draft
@@ -481,20 +448,16 @@ function DraftRoom() {
         const starters = teams.slice(0, 5);
         const bench = teams.slice(5);
 
-        const memberRef = doc(db, "leagues", leagueId, "members", uid);
-        await updateDoc(memberRef, {
-          "lineup.drafted": teams,
-          "lineup.starters": starters,
-          "lineup.bench": bench
-        });
+        await supabase.from("league_members").update({
+          starters,
+          bench
+        }).eq("league_id", leagueId).eq("user_id", uid);
       });
 
       await Promise.all(updates);
 
       // Mark league as draft complete
-      await updateDoc(doc(db, "leagues", leagueId), {
-        draftComplete: true
-      });
+      await supabase.from("leagues").update({ draft_complete: true }).eq("id", leagueId);
 
       console.log("✅ Draft completed automatically!");
 
@@ -523,24 +486,16 @@ function DraftRoom() {
 
   try {
     // Clear any existing draft data first to prevent conflicts
-    const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-    try {
-      await deleteDoc(draftRef);
-      console.log("✅ Cleared existing draft data");
-    } catch (deleteError) {
-      // It's okay if the document doesn't exist
-      console.log("No existing draft data to clear");
-    }
+    await supabase.from("drafts").delete().eq("league_id", leagueId);
+    console.log("✅ Cleared existing draft data");
 
-    const leagueRef = doc(db, "leagues", leagueId);
-    const leagueSnap = await getDoc(leagueRef);
-    if (!leagueSnap.exists()) {
+    const { data: leagueSnap } = await supabase.from("leagues").select("*").eq("id", leagueId).single();
+    if (!leagueSnap) {
       alert("League not found.");
       return;
     }
 
-    const leagueData = leagueSnap.data();
-    const expectedManagers = leagueData.maxManagers;
+    const expectedManagers = leagueSnap.max_managers;
     const currentManagers = Object.keys(userMap).length;
 
     if (currentManagers < expectedManagers) {
@@ -548,31 +503,26 @@ function DraftRoom() {
       return;
     }
 
-    const allTeamsSnap = await getDocs(collection(db, "teams"));
+    const { data: allTeamsData } = await supabase.from("teams").select("*");
 
     // ✅ FIXED: Properly filter for FBS teams and use their document IDs
-    const teamNames = allTeamsSnap.docs
-      .filter(doc => {
-        const data = doc.data();
-        return data.school && 
-              typeof data.school === "string" && 
-              data.classification?.toLowerCase() === "fbs";
-      })
-      .map(doc => doc.id); // Use the document ID (which should match school name)
+    const teamNames = (allTeamsData || [])
+      .filter(t => t.school && typeof t.school === "string" && t.classification?.toLowerCase() === "fbs")
+      .map(t => t.id); // Use the document ID (which should match school name)
 
     if (teamNames.length === 0) {
-      alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
+      alert("⚠️ No valid FBS teams found. Check your teams table.");
       return;
     }
-    
+
     // ✅ Use custom draft order if admin set it, otherwise use random order
     let managerOrder;
-    
-    if (leagueData.draftOrderType === "admin" && leagueData.customDraftOrder && leagueData.customDraftOrder.length > 0) {
+
+    if (leagueSnap.draft_order_type === "admin" && leagueSnap.draft_order && leagueSnap.draft_order.length > 0) {
       // Use the custom order set by admin
-      managerOrder = leagueData.customDraftOrder;
+      managerOrder = leagueSnap.draft_order;
       console.log("✅ Using admin-set draft order:", managerOrder);
-    } else if (leagueData.draftOrderType === "random") {
+    } else if (leagueSnap.draft_order_type === "random") {
       // Randomize the order
       managerOrder = Object.keys(userMap).filter(Boolean).sort(() => Math.random() - 0.5);
       console.log("✅ Using randomized draft order:", managerOrder);
@@ -581,20 +531,21 @@ function DraftRoom() {
       managerOrder = Object.keys(userMap).filter(Boolean);
       console.log("✅ Using fallback draft order:", managerOrder);
     }
-    
+
     console.log("✅ Manager order:", managerOrder);
     console.log("✅ Available FBS teams:", teamNames);
 
     const draftPayload = {
-      draftOrder: managerOrder,
-      currentPickIndex: 0,
-      availableTeams: teamNames,
-      selectedTeams: {},
-      draftComplete: false,
-      currentPickStartTime: serverTimestamp()
+      league_id: leagueId,
+      draft_order: managerOrder,
+      current_pick_index: 0,
+      available_teams: teamNames,
+      selected_teams: {},
+      draft_complete: false,
+      draft_start_time: new Date().toISOString()
     };
 
-    await setDoc(draftRef, draftPayload);
+    await supabase.from("drafts").insert(draftPayload);
     alert("Live draft started!");
 
   } catch (err) {
@@ -607,27 +558,24 @@ function DraftRoom() {
   if (!draftData || !managerId || !teamId) return;
 
   try {
-    const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-    
     // Get fresh draft data
-    const freshDraftSnap = await getDoc(draftRef);
-    const freshDraftData = freshDraftSnap.data();
-    
+    const { data: freshDraftData } = await supabase.from("drafts").select("*").eq("league_id", leagueId).single();
+
     if (!freshDraftData) {
       console.error("No draft data found");
       return;
     }
 
     // Update the teams structure for manual drafts
-    const currentTeams = freshDraftData.teams || {};
+    const currentTeams = freshDraftData.selected_teams || {};
     const managerTeams = currentTeams[managerId] || [];
-    
+
     // Ensure we don't duplicate picks
     if (managerTeams.includes(teamId)) {
       alert("This team has already been picked for this manager!");
       return;
     }
-    
+
     // Add the new team pick
     const updatedManagerTeams = [...managerTeams, teamId];
     const updatedTeams = {
@@ -637,35 +585,38 @@ function DraftRoom() {
 
     // Calculate total picks and check if draft is complete
     const totalPicks = Object.values(updatedTeams).reduce((sum, teams) => sum + teams.length, 0);
-    const totalRequiredPicks = draftData.draftOrder.length * 7;
+    const totalRequiredPicks = (draftData.draft_order || []).length * 7;
     const draftComplete = totalPicks >= totalRequiredPicks;
 
     // Update draft data
     const updateData = {
-      teams: updatedTeams
+      selected_teams: updatedTeams
     };
 
     // If this manager now has 7 teams, add them to completed list
     if (updatedManagerTeams.length >= 7) {
-      const currentCompleted = freshDraftData.managersCompleted || [];
+      const currentCompleted = freshDraftData.managers_completed || [];
       if (!currentCompleted.includes(managerId)) {
-        updateData.managersCompleted = [...currentCompleted, managerId];
+        updateData.managers_completed = [...currentCompleted, managerId];
       }
     }
 
     // Mark draft complete if all picks are done
     if (draftComplete) {
-      updateData.draftComplete = true;
+      updateData.draft_complete = true;
     }
 
-    // Update Firestore
-    await updateDoc(draftRef, updateData);
+    // Update drafts table
+    await supabase.from("drafts").update(updateData).eq("league_id", leagueId);
 
     // Update member lineup in parallel
-    const memberRef = doc(db, "leagues", leagueId, "members", managerId);
-    await updateDoc(memberRef, {
-      "lineup.drafted": arrayUnion(teamId)
-    });
+    const { data: memberData } = await supabase.from("league_members").select("starters,bench").eq("league_id", leagueId).eq("user_id", managerId).single();
+    const existingStarters = memberData?.starters || [];
+    const existingBench = memberData?.bench || [];
+    const drafted = [...existingStarters, ...existingBench];
+    if (!drafted.includes(teamId)) {
+      await supabase.from("league_members").update({ starters: [...existingStarters, teamId] }).eq("league_id", leagueId).eq("user_id", managerId);
+    }
 
     // If draft is complete, trigger completion
     if (draftComplete) {
@@ -687,20 +638,16 @@ function DraftRoom() {
         const starters = teams.slice(0, 5);
         const bench = teams.slice(5);
 
-        const memberRef = doc(db, "leagues", leagueId, "members", uid);
-        await updateDoc(memberRef, {
-          "lineup.drafted": teams,
-          "lineup.starters": starters,
-          "lineup.bench": bench
-        });
+        await supabase.from("league_members").update({
+          starters,
+          bench
+        }).eq("league_id", leagueId).eq("user_id", uid);
       });
 
       await Promise.all(updates);
 
       // Mark league as draft complete
-      await updateDoc(doc(db, "leagues", leagueId), {
-        draftComplete: true
-      });
+      await supabase.from("leagues").update({ draft_complete: true }).eq("id", leagueId);
 
       console.log("✅ Manual draft completed automatically!");
 
@@ -715,30 +662,30 @@ function DraftRoom() {
     try {
       // ✅ CRITICAL FIX: Use the saved custom draft order if it exists
       let managerIds;
-      
-      if (leagueData.draftOrderType === "admin" && leagueData.customDraftOrder && leagueData.customDraftOrder.length > 0) {
+
+      if (leagueData.draft_order_type === "admin" && leagueData.draft_order && leagueData.draft_order.length > 0) {
         // Use the custom order set by admin
-        managerIds = leagueData.customDraftOrder;
+        managerIds = leagueData.draft_order;
         console.log("✅ Using admin-set draft order for manual draft:", managerIds);
       } else {
         // Fallback to userMap order (for random or if no custom order set)
         managerIds = Object.keys(userMap).filter(Boolean);
         console.log("✅ Using fallback draft order for manual draft:", managerIds);
       }
-      
+
       const manualDraftPayload = {
+        league_id: leagueId,
         type: "manual",
-        inProgress: true,
-        managersCompleted: [],
-        currentManager: null,
-        teams: {},
-        draftComplete: false,
+        in_progress: true,
+        managers_completed: [],
+        current_manager: null,
+        selected_teams: {},
+        draft_complete: false,
         // Use the correct draft order (either custom or fallback)
-        draftOrder: managerIds
+        draft_order: managerIds
       };
 
-      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-      await setDoc(draftRef, manualDraftPayload);
+      await supabase.from("drafts").upsert(manualDraftPayload);
       alert("Manual draft entry started!");
 
     } catch (err) {
@@ -762,24 +709,17 @@ function DraftRoom() {
         setCountdownInterval(null);
       }
 
-      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-      await deleteDoc(draftRef);
+      await supabase.from("drafts").delete().eq("league_id", leagueId);
 
-      const leagueRef = doc(db, "leagues", leagueId);
-      await updateDoc(leagueRef, {
-        draftComplete: false
-      });
+      await supabase.from("leagues").update({ draft_complete: false }).eq("id", leagueId);
 
-      const membersRef = collection(db, "leagues", leagueId, "members");
-      const membersSnap = await getDocs(membersRef);
+      const { data: membersSnap } = await supabase.from("league_members").select("user_id").eq("league_id", leagueId);
 
-      const resets = membersSnap.docs.map(async (docSnap) => {
-        const memberRef = docSnap.ref;
-        await updateDoc(memberRef, {
-          "lineup.drafted": [],
-          "lineup.starters": [],
-          "lineup.bench": []
-        });
+      const resets = (membersSnap || []).map(async (m) => {
+        await supabase.from("league_members").update({
+          starters: [],
+          bench: []
+        }).eq("league_id", leagueId).eq("user_id", m.user_id);
       });
 
       await Promise.all(resets);
@@ -845,7 +785,7 @@ function DraftRoom() {
   const handleLogout = async () => {
     if (window.confirm("Are you sure you want to log out?")) {
       try {
-        await auth.signOut();
+        await supabase.auth.signOut();
         navigate("/");
       } catch (err) {
         console.error("Logout error:", err);
@@ -856,7 +796,7 @@ function DraftRoom() {
   const currentCount = Object.keys(userMap).length;
   const missing = maxManagers ? maxManagers - currentCount : 0;
   const isFull = missing === 0;
-  const isManualDraft = leagueData?.draftType === "manual";
+  const isManualDraft = leagueData?.draft_type === "manual";
 
   if (loading || Object.keys(userMap).length === 0) {
     return (
@@ -1024,7 +964,7 @@ if (isManualDraft) {
 // Replace the existing manual draft non-admin section (around lines 680-750) with this:
 
 {/* Manual draft in progress or complete */}
-if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftData.teams !== undefined)) {
+if (draftData.type === "manual" || (draftData.in_progress !== undefined && draftData.selected_teams !== undefined)) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
       {/* Animated Background Elements */}
@@ -1033,7 +973,7 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
         <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
       </div>
 
-      <BottomNavBar leagueId={leagueId} isDraftComplete={draftData?.draftComplete || false} />
+      <BottomNavBar leagueId={leagueId} isDraftComplete={draftData?.draft_complete || false} />
 
       {/* Navigation */}
       <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
@@ -1062,22 +1002,22 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
         <div className="text-center mb-8">
           <div className="mb-4">
             <span className="inline-block text-4xl sm:text-5xl mb-2">
-              {draftData.draftComplete ? "🎉" : "📝"}
+              {draftData.draft_complete ? "🎉" : "📝"}
             </span>
           </div>
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-2 leading-tight">
             <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              {draftData.draftComplete ? "Draft Complete!" : "Manual Draft Entry"}
+              {draftData.draft_complete ? "Draft Complete!" : "Manual Draft Entry"}
             </span>
           </h1>
           <p className="text-xl sm:text-2xl font-semibold text-white mb-4">
             {leagueData?.name || "Unnamed League"}
           </p>
           <p className="text-lg sm:text-xl text-white/80">
-            {draftData.draftComplete 
-              ? "All teams have been entered" 
+            {draftData.draft_complete
+              ? "All teams have been entered"
               : (() => {
-                  const totalPicks = Object.values(draftData.teams || {}).reduce((sum, teams) => sum + teams.length, 0);
+                  const totalPicks = Object.values(draftData.selected_teams || {}).reduce((sum, teams) => sum + teams.length, 0);
                   const totalRequired = Object.keys(userMap).length * 7;
                   return `Progress: ${totalPicks} of ${totalRequired} picks made`;
                 })()
@@ -1100,7 +1040,7 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
         )}
 
         {/* Draft Complete State */}
-        {draftData.draftComplete ? (
+        {draftData.draft_complete ? (
           <>
             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-6">
               <div className="text-center">
@@ -1159,7 +1099,7 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
                   <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4 mb-6">
                     <p className="text-amber-200 font-semibold">
                       Progress: {(() => {
-                        const totalPicks = Object.values(draftData.teams || {}).reduce((sum, teams) => sum + teams.length, 0);
+                        const totalPicks = Object.values(draftData.selected_teams || {}).reduce((sum, teams) => sum + teams.length, 0);
                         const totalRequired = Object.keys(userMap).length * 7;
                         return `${totalPicks} of ${totalRequired} picks made`;
                       })()}
@@ -1176,7 +1116,7 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
                         className="bg-gradient-to-r from-purple-500 to-blue-500 h-3 rounded-full transition-all duration-500 ease-out"
                         style={{ 
                           width: `${(() => {
-                            const totalPicks = Object.values(draftData.teams || {}).reduce((sum, teams) => sum + teams.length, 0);
+                            const totalPicks = Object.values(draftData.selected_teams || {}).reduce((sum, teams) => sum + teams.length, 0);
                             const totalRequired = Object.keys(userMap).length * 7;
                             return totalRequired > 0 ? Math.round((totalPicks / totalRequired) * 100) : 0;
                           })()}%` 
@@ -1185,7 +1125,7 @@ if (draftData.type === "manual" || (draftData.inProgress !== undefined && draftD
                     </div>
                       <p className="text-white/60 text-sm mt-2">
                         {(() => {
-                          const totalPicks = Object.values(draftData.teams || {}).reduce((sum, teams) => sum + teams.length, 0);
+                          const totalPicks = Object.values(draftData.selected_teams || {}).reduce((sum, teams) => sum + teams.length, 0);
                           const totalRequired = Object.keys(userMap).length * 7;
                           return totalRequired > 0 ? Math.round((totalPicks / totalRequired) * 100) : 0;
                         })()}% Complete
@@ -1381,15 +1321,15 @@ if (!draftData) {
               📅 <strong>Scheduled for:</strong>
             </p>
             <p className="text-blue-100 text-base font-semibold">
-              {leagueData?.draftDate?.toDate().toLocaleString("en-US", {
+              {leagueData?.draft_date ? new Date(leagueData.draft_date).toLocaleString("en-US", {
                 timeZone: "America/New_York",
                 weekday: "long",
-                month: "long", 
+                month: "long",
                 day: "numeric",
-                hour: "numeric", 
+                hour: "numeric",
                 minute: "2-digit",
                 timeZoneName: "short"
-              })}
+              }) : null}
             </p>
           </div>
           
@@ -1488,16 +1428,16 @@ if (!draftData) {
               <div className="bg-blue-500/20 border border-blue-400/30 rounded-xl p-4 mb-4">
                 <p className="text-blue-200 text-sm sm:text-base">
                   <strong>Scheduled for:</strong><br />
-                  {leagueData?.draftDate?.toDate().toLocaleString("en-US", {
+                  {leagueData?.draft_date ? new Date(leagueData.draft_date).toLocaleString("en-US", {
                     timeZone: "America/New_York",
                     weekday: "long",
-                    year: "numeric", 
-                    month: "long", 
+                    year: "numeric",
+                    month: "long",
                     day: "numeric",
-                    hour: "numeric", 
+                    hour: "numeric",
                     minute: "2-digit",
                     timeZoneName: "short"
-                  })}
+                  }) : null}
                 </p>
               </div>
               {draftCountdown <= 60 && (
@@ -1512,7 +1452,7 @@ if (!draftData) {
         )}
 
         {/* Draft Time Arrived */}
-        {draftCountdown === 0 && leagueData?.draftDate && (
+        {draftCountdown === 0 && leagueData?.draft_date && (
           <div className="bg-green-500/20 border border-green-400/30 rounded-2xl p-6 mb-8">
             <div className="text-center">
               <div className="text-4xl mb-4">🎯</div>
@@ -1613,7 +1553,7 @@ if (!draftData) {
             <div className="text-blue-200 text-sm space-y-2 leading-relaxed">
               <p>• Each manager drafts 7 college teams (5 starters + 2 bench)</p>
               <p>• Snake draft order - picks reverse each round</p>
-              <p>• {leagueData?.timePerPick || 2} minutes per pick with auto-pick if time expires</p>
+              <p>• {leagueData?.time_per_pick || 2} minutes per pick with auto-pick if time expires</p>
               <p>• Teams earn points when they win games</p>
             </div>
           </div>
@@ -1624,14 +1564,14 @@ if (!draftData) {
 }
 
 // Live Draft Active Interface
-const isMyTurn = draftData && draftData.draftOrder 
-  ? getCurrentPicker(draftData.draftOrder, draftData.currentPickIndex) === userId 
+const isMyTurn = draftData && draftData.draft_order
+  ? getCurrentPicker(draftData.draft_order, draftData.current_pick_index) === userId
   : false;
 
-const disableDrafting = draftData?.draftComplete || !isMyTurn;
+const disableDrafting = draftData?.draft_complete || !isMyTurn;
 
-const currentUid = draftData && draftData.draftOrder
-  ? getCurrentPicker(draftData.draftOrder, draftData.currentPickIndex)
+const currentUid = draftData && draftData.draft_order
+  ? getCurrentPicker(draftData.draft_order, draftData.current_pick_index)
   : null;
   
 const currentManager = currentUid ? {
@@ -1647,7 +1587,7 @@ return (
       <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
     </div>
 
-    <BottomNavBar leagueId={leagueId} isDraftComplete={draftData?.draftComplete || false} />
+    <BottomNavBar leagueId={leagueId} isDraftComplete={draftData?.draft_complete || false} />
 
     {/* Navigation */}
     <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
@@ -1705,19 +1645,19 @@ return (
       <div className="text-center mb-8">
         <div className="mb-4">
           <span className="inline-block text-4xl sm:text-5xl mb-2">
-            {draftData?.draftComplete ? "🎉" : "⚡"}
+            {draftData?.draft_complete ? "🎉" : "⚡"}
           </span>
         </div>
         <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-2 leading-tight">
           <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-            {draftData?.draftComplete ? "Draft Complete!" : "Live Draft"}
+            {draftData?.draft_complete ? "Draft Complete!" : "Live Draft"}
           </span>
         </h1>
         <p className="text-xl sm:text-2xl font-semibold text-white mb-4">
           {leagueData?.name || "Unnamed League"}
         </p>
         <p className="text-lg sm:text-xl text-white/80">
-          {Object.keys(userMap).length} managers • Pick {(draftData?.currentPickIndex || 0) + 1}
+          {Object.keys(userMap).length} managers • Pick {(draftData?.current_pick_index || 0) + 1}
         </p>
       </div>
 
@@ -1736,7 +1676,7 @@ return (
       )}
 
       {/* Draft Complete Banner */}
-      {draftData?.draftComplete && (
+      {draftData?.draft_complete && (
         <div className="bg-green-500/20 border border-green-400/30 rounded-2xl p-6 mb-8">
           <div className="text-center">
             <div className="text-4xl mb-4">✅</div>
@@ -1751,7 +1691,7 @@ return (
       )}
 
       {/* Timer Display - Only show when draft is active */}
-      {!draftData?.draftComplete && timeRemaining > 0 && (
+      {!draftData?.draft_complete && timeRemaining > 0 && (
         <div className={`
           bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8
           ${timeRemaining <= 30 ? 'animate-pulse' : ''}
@@ -1778,7 +1718,7 @@ return (
       )}
 
       {/* Current Turn Display - Only show when draft is NOT complete */}
-      {!draftData?.draftComplete && (
+      {!draftData?.draft_complete && (
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
           <div className="text-center">
             {isMyTurn ? (
@@ -1814,7 +1754,7 @@ return (
       )}
 
       {/* Draft Controls - Only show when draft is NOT complete */}
-      {!draftData?.draftComplete && (
+      {!draftData?.draft_complete && (
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
           <h3 className="text-xl sm:text-2xl font-bold text-white mb-6">
             Available Teams
@@ -1836,7 +1776,7 @@ return (
               <option value="" className="bg-slate-800 text-white">
                 -- Select a Team --
               </option>
-              {draftData?.availableTeams?.map((teamId) => {
+              {draftData?.available_teams?.map((teamId) => {
                 const teamData = allTeams[teamId];
                 const label = teamData?.school || teamId;
                 return (
@@ -1870,7 +1810,7 @@ return (
           {/* Available Teams Count */}
           <div className="mt-6 text-center">
             <p className="text-white/60 text-sm">
-              {draftData?.availableTeams?.length || 0} teams remaining
+              {draftData?.available_teams?.length || 0} teams remaining
             </p>
           </div>
         </div>

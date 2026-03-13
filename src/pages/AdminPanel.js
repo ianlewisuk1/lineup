@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { auth, db } from "../firebase/firebase";
-import { getDoc, doc } from "firebase/firestore";
+import { supabase } from "../supabase/supabase";
 import AdminUserPanel from "../components/AdminUserPanel";
 import AdminLeaguePanel from "../components/AdminLeaguePanel";
 
@@ -11,15 +10,14 @@ function AdminPanel() {
 
  useEffect(() => {
    const fetchData = async () => {
-     const currentUser = auth.currentUser;
-     if (!currentUser) {
+     const { data: { user } } = await supabase.auth.getUser();
+     if (!user) {
        return navigate("/login");
      }
 
-     const userRef = doc(db, "users", currentUser.uid);
-     const userSnap = await getDoc(userRef);
+     const { data: userData } = await supabase.from("users").select("*").eq("id", user.id).single();
 
-     if (!userSnap.exists() || !userSnap.data().isAdmin) {
+     if (!userData || !userData.is_admin) {
        console.log("Unauthorized access attempt.");
        return navigate("/");
      }
@@ -45,7 +43,7 @@ function AdminPanel() {
          </Link>
        </nav>
      </div>
-     
+
      <div style={{ padding: "1rem" }}>
        <div style={{ marginBottom: "1rem" }}>
          <Link to="/admin/teams" style={{ marginRight: "1rem" }}>

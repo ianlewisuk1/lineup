@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Navigate } from "react-router-dom";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { supabase } from "../supabase/supabase";
 
 function PreDraftOnly({ children }) {
   const { leagueId } = useParams();
@@ -10,9 +9,8 @@ function PreDraftOnly({ children }) {
 
   useEffect(() => {
     const checkDraft = async () => {
-      const ref = doc(db, "leagues", leagueId);
-      const snap = await getDoc(ref);
-      setDraftStarted(snap.data()?.draft?.started || false);
+      const { data } = await supabase.from("leagues").select("*").eq("id", leagueId).single();
+      setDraftStarted(data?.draft?.started || false);
       setIsLoading(false);
     };
     checkDraft();

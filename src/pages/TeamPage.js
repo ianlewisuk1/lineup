@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { collection, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
-import { db, auth } from "../firebase/firebase";
+import { supabase } from "../supabase/supabase";
 import { Plus, ArrowLeft, Calendar, MapPin, Trophy, Users, TrendingUp, ChevronDown } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 
@@ -21,12 +20,13 @@ function TeamPage() {
   const [loadingStage, setLoadingStage] = useState("Fetching team info...");
   const [currentWeek, setCurrentWeek] = useState(1);
   const [currentWeekGame, setCurrentWeekGame] = useState(null);
-  
+  const [currentUser, setCurrentUser] = useState(null);
+
   // Custom notification modal states
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [modalMessage, setModalMessage] = useState("");
-  const [showDropdown, setShowDropdown] = useState(false); 
+  const [showDropdown, setShowDropdown] = useState(false);
   const [modalTitle, setModalTitle] = useState("");
 
   // Helper function to parse record and calculate games played
@@ -68,7 +68,7 @@ function TeamPage() {
   const handleLogout = async () => {
     if (window.confirm("Are you sure you want to log out?")) {
       try {
-        await auth.signOut();
+        await supabase.auth.signOut();
         navigate("/");
       } catch (err) {
         console.error("Logout error:", err);
@@ -78,7 +78,7 @@ function TeamPage() {
 
   const denormalizeTeamName = (normalizedName) => {
     if (!normalizedName) return normalizedName;
-    
+
     return normalizedName
       .split('-')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -89,28 +89,28 @@ function TeamPage() {
   // Format the current week's game display
   const formatWeekGame = (game, teamName) => {
     if (!game) return "BYE";
-    
-    const isHome = game.homeTeam === teamName;
-    const opponent = isHome ? game.awayTeam : game.homeTeam;
+
+    const isHome = game.home_team === teamName || game.homeTeam === teamName;
+    const opponent = isHome ? (game.away_team || game.awayTeam) : (game.home_team || game.homeTeam);
     const prefix = game.neutralSite ? "vs" : (isHome ? "vs" : "@");
-    
+
     // Get spread information
-    const spread = game.homeSpread || game.spread || "TBD";
+    const spread = game.home_spread || game.homeSpread || game.spread || "TBD";
     const displaySpread = spread !== "TBD" ? `(${spread})` : "";
-    
+
     // Check if game is complete
-    if (game.gameComplete) {
-      const teamScore = isHome ? game.finalScore?.home : game.finalScore?.away;
-      const opponentScore = isHome ? game.finalScore?.away : game.finalScore?.home;
-      
-      if (teamScore !== null && teamScore !== undefined && 
+    if (game.game_complete || game.gameComplete) {
+      const teamScore = isHome ? (game.home_score ?? game.finalScore?.home) : (game.away_score ?? game.finalScore?.away);
+      const opponentScore = isHome ? (game.away_score ?? game.finalScore?.away) : (game.home_score ?? game.finalScore?.home);
+
+      if (teamScore !== null && teamScore !== undefined &&
           opponentScore !== null && opponentScore !== undefined) {
         const won = teamScore > opponentScore;
         const result = won ? "W" : "L";
         return `${result} ${prefix} ${opponent} ${teamScore}-${opponentScore} ${displaySpread}`;
       }
     }
-    
+
     // Game is upcoming
     return `${prefix} ${opponent} ${displaySpread}`;
   };
@@ -132,40 +132,46 @@ function TeamPage() {
     const fetchTeamData = async () => {
       try {
         const decodedTeamName = decodeURIComponent(teamName);
-        
+
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser();
+        setCurrentUser(user);
+
         // Stage 1: Fetch current week and team info
         setLoadingStage("Loading team details...");
-        const [seasonDoc, teamsSnap] = await Promise.all([
-          getDoc(doc(db, "config", "season")),
-          getDocs(collection(db, "teams"))
+        const [configResult, teamsResult] = await Promise.all([
+          supabase.from('config').select('value').eq('key', 'season').single(),
+          supabase.from('teams').select('*')
         ]);
-        
+
         // Get current week
-        const week = seasonDoc.exists() ? seasonDoc.data().currentWeek || 1 : 1;
+        const week = configResult.data?.value?.currentWeek || 1;
         setCurrentWeek(week);
-        
+
         // Find team info
         let foundTeam = null;
-        teamsSnap.forEach(doc => {
-          const data = doc.data();
-          if (data.school === decodedTeamName) {
-            foundTeam = data;
+        (teamsResult.data || []).forEach(team => {
+          if (team.school === decodedTeamName) {
+            foundTeam = team;
           }
         });
         setTeamInfo(foundTeam);
 
         // Stage 2: Fetch current week's game
         setLoadingStage("Loading current week game...");
-        const currentWeekGamesSnap = await getDocs(collection(db, "schedule", "2025", "weeks", week.toString(), "games"));
+        const { data: weekGamesData } = await supabase
+          .from('games')
+          .select('*')
+          .eq('week', week.toString());
+
         let weekGame = null;
-        
-        currentWeekGamesSnap.forEach(gameDoc => {
-          const game = gameDoc.data();
-          if (game.homeTeam === decodedTeamName || game.awayTeam === decodedTeamName) {
+        (weekGamesData || []).forEach(game => {
+          if (game.home_team === decodedTeamName || game.away_team === decodedTeamName ||
+              game.homeTeam === decodedTeamName || game.awayTeam === decodedTeamName) {
             weekGame = {
               ...game,
               week: week,
-              gameId: gameDoc.id
+              gameId: game.id
             };
           }
         });
@@ -174,10 +180,10 @@ function TeamPage() {
         // Stage 3: Fetch ownership and user data in parallel
         setLoadingStage("Checking ownership status...");
         const [ownershipResult, userTeamsResult] = await Promise.all([
-          fetchOwnershipInfo(decodedTeamName),
-          fetchUserTeams()
+          fetchOwnershipInfo(decodedTeamName, user),
+          fetchUserTeams(user)
         ]);
-        
+
         setOwnershipInfo(ownershipResult);
         setUserTeams(userTeamsResult);
 
@@ -185,7 +191,7 @@ function TeamPage() {
         setLoadingStage("Loading schedule...");
         const scheduleData = await fetchTeamSchedule(decodedTeamName);
         setSchedule(scheduleData);
-        
+
         setLoading(false);
       } catch (error) {
         console.error("Error fetching team data:", error);
@@ -193,7 +199,7 @@ function TeamPage() {
       }
     };
 
-    const fetchOwnershipInfo = async (teamName) => {
+    const fetchOwnershipInfo = async (teamName, user) => {
       // NORMALIZE THE TEAM NAME FOR CHECKING
       const normalizedTeamName = teamName
         .toLowerCase()
@@ -201,57 +207,64 @@ function TeamPage() {
         .replace(/&/g, "")
         .replace(/[^a-z0-9\-]/g, "");
 
-      const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
-      
-      for (const memberDoc of membersSnap.docs) {
-        const memberData = memberDoc.data();
-        const lineup = memberData.lineup || {};
-        const starters = lineup.starters || [];
-        const bench = lineup.bench || [];
-        
+      const { data: memberRows } = await supabase
+        .from('league_members')
+        .select('*')
+        .eq('league_id', leagueId);
+
+      for (const memberRow of (memberRows || [])) {
+        const starters = memberRow.starters || [];
+        const bench = memberRow.bench || [];
+
         let status = null;
         if (starters.includes(normalizedTeamName)) {
           status = "starting";
         } else if (bench.includes(normalizedTeamName)) {
           status = "bench";
         }
-        
+
         if (status) {
           // Only fetch user data if we found ownership
-          let ownerName = memberData.displayName || "Unknown Owner";
+          let ownerName = memberRow.team_name || "Unknown Owner";
           try {
-            const userDoc = await getDoc(doc(db, "users", memberDoc.id));
-            if (userDoc.exists()) {
-              const userData = userDoc.data();
-              ownerName = userData.firstName 
-                ? `${userData.firstName} ${userData.lastName || ""}`.trim()
-                : userData.displayName || memberData.displayName || "Unknown Owner";
+            const { data: userData } = await supabase
+              .from('users')
+              .select('first_name, last_name')
+              .eq('id', memberRow.user_id)
+              .single();
+            if (userData) {
+              ownerName = userData.first_name
+                ? `${userData.first_name} ${userData.last_name || ""}`.trim()
+                : memberRow.team_name || "Unknown Owner";
             }
           } catch (error) {
             console.warn("Could not fetch user data:", error);
           }
-          
+
           return {
             status,
             ownerName,
-            teamName: memberData.teamName || "Unnamed Team"
+            teamName: memberRow.team_name || "Unnamed Team"
           };
         }
       }
       return null;
     };
 
-    const fetchUserTeams = async () => {
-      const user = auth.currentUser;
+    const fetchUserTeams = async (user) => {
       if (!user) return [];
-      
+
       try {
-        const userMemberRef = doc(db, "leagues", leagueId, "members", user.uid);
-        const userMemberSnap = await getDoc(userMemberRef);
-        if (userMemberSnap.exists()) {
-          const userLineup = userMemberSnap.data()?.lineup || {};
-          const starters = userLineup.starters || [];
-          const bench = userLineup.bench || [];
+        const { data: memberRow } = await supabase
+          .from('league_members')
+          .select('starters, bench')
+          .eq('league_id', leagueId)
+          .eq('user_id', user.id)
+          .single();
+
+        if (memberRow) {
+          const starters = memberRow.starters || [];
+          const bench = memberRow.bench || [];
           return [...starters, ...bench];
         }
       } catch (error) {
@@ -261,42 +274,41 @@ function TeamPage() {
     };
 
     const fetchTeamSchedule = async (teamName) => {
-      // Batch all week queries at once instead of sequential
-      const weeksSnap = await getDocs(collection(db, "schedule", "2025", "weeks"));
-      const weekNumbers = weeksSnap.docs.map(doc => doc.id);
-      
-      // Fetch all games for all weeks in parallel
-      const allGamesPromises = weekNumbers.map(async (weekNum) => {
-        const gamesSnap = await getDocs(collection(db, "schedule", "2025", "weeks", weekNum, "games"));
-        const weekGames = [];
-        
-        gamesSnap.forEach(gameDoc => {
-          const game = gameDoc.data();
-          if (game.homeTeam === teamName || game.awayTeam === teamName) {
-            weekGames.push({
-              ...game,
-              week: parseInt(weekNum),
-              gameId: gameDoc.id
-            });
-          }
-        });
-        
-        return weekGames;
-      });
-      
-      const allWeeksGames = await Promise.all(allGamesPromises);
-      const scheduleData = allWeeksGames.flat();
-      
+      // Fetch all games for this team from the games table
+      const { data: gamesData, error } = await supabase
+        .from('games')
+        .select('*')
+        .or(`home_team.eq.${teamName},away_team.eq.${teamName}`);
+
+      if (error) {
+        console.error("Error fetching schedule:", error);
+        return [];
+      }
+
+      const scheduleData = (gamesData || []).map(game => ({
+        ...game,
+        homeTeam: game.home_team,
+        awayTeam: game.away_team,
+        homeScore: game.home_score,
+        awayScore: game.away_score,
+        homeSpread: game.home_spread,
+        gameComplete: game.game_complete,
+        gameId: game.id
+      }));
+
       // Sort by week
-      return scheduleData.sort((a, b) => a.week - b.week);
+      return scheduleData.sort((a, b) => {
+        const weekA = parseInt(String(a.week).replace(/\D/g, '')) || 0;
+        const weekB = parseInt(String(b.week).replace(/\D/g, '')) || 0;
+        return weekA - weekB;
+      });
     };
 
     fetchTeamData();
   }, [teamName, leagueId]);
 
   const handleAddTeam = (teamName) => {
-    const user = auth.currentUser;
-    if (!user) return;
+    if (!currentUser) return;
 
     if (userTeams.length < 7) {
       setTeamToAdd({ school: teamName });
@@ -310,29 +322,30 @@ function TeamPage() {
 
   const confirmAddTeam = async () => {
     if (!teamToAdd) return;
-    
-    try {
-      const user = auth.currentUser;
-      if (!user) return;
 
-      const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
-      const memberSnap = await getDoc(memberRef);
-      const memberData = memberSnap.data();
-      
-      const lineup = memberData?.lineup || {};
-      const starters = [...(lineup.starters || [])];
-      const bench = [...(lineup.bench || [])];
-      
+    try {
+      if (!currentUser) return;
+
+      const { data: memberRow } = await supabase
+        .from('league_members')
+        .select('starters, bench, team_name')
+        .eq('league_id', leagueId)
+        .eq('user_id', currentUser.id)
+        .single();
+
+      const starters = [...(memberRow?.starters || [])];
+      const bench = [...(memberRow?.bench || [])];
+
       // NORMALIZE THE TEAM NAME BEFORE SAVING
       const normalizedTeamName = teamToAdd.school
         .toLowerCase()
         .replace(/\s+/g, "-")
         .replace(/&/g, "")
         .replace(/[^a-z0-9\-]/g, "");
-      
+
       const emptyStarterIndex = starters.findIndex(t => !t);
       const emptyBenchIndex = bench.findIndex(t => !t);
-      
+
       if (emptyStarterIndex !== -1) {
         starters[emptyStarterIndex] = normalizedTeamName;
       } else if (emptyBenchIndex !== -1) {
@@ -342,39 +355,39 @@ function TeamPage() {
         return;
       }
 
-      await updateDoc(memberRef, {
-        "lineup.starters": starters,
-        "lineup.bench": bench
-      });
+      const { error: updateError } = await supabase
+        .from('league_members')
+        .update({ starters, bench })
+        .eq('league_id', leagueId)
+        .eq('user_id', currentUser.id);
+      if (updateError) throw updateError;
 
       setUserTeams([...starters, ...bench].filter(Boolean));
       setShowAddModal(false);
       setTeamToAdd(null);
-      
+
       showSuccess("Team Added!", `${teamToAdd.school} has been successfully added to your lineup!`);
-      
+
       // Update ownership info to reflect the change
-      const user2 = auth.currentUser;
-      if (user2) {
-        const userDoc = await getDoc(doc(db, "users", user2.uid));
-        let ownerName = "You";
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          ownerName = userData.firstName 
-            ? `${userData.firstName} ${userData.lastName || ""}`.trim()
-            : userData.displayName || "You";
-        }
-        
-        const memberDoc = await getDoc(memberRef);
-        const memberData2 = memberDoc.data();
-        
-        setOwnershipInfo({
-          status: emptyStarterIndex !== -1 ? "starting" : "bench",
-          ownerName,
-          teamName: memberData2.teamName || "Your Team"
-        });
+      const { data: userData } = await supabase
+        .from('users')
+        .select('first_name, last_name')
+        .eq('id', currentUser.id)
+        .single();
+
+      let ownerName = "You";
+      if (userData) {
+        ownerName = userData.first_name
+          ? `${userData.first_name} ${userData.last_name || ""}`.trim()
+          : "You";
       }
-      
+
+      setOwnershipInfo({
+        status: emptyStarterIndex !== -1 ? "starting" : "bench",
+        ownerName,
+        teamName: memberRow?.team_name || "Your Team"
+      });
+
     } catch (error) {
       console.error("Error adding team:", error);
       showError("Error", "Failed to add team. Please try again.");
@@ -383,66 +396,70 @@ function TeamPage() {
 
   const handleConfirmSwap = async () => {
     if (!selectedDropTeam || !pendingAddTeam) return;
-    
-    try {
-      const user = auth.currentUser;
-      if (!user) return;
 
-      const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
-      const memberSnap = await getDoc(memberRef);
-      const memberData = memberSnap.data();
-      
-      const lineup = memberData?.lineup || {};
-      const starters = [...(lineup.starters || [])];
-      const bench = [...(lineup.bench || [])];
-      
+    try {
+      if (!currentUser) return;
+
+      const { data: memberRow } = await supabase
+        .from('league_members')
+        .select('starters, bench, team_name')
+        .eq('league_id', leagueId)
+        .eq('user_id', currentUser.id)
+        .single();
+
+      const starters = [...(memberRow?.starters || [])];
+      const bench = [...(memberRow?.bench || [])];
+
       // NORMALIZE THE NEW TEAM NAME BEFORE SAVING
       const normalizedNewTeam = pendingAddTeam
         .toLowerCase()
         .replace(/\s+/g, "-")
         .replace(/&/g, "")
         .replace(/[^a-z0-9\-]/g, "");
-      
+
       const starterIndex = starters.findIndex(t => t === selectedDropTeam);
       const benchIndex = bench.findIndex(t => t === selectedDropTeam);
-      
+
       if (starterIndex !== -1) {
         starters[starterIndex] = normalizedNewTeam;
       } else if (benchIndex !== -1) {
         bench[benchIndex] = normalizedNewTeam;
       }
 
-      await updateDoc(memberRef, {
-        "lineup.starters": starters,
-        "lineup.bench": bench
-      });
+      const { error: updateError } = await supabase
+        .from('league_members')
+        .update({ starters, bench })
+        .eq('league_id', leagueId)
+        .eq('user_id', currentUser.id);
+      if (updateError) throw updateError;
 
       setUserTeams([...starters, ...bench].filter(Boolean));
       setShowSwapUI(false);
       setPendingAddTeam("");
       setSelectedDropTeam("");
-      
+
       showSuccess("Team Swapped!", `Successfully swapped ${selectedDropTeam} for ${pendingAddTeam}!`);
-      
+
       // Update ownership info to reflect the change
-      const user2 = auth.currentUser;
-      if (user2) {
-        const userDoc = await getDoc(doc(db, "users", user2.uid));
-        let ownerName = "You";
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          ownerName = userData.firstName 
-            ? `${userData.firstName} ${userData.lastName || ""}`.trim()
-            : userData.displayName || "You";
-        }
-        
-        setOwnershipInfo({
-          status: starterIndex !== -1 ? "starting" : "bench",
-          ownerName,
-          teamName: memberData.teamName || "Your Team"
-        });
+      const { data: userData } = await supabase
+        .from('users')
+        .select('first_name, last_name')
+        .eq('id', currentUser.id)
+        .single();
+
+      let ownerName = "You";
+      if (userData) {
+        ownerName = userData.first_name
+          ? `${userData.first_name} ${userData.last_name || ""}`.trim()
+          : "You";
       }
-      
+
+      setOwnershipInfo({
+        status: starterIndex !== -1 ? "starting" : "bench",
+        ownerName,
+        teamName: memberRow?.team_name || "Your Team"
+      });
+
     } catch (error) {
       console.error("Error swapping teams:", error);
       showError("Error", "Failed to swap teams. Please try again.");
@@ -450,27 +467,27 @@ function TeamPage() {
   };
 
   const formatGameResult = (game, teamName) => {
-    const isHome = game.homeTeam === teamName;
-    const teamScore = isHome ? game.homeScore : game.awayScore;
-    const opponentScore = isHome ? game.awayScore : game.homeScore;
-    
-    if (game.gameComplete && teamScore !== null && teamScore !== undefined && 
+    const isHome = game.home_team === teamName || game.homeTeam === teamName;
+    const teamScore = isHome ? (game.home_score ?? game.homeScore) : (game.away_score ?? game.awayScore);
+    const opponentScore = isHome ? (game.away_score ?? game.awayScore) : (game.home_score ?? game.homeScore);
+
+    if ((game.game_complete || game.gameComplete) && teamScore !== null && teamScore !== undefined &&
         opponentScore !== null && opponentScore !== undefined) {
       const won = teamScore > opponentScore;
       return { result: won ? "W" : "L", score: `${teamScore}-${opponentScore}`, won };
     }
-    
+
     return null;
   };
 
   const formatOpponent = (game, teamName) => {
-    const isHome = game.homeTeam === teamName;
-    const opponent = isHome ? game.awayTeam : game.homeTeam;
-    
+    const isHome = game.home_team === teamName || game.homeTeam === teamName;
+    const opponent = isHome ? (game.away_team || game.awayTeam) : (game.home_team || game.homeTeam);
+
     if (game.neutralSite) {
       return { opponent, prefix: "vs", isHome: null };
     }
-    
+
     return { opponent, prefix: isHome ? "vs" : "@", isHome };
   };
 
@@ -484,7 +501,7 @@ function TeamPage() {
 
   const renderOwnershipStatus = () => {
     const decodedTeamName = decodeURIComponent(teamName);
-    
+
     if (!ownershipInfo) {
       return (
         <div className="bg-green-500/20 border-2 border-green-400/50 rounded-2xl p-4 mb-6">
@@ -493,8 +510,8 @@ function TeamPage() {
               <Users size={18} className="text-green-300" />
               <span className="font-semibold text-green-200">Status: Free Agent</span>
             </div>
-            {auth.currentUser && (
-              <button 
+            {currentUser && (
+              <button
                 onClick={() => handleAddTeam(decodedTeamName)}
                 className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 rounded-xl text-white font-medium transition-all duration-200 transform hover:scale-105"
               >
@@ -513,8 +530,8 @@ function TeamPage() {
 
     return (
       <div className={`border-2 rounded-2xl p-4 mb-6 ${
-        isStarting 
-          ? 'bg-blue-500/20 border-blue-400/50' 
+        isStarting
+          ? 'bg-blue-500/20 border-blue-400/50'
           : 'bg-yellow-500/20 border-yellow-400/50'
       }`}>
         <div className="flex items-center gap-2 mb-1">
@@ -575,7 +592,7 @@ function TeamPage() {
           </span>
         </Link>
         <div className="flex items-center space-x-4">
-          <button 
+          <button
             onClick={handleLogout}
             className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
           >
@@ -585,10 +602,10 @@ function TeamPage() {
       </nav>
 
       {/* Main Content */}
-      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-28">              
+      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-28">
         {/* Back Button */}
-        <button 
-          onClick={() => navigate(-1)} 
+        <button
+          onClick={() => navigate(-1)}
           className="flex items-center gap-2 mb-6 px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/30 rounded-xl text-white hover:bg-white/20 transition-all duration-300"
         >
           <ArrowLeft size={16} />
@@ -598,9 +615,9 @@ function TeamPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="mb-4">
-            {teamInfo?.logos1 ? (
-              <img 
-                src={teamInfo.logos1} 
+            {teamInfo?.logos && teamInfo.logos[0] ? (
+              <img
+                src={teamInfo.logos[0]}
                 alt={`${decodedTeamName} logo`}
                 className="w-16 h-16 sm:w-20 sm:h-20 rounded-full mx-auto border-2 border-white/20 bg-white/10 p-2"
               />
@@ -617,88 +634,80 @@ function TeamPage() {
           </h1>
           {teamInfo && (
             <p className="text-lg sm:text-xl text-white/80">
-              {teamInfo.conference || "Independent"} • {teamInfo.currentSeason?.record || "0-0"}
+              {teamInfo.conference || "Independent"} • {teamInfo.record || "0-0"}
             </p>
           )}
         </div>
 
         {/* Ownership Status */}
         {renderOwnershipStatus()}
-        
+
         {/* Team Stats */}
-        {teamInfo?.currentSeason && (
+        {teamInfo && (
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
             <h3 className="flex items-center gap-2 text-xl font-bold text-white mb-6">
               <TrendingUp size={20} />
               2025 Season Stats
             </h3>
-            
+
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               <div className="bg-white/5 rounded-xl p-3 text-center">
                 <div className="text-xs text-white/60 font-medium mb-1">Conference Record</div>
                 <div className="text-lg font-bold text-white">
-                  {teamInfo.currentSeason.confRecord || "0-0"}
+                  {teamInfo.conf_record || "0-0"}
                 </div>
               </div>
-              
+
               <div className="bg-white/5 rounded-xl p-3 text-center">
                 <div className="text-xs text-white/60 font-medium mb-1">ATS Record</div>
                 <div className="text-lg font-bold text-white">
-                  {teamInfo.currentSeason.atsRecord || "0-0"}
+                  {teamInfo.ats_record || "0-0"}
                 </div>
               </div>
-              
+
               <div className="bg-white/5 rounded-xl p-3 text-center">
                 <div className="text-xs text-white/60 font-medium mb-1">Fantasy Points</div>
                 <div className="text-lg font-bold text-green-300">
-                  {teamInfo.currentSeason.gamePoints || 0}
+                  {teamInfo.game_points || 0}
                 </div>
               </div>
-              
+
               <div className="bg-white/5 rounded-xl p-3 text-center">
                 <div className="text-xs text-white/60 font-medium mb-1">Avg Weekly Fantasy</div>
                 <div className="text-lg font-bold text-blue-300">
                   {(() => {
-                    const gamesPlayed = parseRecord(teamInfo.currentSeason.record);
-                    const gamePoints = teamInfo.currentSeason.gamePoints || 0;
+                    const gamesPlayed = parseRecord(teamInfo.record);
+                    const gamePoints = teamInfo.game_points || 0;
                     return calculateAverage(gamePoints, gamesPlayed);
                   })()}
                 </div>
               </div>
-              
-              <div className="bg-white/5 rounded-xl p-3 text-center">
-                <div className="text-xs text-white/60 font-medium mb-1">Season Total Pts</div>
-                <div className="text-lg font-bold text-purple-300">
-                  {teamInfo.currentSeason.totalPointsFor || 0}
-                </div>
-              </div>
-              
+
               <div className="bg-white/5 rounded-xl p-3 text-center">
                 <div className="text-xs text-white/60 font-medium mb-1">Games Played</div>
                 <div className="text-lg font-bold text-white">
-                  {parseRecord(teamInfo.currentSeason.record)}
+                  {parseRecord(teamInfo.record)}
                 </div>
               </div>
-              
+
               <div className="bg-white/5 rounded-xl p-3 text-center">
-                <div className="text-xs text-white/60 font-medium mb-1">Avg Points For</div>
-                <div className="text-lg font-bold text-green-300">
-                  {(() => {
-                    const gamesPlayed = parseRecord(teamInfo.currentSeason.record);
-                    const totalPointsFor = teamInfo.currentSeason.totalPointsFor || 0;
-                    return calculateAverage(totalPointsFor, gamesPlayed);
-                  })()}
+                <div className="text-xs text-white/60 font-medium mb-1">SOS Rank</div>
+                <div className="text-lg font-bold text-purple-300">
+                  {teamInfo.sos_rank ?? "—"}
                 </div>
               </div>
-              
+
               <div className="bg-white/5 rounded-xl p-3 text-center">
-                <div className="text-xs text-white/60 font-medium mb-1">Avg Points Against</div>
-                <div className="text-lg font-bold text-red-300">
-                  {(() => {
-                    const gamesPlayed = parseRecord(teamInfo.currentSeason.record);
-                    const totalPointsAgainst = teamInfo.currentSeason.totalPointsAgainst || 0;
-                    return calculateAverage(totalPointsAgainst, gamesPlayed);
-                  })()}
+                <div className="text-xs text-white/60 font-medium mb-1">Phil Metrics</div>
+                <div className="text-lg font-bold text-purple-300">
+                  {teamInfo.phil_metrics ?? "—"}
+                </div>
+              </div>
+
+              <div className="bg-white/5 rounded-xl p-3 text-center">
+                <div className="text-xs text-white/60 font-medium mb-1">Prev Year Pts</div>
+                <div className="text-lg font-bold text-white">
+                  {teamInfo.prev_year_points ?? "—"}
                 </div>
               </div>
             </div>
@@ -709,12 +718,12 @@ function TeamPage() {
               <div className="text-lg font-bold text-white">
                 {formatWeekGame(currentWeekGame, decodedTeamName)}
               </div>
-              {currentWeekGame && currentWeekGame.date && (
+              {currentWeekGame && (currentWeekGame.date || currentWeekGame.game_time) && (
                 <div className="text-sm text-white/60 mt-1">
-                  {new Date(currentWeekGame.date).toLocaleDateString('en-US', { 
-                    weekday: 'short', 
-                    month: 'short', 
-                    day: 'numeric' 
+                  {new Date(currentWeekGame.date || currentWeekGame.game_time).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
                   })}
                 </div>
               )}
@@ -730,7 +739,7 @@ function TeamPage() {
               2025 Schedule ({schedule.length} games)
             </h3>
           </div>
-          
+
           {schedule.length === 0 ? (
             <div className="p-8 text-center text-white/60">
               No schedule found for {decodedTeamName}
@@ -752,11 +761,12 @@ function TeamPage() {
                   {schedule.map((game, index) => {
                     const gameResult = formatGameResult(game, decodedTeamName);
                     const opponentInfo = formatOpponent(game, decodedTeamName);
-                    const dateInfo = formatDate(game.date);
-                    
+                    const dateStr = game.date || game.game_time;
+                    const dateInfo = dateStr ? formatDate(dateStr) : { weekday: '', date: '' };
+
                     return (
-                      <tr 
-                        key={index} 
+                      <tr
+                        key={index}
                         className={`border-b border-white/5 hover:bg-white/5 transition-colors duration-200 ${
                           index % 2 === 0 ? 'bg-white/2' : ''
                         }`}
@@ -789,8 +799,8 @@ function TeamPage() {
                         <td className="px-4 py-3 text-center">
                           {gameResult ? (
                             <div className={`inline-flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold min-w-[80px] ${
-                              gameResult.won 
-                                ? 'bg-green-500/20 text-green-300 border border-green-500/30' 
+                              gameResult.won
+                                ? 'bg-green-500/20 text-green-300 border border-green-500/30'
                                 : 'bg-red-500/20 text-red-300 border border-red-500/30'
                             }`}>
                               <div className="text-center">
@@ -804,9 +814,9 @@ function TeamPage() {
                         </td>
                         <td className="px-4 py-3 text-center">
                           {(() => {
-                            if (game.gameComplete && teamInfo?.currentSeason?.weeklyPoints) {
+                            if ((game.game_complete || game.gameComplete) && teamInfo?.weekly_points) {
                               const weekKey = `week${game.week}`;
-                              const weeklyPoints = teamInfo.currentSeason.weeklyPoints[weekKey];
+                              const weeklyPoints = teamInfo.weekly_points[weekKey];
                               if (weeklyPoints !== undefined && weeklyPoints !== null) {
                                 return (
                                   <span className="text-green-300 text-sm font-semibold">
@@ -883,8 +893,8 @@ function TeamPage() {
                   <span className={selectedDropTeam ? 'text-white' : 'text-white/50'}>
                     {selectedDropTeam ? denormalizeTeamName(selectedDropTeam) : "Choose a team to drop"}
                   </span>
-                  <ChevronDown 
-                    size={16} 
+                  <ChevronDown
+                    size={16}
                     className={`text-white/60 transition-transform duration-200 ${
                       showDropdown ? 'rotate-180' : 'rotate-0'
                     }`}
@@ -901,8 +911,8 @@ function TeamPage() {
                           setShowDropdown(false);
                         }}
                         className={`w-full p-3 text-left transition-all duration-150 ${
-                          selectedDropTeam === team 
-                            ? 'bg-blue-500/20 text-blue-200 font-semibold' 
+                          selectedDropTeam === team
+                            ? 'bg-blue-500/20 text-blue-200 font-semibold'
                             : 'text-white hover:bg-white/10'
                         } ${index === 0 ? 'rounded-t-xl' : ''} ${
                           index === userTeams.filter(Boolean).length - 1 ? 'rounded-b-xl' : 'border-b border-white/10'
@@ -927,8 +937,8 @@ function TeamPage() {
                   disabled={!selectedDropTeam}
                   className={`
                     flex-1 px-4 py-3 rounded-xl font-bold transition-all duration-300 transform
-                    ${selectedDropTeam 
-                      ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white hover:scale-105 shadow-lg hover:shadow-green-500/40' 
+                    ${selectedDropTeam
+                      ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white hover:scale-105 shadow-lg hover:shadow-green-500/40'
                       : 'bg-white/20 text-white/40 cursor-not-allowed'
                     }
                   `}
@@ -952,7 +962,7 @@ function TeamPage() {
             <h3 className="text-xl font-bold text-white mb-2">
               {modalTitle}
             </h3>
-            
+
             <p className="text-white/80 mb-6">
               {modalMessage}
             </p>
@@ -978,7 +988,7 @@ function TeamPage() {
             <h3 className="text-xl font-bold text-white mb-2">
               {modalTitle}
             </h3>
-            
+
             <p className="text-white/80 mb-6">
               {modalMessage}
             </p>

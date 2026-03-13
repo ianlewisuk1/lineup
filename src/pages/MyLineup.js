@@ -1,14 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { auth, db } from "../firebase/firebase";
-import {
-  doc,
-  getDoc,
-  collection,
-  getDocs,
-  updateDoc,
-  setDoc
-} from "firebase/firestore";
+import { supabase } from "../supabase/supabase";
 import BottomNavBar from "../components/BottomNavBar";
 import ScoringSystemModal from "../components/ScoringSystemModal";
 import WeeklyLineupManager from "../components/WeeklyLineupManager";
@@ -344,27 +336,23 @@ function MyLineup() {
           
           // Load schedule for each week with enhanced game data
           for (const week of weeks) {
-            const gamesSnap = await getDocs(
-              collection(db, "schedule", "2025", "weeks", week.toString(), "games")
-            );
-            
-            const weekGames = [];
-            gamesSnap.forEach(gameDoc => {
-              const gameData = gameDoc.data();
-              weekGames.push({
-                homeTeam: gameData.homeTeam,
-                awayTeam: gameData.awayTeam,
-                date: gameData.date,
-                gameComplete: gameData.gameComplete || false,
-                // NEW: Add score data for completed games
-                homeScore: gameData.homeScore ?? null,
-                awayScore: gameData.awayScore ?? null,
-                // NEW: Add spread data
-                homeSpread: gameData.homeSpread || null,
-                venue: gameData.venue || null
-              });
-            });
-            
+            const { data: gamesData } = await supabase
+              .from('games')
+              .select('*')
+              .eq('year', 2025)
+              .eq('week', week.toString());
+
+            const weekGames = (gamesData || []).map(gameData => ({
+              homeTeam: gameData.home_team,
+              awayTeam: gameData.away_team,
+              date: gameData.game_time,
+              gameComplete: gameData.game_complete || false,
+              homeScore: gameData.home_score ?? null,
+              awayScore: gameData.away_score ?? null,
+              homeSpread: gameData.home_spread || null,
+              venue: null
+            }));
+
             allScheduleData[week] = weekGames;
           }
           
@@ -383,7 +371,7 @@ function MyLineup() {
     if (!showScheduleGrid) return null;
 
     // Get current roster from member.lineup
-    const currentLineup = userData?.lineup;
+    const currentLineup = { starters: userData?.starters || [], bench: userData?.bench || [] };
     const allRosterTeams = [
       ...(currentLineup?.starters || []),
       ...(currentLineup?.bench || [])
@@ -605,56 +593,54 @@ function MyLineup() {
   // Migration function
   const runMigration = async () => {
     try {
-      const userId = auth.currentUser?.uid;
-      
+      const { data: { user: currentUserAuth } } = await supabase.auth.getUser();
+      const userId = currentUserAuth?.id;
+
       if (!userId) {
         console.error('❌ No user logged in');
         return;
       }
-      
+
       console.log('🔄 Starting migration for user:', userId);
-      
+
       // Check if migration already done
-      const weeklyLineupsRef = doc(db, "leagues", leagueId, "weeklyLineups", userId);
-      const weeklySnap = await getDoc(weeklyLineupsRef);
-      
-      if (weeklySnap.exists()) {
+      const { data: weeklySnap } = await supabase
+        .from('weekly_lineups')
+        .select('id')
+        .eq('league_id', leagueId)
+        .eq('user_id', userId)
+        .single();
+
+      if (weeklySnap) {
         console.log('✅ Migration already completed');
         setMigrationNeeded(false);
         return;
       }
-      
+
       // Get current member data
-      const memberRef = doc(db, "leagues", leagueId, "members", userId);
-      const memberSnap = await getDoc(memberRef);
-      const memberData = memberSnap.data();
-      
-      if (memberData?.lineup) {
-        console.log('📋 Found existing lineup:', memberData.lineup);
-        
-        const weeklyLineups = {};
-        
-        // Initialize all weeks (1-14)
-        for (let week = 1; week <= 14; week++) {
-          weeklyLineups[`week${week}`] = {
-            starters: Array(5).fill(null),
-            bench: Array(2).fill(null),
-            lockedAt: null
-          };
-        }
-        
-        // Copy current lineup to current week
-        weeklyLineups[`week${currentWeek}`] = {
-          starters: memberData.lineup.starters || Array(5).fill(null),
-          bench: memberData.lineup.bench || Array(2).fill(null),
-          lockedAt: null
-        };
-        
-        // Save to new collection
-        await setDoc(weeklyLineupsRef, weeklyLineups);
-        
+      const { data: memberSnap } = await supabase
+        .from('league_members')
+        .select('*')
+        .eq('league_id', leagueId)
+        .eq('user_id', userId)
+        .single();
+      const memberData = memberSnap;
+
+      if (memberData?.starters || memberData?.bench) {
+        console.log('📋 Found existing lineup starters/bench');
+
+        // Save to weekly_lineups table
+        await supabase.from('weekly_lineups').insert({
+          league_id: leagueId,
+          user_id: userId,
+          week: currentWeek.toString(),
+          starters: memberData.starters || [],
+          bench: memberData.bench || [],
+          captain: memberData.captain || null,
+          trip_play_team: memberData.trip_play_team || null
+        });
+
         console.log('✅ Migration completed successfully!');
-        console.log('📊 Week 1 lineup:', weeklyLineups.week1);
         
         setMigrationNeeded(false);
         setSuccessMessage("Migration completed! Your teams have been moved to the new weekly format.");
@@ -679,47 +665,47 @@ function MyLineup() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const currentUser = auth.currentUser;
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (!currentUser) return;
 
       const loadLiveRanking = async () => {
         try {
           setLoadingRank(true);
-          const currentUser = auth.currentUser;
-          if (!currentUser) return;
 
           // Get current week from config
-          const configRef = doc(db, "config", "season");
-          const configSnap = await getDoc(configRef);
-          const currentWeek = configSnap.data()?.currentWeek || 1;
-          const previousWeek = Math.max(1, currentWeek - 1);
+          const { data: configData } = await supabase.from('config').select('value').eq('key', 'season').single();
+          const currentWeekVal = configData?.value?.currentWeek || 1;
+          const previousWeek = Math.max(1, (typeof currentWeekVal === 'number' ? currentWeekVal : parseInt(String(currentWeekVal).match(/\d+/)?.[0] || '1')) - 1);
 
           // Get all league members for current week live ranking
-          const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
-          const allMembers = [];
-          
-          membersSnap.forEach(doc => {
-            const memberData = doc.data();
-            allMembers.push({
-              userId: doc.id,
-              points: memberData.points || 0,
-              teamName: memberData.teamName || "Unnamed Team"
-            });
-          });
+          const { data: allMembersData } = await supabase
+            .from('league_members')
+            .select('user_id, points, team_name')
+            .eq('league_id', leagueId);
+
+          const allMembers = (allMembersData || []).map(m => ({
+            userId: m.user_id,
+            points: m.points || 0,
+            teamName: m.team_name || "Unnamed Team"
+          }));
 
           // Sort by points descending to get live rankings
           allMembers.sort((a, b) => b.points - a.points);
-          
+
           // Find current user's live rank
-          const currentUserRankIndex = allMembers.findIndex(member => member.userId === currentUser.uid);
+          const currentUserRankIndex = allMembers.findIndex(member => member.userId === currentUser.id);
           const liveRank = currentUserRankIndex !== -1 ? currentUserRankIndex + 1 : null;
           setCurrentWeekRank(liveRank);
 
           // Get previous week's final ranking for comparison
-          const weeklyStandingsRef = doc(db, "leagues", leagueId, "weeklyStandings", currentUser.uid);
-          const weeklySnap = await getDoc(weeklyStandingsRef);
-          const previousWeekData = weeklySnap.data()?.[`week${previousWeek}`];
-          const prevRank = previousWeekData?.rank || null;
+          const { data: weeklyStandingData } = await supabase
+            .from('weekly_standings')
+            .select('rank')
+            .eq('league_id', leagueId)
+            .eq('user_id', currentUser.id)
+            .eq('week', previousWeek.toString())
+            .single();
+          const prevRank = weeklyStandingData?.rank || null;
           setPreviousWeekRank(prevRank);
 
           // Calculate rank change
@@ -739,31 +725,36 @@ function MyLineup() {
 
       try {
         // Get user/member data
-        const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
-        const memberSnap = await getDoc(memberRef);
-        const memberData = memberSnap.data();
+        const { data: memberData } = await supabase
+          .from('league_members')
+          .select('*')
+          .eq('league_id', leagueId)
+          .eq('user_id', currentUser.id)
+          .single();
 
         setUserData(memberData);
-        setTeamName(memberData?.teamName || "Unnamed Squad");
-        setSmackTalk(memberData?.smackTalk || "");
+        setTeamName(memberData?.team_name || "Unnamed Squad");
+        setSmackTalk(memberData?.smack_talk || "");
         setSquadPoints(memberData?.points || 0);
 
-        // Check if migration is needed
-        const weeklyLineupsRef = doc(db, "leagues", leagueId, "weeklyLineups", currentUser.uid);
-        const weeklySnap = await getDoc(weeklyLineupsRef);
-        
-        if (!weeklySnap.exists() && memberData?.lineup) {
+        // Check if migration is needed (weekly_lineups table)
+        const { data: weeklySnap } = await supabase
+          .from('weekly_lineups')
+          .select('id')
+          .eq('league_id', leagueId)
+          .eq('user_id', currentUser.id)
+          .single();
+
+        if (!weeklySnap && (memberData?.starters || memberData?.bench)) {
           console.log('🔧 Migration needed - old lineup format detected');
           setMigrationNeeded(true);
         }
 
         // Get season info with better currentWeek parsing
-        const seasonRef = doc(db, "config", "season");
-        const seasonSnap = await getDoc(seasonRef);
-        const seasonData = seasonSnap.data();
-        
+        const { data: seasonData } = await supabase.from('config').select('value').eq('key', 'season').single();
+
         // Handle both "Preseason" and "Week X" formats
-        const weekString = seasonData?.currentWeek || "1";
+        const weekString = seasonData?.value?.currentWeek || "1";
         let weekNumber;
 
         if (weekString === "Preseason") {
@@ -777,10 +768,9 @@ function MyLineup() {
         setCurrentWeek(weekNumber);
 
         // Load all teams with proper structure
-        const teamsSnap = await getDocs(collection(db, "teams"));
+        const { data: teamsData } = await supabase.from('teams').select('*');
         const teamsMap = {};
-        teamsSnap.forEach(doc => {
-          const teamData = doc.data();
+        (teamsData || []).forEach(teamData => {
           if (teamData.school) {
             const normalize = (name) =>
               name
@@ -790,18 +780,18 @@ function MyLineup() {
                 .replace(/[^a-z0-9\-]/g, "");
 
             teamsMap[normalize(teamData.school)] = {
-              id: doc.id,
+              id: teamData.id,
               ...teamData,
-              logo: teamData.logos1 || teamData.logos2 || null,
-              logos1: teamData.logos1 || null,
-              logos2: teamData.logos2 || null,
-              colors: teamData.colors || {},
+              logo: (teamData.logos && teamData.logos[0]) || null,
+              logos1: (teamData.logos && teamData.logos[0]) || null,
+              logos2: (teamData.logos && teamData.logos[1]) || null,
+              colors: { primary: teamData.color, secondary: teamData.alternate_color },
               conference: teamData.conference || "Unknown",
               mascot: teamData.mascot || "",
-              city: teamData.city || "",
-              state: teamData.state || "",
-              currentWeekPoints: teamData.currentSeason?.currentWeekPoints || null,
-              gameComplete: teamData.currentSeason?.gameComplete || false,
+              city: teamData.school || "",
+              state: "",
+              currentWeekPoints: teamData.weekly_points?.[`week${weekNumber}`] || null,
+              gameComplete: teamData.game_complete || false,
               name: teamData.school,
               school: teamData.school
             };
@@ -830,15 +820,16 @@ function MyLineup() {
   };
 
   const handleSaveSmackTalk = async () => {
-    const currentUser = auth.currentUser;
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (!currentUser) return;
 
     setSmackTalkSaving(true);
     try {
-      const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
-      await updateDoc(memberRef, {
-        smackTalk: smackTalk.trim()
-      });
+      await supabase
+        .from('league_members')
+        .update({ smack_talk: smackTalk.trim() })
+        .eq('league_id', leagueId)
+        .eq('user_id', currentUser.id);
       setIsEditingSmackTalk(false);
       setSuccessMessage("Smack talk updated!");
       setShowSuccessModal(true);
@@ -854,7 +845,7 @@ function MyLineup() {
   const handleLogout = async () => {
     if (window.confirm("Are you sure you want to log out?")) {
       try {
-        await auth.signOut();
+        await supabase.auth.signOut();
         navigate("/");
       } catch (err) {
         console.error("Logout error:", err);
@@ -936,12 +927,12 @@ function MyLineup() {
     <div className="mb-6">
       <WeeklyLineupManager
         leagueId={leagueId}
-        userId={auth.currentUser?.uid}
+        userId={userData?.user_id}
         allTeams={allTeams}
         currentWeek={currentWeek}
         onTeamClick={handleTeamClick}
         TeamLogo={TeamLogo}
-        userDisplayName={userData?.firstName || "Unknown"}
+        userDisplayName={userData?.first_name || "Unknown"}
       />
     </div>
 

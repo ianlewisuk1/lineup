@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Lineup</string>
+    <string name="title_activity_main">Lineup</string>
+    <string name="package_name">com.lineupapp.lineup</string>
+    <string name="custom_url_scheme">com.lineupapp.lineup</string>
+</resources>

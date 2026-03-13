@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { auth } from '../firebase/firebase';
+import { supabase } from '../supabase/supabase';
 import { ChevronDown, User, LogOut } from 'lucide-react';
 import EditProfileModal from './EditProfileModal';
 
@@ -13,9 +13,13 @@ const ProfileDropdown = () => {
 
   // Resolve name
   useEffect(() => {
-    const u = auth.currentUser;
-    if (u?.displayName) setUserName(u.displayName.split(' ')[0]);
-    else if (u?.email) setUserName(u.email.split('@')[0]);
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      const meta = user.user_metadata || {};
+      if (meta.full_name) setUserName(meta.full_name.split(' ')[0]);
+      else if (meta.first_name) setUserName(meta.first_name);
+      else if (user.email) setUserName(user.email.split('@')[0]);
+    });
   }, []);
 
   // Recompute menu position when opening or on viewport changes
@@ -49,7 +53,7 @@ const ProfileDropdown = () => {
     e.stopPropagation();
     if (window.confirm('Are you sure you want to log out?')) {
       try {
-        await auth.signOut();
+        await supabase.auth.signOut();
         window.location.href = '/';
       } catch (err) {
         console.error('Logout error:', err);

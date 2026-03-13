@@ -1,20 +1,11 @@
 import React, { useState } from "react";
-import { db, auth } from "../firebase/firebase";
-import {
-  doc,
-  setDoc,
-  getDoc,
-  collection,
-  query,
-  where,
-  getDocs
-} from "firebase/firestore";
+import { supabase } from "../supabase/supabase";
 
 function StartDraft() {
   const [message, setMessage] = useState("");
 
   const startDraft = async () => {
-    const currentUser = auth.currentUser;
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (!currentUser) {
       setMessage("You must be logged in.");
       return;
@@ -22,9 +13,8 @@ function StartDraft() {
 
     try {
       // Step 1: Get user's league ID
-      const userRef = doc(db, "users", currentUser.uid);
-      const userSnap = await getDoc(userRef);
-      const leagueId = userSnap.data().leagueId;
+      const { data: userSnap } = await supabase.from("users").select("*").eq("id", currentUser.id).single();
+      const leagueId = userSnap.leagueId;
 
       if (!leagueId) {
         setMessage("No league found for user.");
@@ -32,25 +22,22 @@ function StartDraft() {
       }
 
       // ✅ Step 2: Check if draft already exists
-      const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-      const draftSnap = await getDoc(draftRef);
+      const { data: draftSnap } = await supabase.from("drafts").select("*").eq("league_id", leagueId).single();
 
-      if (draftSnap.exists()) {
+      if (draftSnap) {
         setMessage("⚠️ Draft has already been initialized for this league.");
         return;
       }
 
       // Step 3: Get all users in the league
-      const q = query(collection(db, "users"), where("leagueId", "==", leagueId));
-      const snapshot = await getDocs(q);
-      const draftOrder = snapshot.docs.map((doc) => doc.id);
+      const { data: leagueMembers } = await supabase.from("users").select("*").eq("leagueId", leagueId);
+      const draftOrder = (leagueMembers || []).map((u) => u.id);
 
-      // Step 4: Get member info from league/members
-      const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
+      // Step 4: Get member info from league_members
+      const { data: membersSnap } = await supabase.from("league_members").select("*").eq("league_id", leagueId);
       const teamNames = {};
-      membersSnap.forEach((doc) => {
-        const data = doc.data();
-        teamNames[doc.id] = data.teamName || "Unnamed Team";
+      (membersSnap || []).forEach((m) => {
+        teamNames[m.user_id] = m.team_name || "Unnamed Team";
       });
 
       // Step 5: Prep selectedTeams map
@@ -60,9 +47,8 @@ function StartDraft() {
       });
 
       // Step 6: Get list of available FBS teams
-      const teamsSnapshot = await getDocs(collection(db, "teams"));
-      const availableTeams = teamsSnapshot.docs
-        .map(doc => doc.data())
+      const { data: teamsData } = await supabase.from("teams").select("*");
+      const availableTeams = (teamsData || [])
         .filter(team => {
           if (!team || typeof team !== "object") return false;
           if (!team.classification) return false;
@@ -72,14 +58,15 @@ function StartDraft() {
 
       // Step 7: Write draft data
       const draftData = {
-        draftOrder,
-        currentPickIndex: 0,
-        selectedTeams,
-        availableTeams,
-        teamNames
+        league_id: leagueId,
+        draft_order: draftOrder,
+        current_pick_index: 0,
+        selected_teams: selectedTeams,
+        available_teams: availableTeams,
+        team_names: teamNames
       };
 
-      await setDoc(draftRef, draftData);
+      await supabase.from("drafts").insert(draftData);
       setMessage("✅ Draft initialized!");
     } catch (err) {
       console.error(err);

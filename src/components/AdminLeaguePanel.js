@@ -1,87 +1,70 @@
 import React, { useEffect, useState } from "react";
-import {
-  collection,
-  query,
-  orderBy,
-  where,
-  limit,
-  startAfter,
-  getDocs,
-  deleteDoc,
-  doc,
-  addDoc,
-  setDoc,
-  updateDoc,
-  arrayUnion
-} from "firebase/firestore";
+import { supabase } from "../supabase/supabase";
 import { Link } from "react-router-dom";
-import { db } from "../firebase/firebase";
 
 const LEAGUES_PER_PAGE = 25;
 
 function AdminLeaguePanel() {
   const [leagues, setLeagues] = useState([]);
-  const [lastDoc, setLastDoc] = useState(null);
-  const [pageStack, setPageStack] = useState([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [searchField, setSearchField] = useState("name");
   const [searchInput, setSearchInput] = useState("");
   const [deletingAll, setDeletingAll] = useState(false);
 
   const formatTimestamp = (ts) => {
-    if (!ts || !ts.toDate) return "-";
-    return ts.toDate().toLocaleString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
-    });
+    if (!ts) return "-";
+    try {
+      return new Date(ts).toLocaleString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    } catch {
+      return "-";
+    }
   };
 
-  const fetchLeagues = async (direction = "initial") => {
-    let q;
+  const fetchLeagues = async (pageNum = 0) => {
     const trimmed = searchInput.trim();
+    const from = pageNum * LEAGUES_PER_PAGE;
+    const to = from + LEAGUES_PER_PAGE - 1;
 
-    const base = collection(db, "leagues");
+    let query = supabase.from("leagues").select("*");
 
     if (trimmed) {
-      q = query(
-        base,
-        orderBy(searchField),
-        where(searchField, ">=", trimmed),
-        where(searchField, "<=", trimmed + "\uf8ff"),
-        limit(LEAGUES_PER_PAGE)
-      );
+      query = query.ilike(searchField, `${trimmed}%`).order(searchField);
     } else {
-      q = query(base, orderBy("name"), limit(LEAGUES_PER_PAGE));
-
-      if (direction === "next" && lastDoc) {
-        q = query(q, startAfter(lastDoc));
-      } else if (direction === "prev" && pageStack.length > 1) {
-        const prev = pageStack[pageStack.length - 2];
-        q = query(q, startAfter(prev));
-        setPageStack(stack => stack.slice(0, -1));
-      }
+      query = query.order("name");
     }
 
-    const snap = await getDocs(q);
+    query = query.range(from, to);
 
-    const docs = snap.docs.map(docRef => {
-      const data = docRef.data();
-      const memberCount = Array.isArray(data.members) ? data.members.length : 0;
+    const { data } = await query;
 
-      return {
-        id: docRef.id,
-        ...data,
-        memberCount
-      };
-    });
+    // Fetch member counts via league_members
+    const leagueIds = (data || []).map(l => l.id);
+    let memberCounts = {};
+    if (leagueIds.length > 0) {
+      const { data: memberData } = await supabase
+        .from("league_members")
+        .select("league_id")
+        .in("league_id", leagueIds);
+      (memberData || []).forEach(m => {
+        memberCounts[m.league_id] = (memberCounts[m.league_id] || 0) + 1;
+      });
+    }
+
+    const docs = (data || []).map(l => ({
+      ...l,
+      memberCount: memberCounts[l.id] || 0
+    }));
 
     setLeagues(docs);
-    setLastDoc(snap.docs[snap.docs.length - 1] || null);
-    if (!trimmed && direction !== "prev") {
-      setPageStack(prev => [...prev, snap.docs[0]]);
-    }
+    setHasMore(docs.length === LEAGUES_PER_PAGE);
+    setPage(pageNum);
   };
 
   useEffect(() => {
@@ -90,57 +73,34 @@ function AdminLeaguePanel() {
 
   const handleSearch = async (e) => {
     e.preventDefault();
-    setPageStack([]);
-    await fetchLeagues("initial");
+    await fetchLeagues(0);
   };
 
   const deleteLeague = async (leagueId) => {
     if (!window.confirm(`Delete league ${leagueId}? This cannot be undone.`)) return;
 
-    const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
-    for (const docRef of membersSnap.docs) {
-      await deleteDoc(doc(db, "leagues", leagueId, "members", docRef.id));
-    }
-
-    const draftSnap = await getDocs(collection(db, "leagues", leagueId, "draft"));
-    for (const docRef of draftSnap.docs) {
-      await deleteDoc(doc(db, "leagues", leagueId, "draft", docRef.id));
-    }
-
-    await deleteDoc(doc(db, "leagues", leagueId));
+    await supabase.from("league_members").delete().eq("league_id", leagueId);
+    await supabase.from("drafts").delete().eq("league_id", leagueId);
+    await supabase.from("leagues").delete().eq("id", leagueId);
     setLeagues(prev => prev.filter(l => l.id !== leagueId));
   };
 
   const deleteAllLeagues = async () => {
-    if (!window.confirm("⚠️ This will permanently delete ALL leagues and their members/draft/meta data. Users will NOT be deleted.\n\nProceed?")) return;
+    if (!window.confirm("⚠️ This will permanently delete ALL leagues and their members/draft data. Users will NOT be deleted.\n\nProceed?")) return;
 
     setDeletingAll(true);
 
-    const leaguesSnap = await getDocs(collection(db, "leagues"));
+    const { data: leaguesData } = await supabase.from("leagues").select("id");
 
-    for (const league of leaguesSnap.docs) {
+    for (const league of (leaguesData || [])) {
       const leagueId = league.id;
-
-      const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
-      for (const docRef of membersSnap.docs) {
-        await deleteDoc(doc(db, "leagues", leagueId, "members", docRef.id));
-      }
-
-      const draftSnap = await getDocs(collection(db, "leagues", leagueId, "draft"));
-      for (const docRef of draftSnap.docs) {
-        await deleteDoc(doc(db, "leagues", leagueId, "draft", docRef.id));
-      }
-
-      const metaSnap = await getDocs(collection(db, "leagues", leagueId, "meta"));
-      for (const docRef of metaSnap.docs) {
-        await deleteDoc(doc(db, "leagues", leagueId, "meta", docRef.id));
-      }
-
-      await deleteDoc(doc(db, "leagues", leagueId));
+      await supabase.from("league_members").delete().eq("league_id", leagueId);
+      await supabase.from("drafts").delete().eq("league_id", leagueId);
+      await supabase.from("leagues").delete().eq("id", leagueId);
     }
 
     setDeletingAll(false);
-    fetchLeagues();
+    fetchLeagues(0);
   };
 
   const generateSmackTalk = () => {
@@ -165,11 +125,11 @@ function AdminLeaguePanel() {
   };
 
   const seedLeagues = async () => {
-    const confirm = window.confirm("Seed 10 test leagues into Firestore using real users as admins?");
+    const confirm = window.confirm("Seed 10 test leagues into the database using real users as admins?");
     if (!confirm) return;
 
-    const usersSnap = await getDocs(collection(db, "users"));
-    const userDocs = usersSnap.docs.filter(doc => !doc.data()?.isAdmin);
+    const { data: usersData } = await supabase.from("users").select("*");
+    const userDocs = (usersData || []).filter(u => !u.is_admin);
     if (userDocs.length < 10) {
       alert("❌ Not enough non-admin users to assign 10 league admins.");
       return;
@@ -183,80 +143,70 @@ function AdminLeaguePanel() {
     for (let i = 0; i < 10; i++) {
       const userDoc = userDocs[i];
       const userId = userDoc.id;
-      const userData = userDoc.data();
-      
+      const userData = userDoc;
+
       const selectedDraftType = draftTypes[Math.floor(Math.random() * draftTypes.length)];
       const selectedDraftOrderType = draftOrderTypes[Math.floor(Math.random() * draftOrderTypes.length)];
       const maxManagers = maxOptions[Math.floor(Math.random() * maxOptions.length)];
 
-      // Build league data matching CreateLeague.js exactly
+      // Build league data
       const leagueData = {
         name: leagueNames[i],
-        createdAt: new Date(),
-        createdBy: userId,
-        admin: userId,
-        maxManagers: maxManagers,
-        draftComplete: false,
-        draftType: selectedDraftType,
-        draftOrderType: selectedDraftOrderType,
-        scoringType: "cumulative",
-        members: [userId]
+        created_by: userId,
+        admin_id: userId,
+        max_managers: maxManagers,
+        draft_complete: false,
+        draft_type: selectedDraftType,
+        draft_order_type: selectedDraftOrderType,
+        scoring_type: "cumulative"
       };
 
       // Add live draft specific fields if needed
       if (selectedDraftType === "live") {
-        // Set random future date between tomorrow and August 20, 2025
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         const maxDate = new Date('2025-08-20');
         const randomTime = tomorrow.getTime() + Math.random() * (maxDate.getTime() - tomorrow.getTime());
         const randomDate = new Date(randomTime);
-        
-        leagueData.draftDate = randomDate;
-        leagueData.timePerPick = [1, 2, 5, 10][Math.floor(Math.random() * 4)];
+
+        leagueData.draft_date = randomDate.toISOString();
+        leagueData.time_per_pick = [1, 2, 5, 10][Math.floor(Math.random() * 4)];
       }
 
       // Create the league
-      const leagueRef = await addDoc(collection(db, "leagues"), leagueData);
+      const { data: newLeague } = await supabase.from("leagues").insert(leagueData).select().single();
 
-      // Update user's leagueIds array
-      await updateDoc(doc(db, "users", userId), {
-        leagueIds: arrayUnion(leagueRef.id)
-      });
-
-      // Create member document matching the Firebase screenshot structure
-      await setDoc(doc(db, "leagues", leagueRef.id, "members", userId), {
-        customAvatar: Math.random() > 0.7, // 30% chance of custom avatar
-        email: userData.email || "",
-        freeAgentMoves: Math.floor(Math.random() * 3), // 0-2 moves
-        joinedAt: new Date(),
-        lineup: {
-          bench: [], // Empty array for now
-          starters: [], // Empty array for now  
-          drafted: [] // Empty array for now
-        },
-        points: 0, // Season total points
-        smackTalk: generateSmackTalk(),
-        teamAvatar: "", // Empty string - no custom avatar URL for seeded users
-        teamName: `${userData.firstName || 'Test'}'s ${['Warriors', 'Dragons', 'Eagles', 'Lions', 'Tigers', 'Sharks', 'Thunder', 'Lightning', 'Storm', 'Blaze'][Math.floor(Math.random() * 10)]}`,
-        weeklyPoints: 0, // Current week points
-        weeklyPointsHistory: [] // Empty array for now
-      });
+      if (newLeague) {
+        // Create member document
+        await supabase.from("league_members").insert({
+          league_id: newLeague.id,
+          user_id: userId,
+          custom_avatar: Math.random() > 0.7,
+          free_agent_moves: Math.floor(Math.random() * 3),
+          starters: [],
+          bench: [],
+          points: 0,
+          smack_talk: generateSmackTalk(),
+          team_avatar: "",
+          team_name: `${userData.first_name || 'Test'}'s ${['Warriors', 'Dragons', 'Eagles', 'Lions', 'Tigers', 'Sharks', 'Thunder', 'Lightning', 'Storm', 'Blaze'][Math.floor(Math.random() * 10)]}`,
+          weekly_points: 0,
+          weekly_points_history: []
+        });
+      }
     }
 
     alert("✅ 10 leagues seeded with real users as admins, with proper member document structure.");
-    fetchLeagues();
+    fetchLeagues(0);
   };
 
   const exportToCSV = () => {
-    const headers = ["ID", "League Name", "Admin UID", "Created By", "Max Managers", "Created At", "Member Count"];
+    const headers = ["ID", "League Name", "Admin UID", "Created By", "Max Managers", "Member Count"];
     const rows = leagues.map(l => [
       l.id,
       l.name || "",
-      l.admin || "",
-      l.createdBy || "",
-      l.maxManagers || "",
-      formatTimestamp(l.createdAt),
+      l.admin_id || "",
+      l.created_by || "",
+      l.max_managers || "",
       l.memberCount
     ]);
 
@@ -280,7 +230,7 @@ function AdminLeaguePanel() {
       <form onSubmit={handleSearch} style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
         <select value={searchField} onChange={(e) => setSearchField(e.target.value)}>
           <option value="name">League Name</option>
-          <option value="createdBy">Created By UID</option>
+          <option value="created_by">Created By UID</option>
         </select>
         <input
           type="text"
@@ -319,7 +269,6 @@ function AdminLeaguePanel() {
             <th>Created By</th>
             <th>Managers</th>
             <th>Members</th>
-            <th>Created At</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -350,7 +299,7 @@ function AdminLeaguePanel() {
                 </Link>
               </td>
               <td
-                title={l.admin || "-"}
+                title={l.admin_id || "-"}
                 style={{
                   maxWidth: "160px",
                   whiteSpace: "nowrap",
@@ -358,10 +307,10 @@ function AdminLeaguePanel() {
                   textOverflow: "ellipsis"
                 }}
               >
-                {l.admin || "-"}
+                {l.admin_id || "-"}
               </td>
               <td
-                title={l.createdBy || "-"}
+                title={l.created_by || "-"}
                 style={{
                   maxWidth: "160px",
                   whiteSpace: "nowrap",
@@ -369,11 +318,10 @@ function AdminLeaguePanel() {
                   textOverflow: "ellipsis"
                 }}
               >
-                {l.createdBy || "-"}
+                {l.created_by || "-"}
               </td>
-              <td style={{ textAlign: "center" }}>{l.maxManagers || "-"}</td>
+              <td style={{ textAlign: "center" }}>{l.max_managers || "-"}</td>
               <td style={{ textAlign: "center" }}>{l.memberCount}</td>
-              <td>{formatTimestamp(l.createdAt)}</td>
               <td>
                 <button onClick={() => deleteLeague(l.id)} style={{ color: "red" }}>
                   Delete
@@ -386,14 +334,14 @@ function AdminLeaguePanel() {
 
       <div style={{ marginTop: "1rem" }}>
         <button
-          onClick={() => fetchLeagues("prev")}
-          disabled={pageStack.length <= 1}
+          onClick={() => fetchLeagues(page - 1)}
+          disabled={page === 0}
         >
           ← Previous
         </button>
         <button
-          onClick={() => fetchLeagues("next")}
-          disabled={!lastDoc || leagues.length < LEAGUES_PER_PAGE}
+          onClick={() => fetchLeagues(page + 1)}
+          disabled={!hasMore || leagues.length < LEAGUES_PER_PAGE}
           style={{ marginLeft: "1rem" }}
         >
           Next →

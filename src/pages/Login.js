@@ -1,8 +1,6 @@
 import React, { useState } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
 import { useNavigate, Link } from "react-router-dom";
-import { auth, db } from "../firebase/firebase";
+import { supabase } from "../supabase/supabase";
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -17,12 +15,12 @@ function Login() {
     setError("");
     
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      const userData = userDoc.data();
+      const { data: { user }, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) throw signInError;
 
-      if (userData?.isAdmin) {
+      const { data: userData } = await supabase.from("users").select("is_admin").eq("id", user.id).single();
+
+      if (userData?.is_admin) {
         return navigate("/admin");
       }
       navigate("/home");
@@ -154,7 +152,7 @@ function Login() {
           {/* Additional Info */}
           <div className="mt-6 text-center">
             <p className="text-xs text-white/60">
-              Secure login powered by Firebase Authentication
+              Secure login powered by Supabase
             </p>
           </div>
         </div>

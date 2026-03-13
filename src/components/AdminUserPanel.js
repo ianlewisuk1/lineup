@@ -1,72 +1,49 @@
 import React, { useEffect, useState } from "react";
-import {
-  collection,
-  query,
-  orderBy,
-  limit,
-  startAfter,
-  getDocs,
-  where,
-  doc,
-  deleteDoc,
-  setDoc
-} from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { supabase } from "../supabase/supabase";
 import { v4 as uuidv4 } from "uuid";
 
 const USERS_PER_PAGE = 25;
 
 function AdminUserPanel() {
   const [users, setUsers] = useState([]);
-  const [lastDoc, setLastDoc] = useState(null);
-  const [pageStack, setPageStack] = useState([]);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [searchField, setSearchField] = useState("email");
   const [searchInput, setSearchInput] = useState("");
   const [leagueAdminMap, setLeagueAdminMap] = useState({});
   const [deletingAll, setDeletingAll] = useState(false);
   const [deletingNonLeague, setDeletingNonLeague] = useState(false);
 
-  const fetchUsers = async (direction = "initial") => {
-    let q;
+  const fetchUsers = async (pageNum = 0) => {
     const trimmed = searchInput.trim();
+    const from = pageNum * USERS_PER_PAGE;
+    const to = from + USERS_PER_PAGE - 1;
+
+    let query = supabase.from("users").select("*");
 
     if (trimmed) {
-      q = query(
-        collection(db, "users"),
-        orderBy(searchField),
-        where(searchField, ">=", trimmed),
-        where(searchField, "<=", trimmed + "\uf8ff"),
-        limit(USERS_PER_PAGE)
-      );
+      query = query.ilike(searchField, `${trimmed}%`);
     } else {
-      q = query(collection(db, "users"), orderBy("email"), limit(USERS_PER_PAGE));
-      if (direction === "next" && lastDoc) {
-        q = query(q, startAfter(lastDoc));
-      } else if (direction === "prev" && pageStack.length > 1) {
-        const prev = pageStack[pageStack.length - 2];
-        q = query(q, startAfter(prev));
-        setPageStack(stack => stack.slice(0, -1));
-      }
+      query = query.order("email");
     }
 
-    const snap = await getDocs(q);
-    const docs = snap.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+    query = query.range(from, to);
+
+    const { data } = await query;
+    const docs = (data || []).map(u => ({ uid: u.id, ...u }));
 
     setUsers(docs);
-    setLastDoc(snap.docs[snap.docs.length - 1] || null);
-    if (!trimmed && direction !== "prev") {
-      setPageStack(prev => [...prev, snap.docs[0]]);
-    }
+    setHasMore(docs.length === USERS_PER_PAGE);
+    setPage(pageNum);
   };
 
   const fetchLeagueAdmins = async () => {
-    const snap = await getDocs(collection(db, "leagues"));
+    const { data } = await supabase.from("leagues").select("*");
     const adminMap = {};
 
-    snap.docs.forEach(doc => {
-      const data = doc.data();
-      const adminUid = data.admin;
-      const leagueName = data.leagueName || doc.id;
+    (data || []).forEach(league => {
+      const adminUid = league.admin_id;
+      const leagueName = league.name || league.id;
       if (adminUid) {
         if (!adminMap[adminUid]) {
           adminMap[adminUid] = [];
@@ -85,31 +62,30 @@ function AdminUserPanel() {
 
   const handleSearch = async (e) => {
     e.preventDefault();
-    setPageStack([]);
-    await fetchUsers("initial");
+    await fetchUsers(0);
   };
 
   const deleteUser = async (uid, userEmail) => {
     if (!window.confirm("Are you sure you want to delete this user?")) return;
-    
+
     try {
-      // Delete the Firestore document
-      await deleteDoc(doc(db, "users", uid));
-      
+      // Delete the user document
+      await supabase.from("users").delete().eq("id", uid);
+
       // Update local state
       setUsers(prev => prev.filter(user => user.uid !== uid));
-      
+
       // Inform admin about manual auth cleanup if needed
       alert(`✅ User document deleted for ${userEmail}
 
 📝 Note: If you want to prevent them from logging in completely:
-1. Go to Firebase Console → Authentication → Users  
+1. Go to Supabase Console → Authentication → Users
 2. Find and delete: ${userEmail}
 
-Without their Firestore document, they can't use the app anyway.`);
-      
-      console.log(`User Firestore document deleted for UID: ${uid}`);
-      
+Without their user record, they can't use the app anyway.`);
+
+      console.log(`User document deleted for UID: ${uid}`);
+
     } catch (error) {
       console.error("Error deleting user:", error);
       alert("Error deleting user. Please try again.");
@@ -118,20 +94,20 @@ Without their Firestore document, they can't use the app anyway.`);
 
   const deleteAllNonAdminUsers = async () => {
     const confirm = window.confirm(
-      "⚠️ This will delete ALL Firestore documents for users who are NOT site admins. This cannot be undone.\n\nAre you sure?"
+      "⚠️ This will delete ALL user documents for users who are NOT site admins. This cannot be undone.\n\nAre you sure?"
     );
     if (!confirm) return;
 
     setDeletingAll(true);
 
     try {
-      const snap = await getDocs(collection(db, "users"));
-      const nonAdminUsers = snap.docs.filter(doc => !doc.data()?.isAdmin);
+      const { data } = await supabase.from("users").select("*");
+      const nonAdminUsers = (data || []).filter(u => !u.is_admin);
 
       let deletedCount = 0;
       for (const userDoc of nonAdminUsers) {
         try {
-          await deleteDoc(doc(db, "users", userDoc.id));
+          await supabase.from("users").delete().eq("id", userDoc.id);
           deletedCount++;
         } catch (error) {
           console.error(`Error deleting user ${userDoc.id}:`, error);
@@ -141,15 +117,15 @@ Without their Firestore document, they can't use the app anyway.`);
       alert(`✅ Deleted ${deletedCount} non-admin user documents.
 
 📝 Note: Auth accounts still exist. To prevent login:
-Go to Firebase Console → Authentication → Users and delete manually if needed.`);
-      
+Go to Supabase Console → Authentication → Users and delete manually if needed.`);
+
     } catch (error) {
       console.error("Error in bulk delete:", error);
       alert("Error during bulk delete. Please check console.");
     }
 
     setDeletingAll(false);
-    fetchUsers();
+    fetchUsers(0);
   };
 
   const deleteUsersNotInLeagues = async () => {
@@ -161,20 +137,22 @@ Go to Firebase Console → Authentication → Users and delete manually if neede
     setDeletingNonLeague(true);
 
     try {
-      const snap = await getDocs(collection(db, "users"));
-      const usersNotInLeagues = snap.docs.filter(doc => {
-        const data = doc.data();
+      const { data } = await supabase.from("users").select("*");
+      // Get all league member user_ids
+      const { data: memberData } = await supabase.from("league_members").select("user_id");
+      const memberIds = new Set((memberData || []).map(m => m.user_id));
+
+      const usersNotInLeagues = (data || []).filter(u => {
         // Don't delete site admins
-        if (data?.isAdmin) return false;
-        // Delete if leagueIds is empty, undefined, or null
-        const leagueIds = data?.leagueIds;
-        return !leagueIds || (Array.isArray(leagueIds) && leagueIds.length === 0);
+        if (u.is_admin) return false;
+        // Delete if not in any league
+        return !memberIds.has(u.id);
       });
 
       let deletedCount = 0;
       for (const userDoc of usersNotInLeagues) {
         try {
-          await deleteDoc(doc(db, "users", userDoc.id));
+          await supabase.from("users").delete().eq("id", userDoc.id);
           deletedCount++;
         } catch (error) {
           console.error(`Error deleting user ${userDoc.id}:`, error);
@@ -182,18 +160,18 @@ Go to Firebase Console → Authentication → Users and delete manually if neede
       }
 
       alert(`✅ Deleted ${deletedCount} users who were not in any leagues.`);
-      
+
     } catch (error) {
       console.error("Error in bulk delete:", error);
       alert("Error during bulk delete. Please check console.");
     }
 
     setDeletingNonLeague(false);
-    fetchUsers();
+    fetchUsers(0);
   };
 
   const seedUsers = async (count) => {
-    const confirm = window.confirm(`Seed ${count} fake users into Firestore?`);
+    const confirm = window.confirm(`Seed ${count} fake users into the database?`);
     if (!confirm) return;
 
     const firstNames = [
@@ -220,31 +198,29 @@ Go to Firebase Console → Authentication → Users and delete manually if neede
       const uid = uuidv4();
 
       const userDoc = {
+        id: uid,
         email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}${Math.floor(Math.random() * 1000)}@example.com`,
-        firstName,
-        lastName,
-        dob: randomDate(),
-        leagueIds: [] // Empty array - user not in any leagues yet
+        first_name: firstName,
+        last_name: lastName,
+        is_admin: false
       };
 
-      await setDoc(doc(db, "users", uid), userDoc);
+      await supabase.from("users").upsert(userDoc);
     }
 
     alert(`✅ ${count} users seeded!`);
-    fetchUsers();
+    fetchUsers(0);
   };
 
   const exportToCSV = () => {
-    const headers = ["UID", "Email", "First Name", "Last Name", "DOB", "isAdmin", "League Admin Of", "League IDs"];
+    const headers = ["UID", "Email", "First Name", "Last Name", "isAdmin", "League Admin Of"];
     const rows = users.map(user => [
       user.uid,
       user.email || "",
-      user.firstName || "",
-      user.lastName || "",
-      user.dob || "",
-      user.isAdmin ? "Yes" : "No",
-      (leagueAdminMap[user.uid] || []).join("; "),
-      (user.leagueIds || []).join("; ")
+      user.first_name || "",
+      user.last_name || "",
+      user.is_admin ? "Yes" : "No",
+      (leagueAdminMap[user.uid] || []).join("; ")
     ]);
 
     const csvContent =
@@ -271,8 +247,8 @@ Go to Firebase Console → Authentication → Users and delete manually if neede
           onChange={(e) => setSearchField(e.target.value)}
         >
           <option value="email">Email</option>
-          <option value="firstName">First Name</option>
-          <option value="lastName">Last Name</option>
+          <option value="first_name">First Name</option>
+          <option value="last_name">Last Name</option>
         </select>
 
         <input
@@ -346,10 +322,8 @@ Go to Firebase Console → Authentication → Users and delete manually if neede
             <th>Email</th>
             <th>First</th>
             <th>Last</th>
-            <th>DOB</th>
             <th>Admin?</th>
             <th>League Admin Of</th>
-            <th>League IDs</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -358,19 +332,13 @@ Go to Firebase Console → Authentication → Users and delete manually if neede
             <tr key={user.uid} style={{ borderBottom: "1px solid #ccc" }}>
               <td style={{ fontSize: "0.8rem" }}>{user.uid}</td>
               <td>{user.email || "N/A"}</td>
-              <td>{user.firstName || "-"}</td>
-              <td>{user.lastName || "-"}</td>
-              <td>{user.dob || "-"}</td>
-              <td>{user.isAdmin ? "✅" : "❌"}</td>
+              <td>{user.first_name || "-"}</td>
+              <td>{user.last_name || "-"}</td>
+              <td>{user.is_admin ? "✅" : "❌"}</td>
               <td>
                 {leagueAdminMap[user.uid]?.length > 0
                   ? leagueAdminMap[user.uid].join(", ")
                   : "-"}
-              </td>
-              <td>
-                {user.leagueIds?.length > 0
-                  ? user.leagueIds.length + " league(s)"
-                  : "None"}
               </td>
               <td>
                 <button
@@ -387,14 +355,14 @@ Go to Firebase Console → Authentication → Users and delete manually if neede
 
       <div style={{ marginTop: "1rem" }}>
         <button
-          onClick={() => fetchUsers("prev")}
-          disabled={pageStack.length <= 1}
+          onClick={() => fetchUsers(page - 1)}
+          disabled={page === 0}
         >
           ← Previous
         </button>
         <button
-          onClick={() => fetchUsers("next")}
-          disabled={!lastDoc || users.length < USERS_PER_PAGE}
+          onClick={() => fetchUsers(page + 1)}
+          disabled={!hasMore || users.length < USERS_PER_PAGE}
           style={{ marginLeft: "1rem" }}
         >
           Next →

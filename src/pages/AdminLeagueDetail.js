@@ -1,19 +1,7 @@
 // AdminLeagueDetail.js
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import {
-  doc,
-  getDoc,
-  collection,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-  arrayRemove,
-  arrayUnion,
-  setDoc,
-  serverTimestamp
-} from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { supabase } from "../supabase/supabase";
 
 const th = {
   padding: "8px",
@@ -41,33 +29,32 @@ function AdminLeagueDetail() {
   useEffect(() => {
     const fetchLeagueAndMembers = async () => {
       try {
-        const leagueDoc = await getDoc(doc(db, "leagues", leagueId));
-        if (!leagueDoc.exists()) {
+        const { data: leagueData } = await supabase.from("leagues").select("*").eq("id", leagueId).single();
+        if (!leagueData) {
           setLeague(null);
           return;
         }
 
-        const leagueData = { id: leagueDoc.id, ...leagueDoc.data() };
         setLeague(leagueData);
 
-        const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
-        const membersList = membersSnap.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
+        const { data: membersData } = await supabase.from("league_members").select("*").eq("league_id", leagueId);
+        const membersList = (membersData || []).map(m => ({
+          id: m.user_id,
+          ...m
         }));
         setMembers(membersList);
 
-        const draftDoc = await getDoc(doc(db, "leagues", leagueId, "meta", "draft"));
-        if (draftDoc.exists()) {
-          setDraftMeta(draftDoc.data());
+        const { data: draftData } = await supabase.from("drafts").select("*").eq("league_id", leagueId).single();
+        if (draftData) {
+          setDraftMeta(draftData);
         } else {
           setDraftMeta(null);
         }
 
         // Fetch current week from global config
-        const configDoc = await getDoc(doc(db, "config", "season"));
-        if (configDoc.exists()) {
-          const globalCurrentWeek = configDoc.data().currentWeek || "Preseason";
+        const { data: configData } = await supabase.from("config").select("*").eq("key", "season").single();
+        if (configData) {
+          const globalCurrentWeek = configData.value?.currentWeek || "Preseason";
           setCurrentWeek(globalCurrentWeek);
           setNewWeekValue(globalCurrentWeek);
         }
@@ -95,11 +82,12 @@ function AdminLeagueDetail() {
     }
 
     try {
-      // Update global config
-      await updateDoc(doc(db, "config", "season"), {
-        currentWeek: newWeekValue.trim(),
-        lastUpdated: new Date()
-      });
+      // Fetch existing config value first to merge
+      const { data: configData } = await supabase.from("config").select("*").eq("key", "season").single();
+      const existingValue = configData?.value || {};
+      await supabase.from("config").update({
+        value: { ...existingValue, currentWeek: newWeekValue.trim(), lastUpdated: new Date().toISOString() }
+      }).eq("key", "season");
 
       setCurrentWeek(newWeekValue.trim());
       alert(`✅ Current week updated to "${newWeekValue.trim()}"`);
@@ -123,11 +111,11 @@ function AdminLeagueDetail() {
   // Helper function to get current picker using snake draft logic (matches DraftRoom.js)
   const getCurrentPicker = (draftOrder, currentPickIndex) => {
     if (!draftOrder || draftOrder.length === 0) return null;
-    
+
     const totalManagers = draftOrder.length;
     const currentRound = Math.floor(currentPickIndex / totalManagers);
     const positionInRound = currentPickIndex % totalManagers;
-    
+
     // For even rounds (0, 2, 4, 6): use normal order
     // For odd rounds (1, 3, 5): use reverse order
     if (currentRound % 2 === 0) {
@@ -140,10 +128,7 @@ function AdminLeagueDetail() {
   const handleKick = async (userId) => {
     if (!window.confirm("Kick this user from the league? This cannot be undone.")) return;
     try {
-      await deleteDoc(doc(db, "leagues", leagueId, "members", userId));
-      await updateDoc(doc(db, "leagues", leagueId), {
-        members: arrayRemove(userId)
-      });
+      await supabase.from("league_members").delete().eq("league_id", leagueId).eq("user_id", userId);
       refresh();
     } catch (err) {
       console.error("Error kicking user:", err);
@@ -153,9 +138,7 @@ function AdminLeagueDetail() {
   const handlePromote = async (userId) => {
     if (!window.confirm("Promote this user to league admin?")) return;
     try {
-      await updateDoc(doc(db, "leagues", leagueId), {
-        admin: userId
-      });
+      await supabase.from("leagues").update({ admin_id: userId }).eq("id", leagueId);
       refresh();
     } catch (err) {
       console.error("Error promoting user:", err);
@@ -167,25 +150,23 @@ function AdminLeagueDetail() {
 
     try {
       // ✅ MATCH DRAFTROOM: Get teams the exact same way
-      const teamsSnap = await getDocs(collection(db, "teams"));
-      const teamNames = teamsSnap.docs
-        .filter(doc => {
-          const data = doc.data();
-          return data.school && 
-                typeof data.school === "string" && 
-                data.classification?.toLowerCase() === "fbs";
-        })
-        .map(doc => doc.id); // ✅ Use document ID (matches DraftRoom)
+      const { data: teamsData } = await supabase.from("teams").select("*");
+      const teamDocs = (teamsData || []).filter(t => {
+        return t.school &&
+              typeof t.school === "string" &&
+              t.classification?.toLowerCase() === "fbs";
+      });
+      const teamNames = teamDocs.map(t => t.id); // ✅ Use document ID (matches DraftRoom)
 
       if (teamNames.length === 0) {
-        alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
+        alert("⚠️ No valid FBS teams found. Check your teams table.");
         return;
       }
 
       // ✅ MATCH DRAFTROOM: Build team rankings map
       const allTeamsData = {};
-      teamsSnap.docs.forEach(doc => {
-        allTeamsData[doc.id] = doc.data();
+      teamDocs.forEach(t => {
+        allTeamsData[t.id] = t;
       });
 
       const draftOrder = members.map(m => m.id);
@@ -193,7 +174,7 @@ function AdminLeagueDetail() {
 
       let availableTeams = [...teamNames];
       const selectedTeams = {};
-      
+
       // Initialize empty arrays for each manager
       draftOrder.forEach(uid => {
         selectedTeams[uid] = [];
@@ -202,7 +183,7 @@ function AdminLeagueDetail() {
       // ✅ MATCH DRAFTROOM: Simulate all picks using exact same logic
       for (let pickIndex = 0; pickIndex < totalPicks; pickIndex++) {
         const currentUid = getCurrentPicker(draftOrder, pickIndex);
-        
+
         if (!currentUid || availableTeams.length === 0) {
           console.error(`Simulation failed at pick ${pickIndex}: no current UID or no available teams`);
           break;
@@ -210,7 +191,7 @@ function AdminLeagueDetail() {
 
         // ✅ MATCH DRAFTROOM: Use exact same team selection logic as handleAutoPick
         const teamRankings = {};
-        
+
         availableTeams.forEach(teamId => {
           const teamData = allTeamsData[teamId];
           if (teamData && teamData.philMetricDraftRank !== undefined) {
@@ -230,40 +211,35 @@ function AdminLeagueDetail() {
 
         // Add to selected teams
         selectedTeams[currentUid].push(pickedTeam);
-        
+
         // Remove from available teams
         availableTeams = availableTeams.filter(t => t !== pickedTeam);
       }
 
       // ✅ MATCH DRAFTROOM: Create draft metadata in exact same format
-      await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), {
-        draftOrder,
-        currentPickIndex: totalPicks,
-        availableTeams,
-        selectedTeams,
-        draftComplete: true
+      await supabase.from("drafts").upsert({
+        league_id: leagueId,
+        draft_order: draftOrder,
+        current_pick_index: totalPicks,
+        selected_teams: selectedTeams,
+        draft_complete: true
       });
 
       // ✅ MATCH DRAFTROOM: Update league status
-      await updateDoc(doc(db, "leagues", leagueId), {
-        draftComplete: true
-      });
+      await supabase.from("leagues").update({ draft_complete: true }).eq("id", leagueId);
 
       // ✅ MATCH DRAFTROOM: Update member lineups exactly like completeDraft function
       const memberUpdates = Object.entries(selectedTeams).map(async ([uid, teams]) => {
         const starters = teams.slice(0, 5);
         const bench = teams.slice(5);
 
-        const memberRef = doc(db, "leagues", leagueId, "members", uid);
-        await updateDoc(memberRef, {
-          "lineup.drafted": teams,
-          "lineup.starters": starters,
-          "lineup.bench": bench,
-          freeAgentMoves: 0,
+        await supabase.from("league_members").update({
+          starters,
+          bench,
+          free_agent_moves: 0,
           points: 0,
-          weeklyPoints: 0,
-          smackTalk: ""
-        });
+          weekly_points: 0
+        }).eq("league_id", leagueId).eq("user_id", uid);
       });
 
       await Promise.all(memberUpdates);
@@ -282,25 +258,23 @@ function AdminLeagueDetail() {
 
     try {
       // ✅ MATCH DRAFTROOM: Get teams the exact same way
-      const teamsSnap = await getDocs(collection(db, "teams"));
-      const teamNames = teamsSnap.docs
-        .filter(doc => {
-          const data = doc.data();
-          return data.school && 
-                typeof data.school === "string" && 
-                data.classification?.toLowerCase() === "fbs";
-        })
-        .map(doc => doc.id); // ✅ Use document ID (matches DraftRoom)
+      const { data: teamsData } = await supabase.from("teams").select("*");
+      const teamDocs = (teamsData || []).filter(t => {
+        return t.school &&
+              typeof t.school === "string" &&
+              t.classification?.toLowerCase() === "fbs";
+      });
+      const teamNames = teamDocs.map(t => t.id); // ✅ Use document ID (matches DraftRoom)
 
       if (teamNames.length === 0) {
-        alert("⚠️ No valid FBS teams found. Check your /teams collection in Firestore.");
+        alert("⚠️ No valid FBS teams found. Check your teams table.");
         return;
       }
 
       // ✅ MATCH DRAFTROOM: Build team data map
       const allTeamsData = {};
-      teamsSnap.docs.forEach(doc => {
-        allTeamsData[doc.id] = doc.data();
+      teamDocs.forEach(t => {
+        allTeamsData[t.id] = t;
       });
 
       const draftOrder = members.map(m => m.id);
@@ -309,7 +283,7 @@ function AdminLeagueDetail() {
 
       let availableTeams = [...teamNames];
       const selectedTeams = {};
-      
+
       // Initialize empty arrays for each manager
       draftOrder.forEach(uid => {
         selectedTeams[uid] = [];
@@ -318,7 +292,7 @@ function AdminLeagueDetail() {
       // ✅ MATCH DRAFTROOM: Simulate picks using exact same logic
       for (let pickIndex = 0; pickIndex < finalPickIndex; pickIndex++) {
         const currentUid = getCurrentPicker(draftOrder, pickIndex);
-        
+
         if (!currentUid || availableTeams.length === 0) {
           console.error(`Simulation failed at pick ${pickIndex}: no current UID or no available teams`);
           break;
@@ -326,7 +300,7 @@ function AdminLeagueDetail() {
 
         // ✅ MATCH DRAFTROOM: Use exact same team selection logic as handleAutoPick
         const teamRankings = {};
-        
+
         availableTeams.forEach(teamId => {
           const teamData = allTeamsData[teamId];
           if (teamData && teamData.philMetricDraftRank !== undefined) {
@@ -346,31 +320,27 @@ function AdminLeagueDetail() {
 
         // Add to selected teams
         selectedTeams[currentUid].push(pickedTeam);
-        
+
         // Remove from available teams
         availableTeams = availableTeams.filter(t => t !== pickedTeam);
       }
 
       // ✅ MATCH DRAFTROOM: Create draft metadata in exact same format as live draft
-      await setDoc(doc(db, "leagues", leagueId, "meta", "draft"), {
-        draftOrder,
-        currentPickIndex: finalPickIndex, // One pick before completion
-        availableTeams,
-        selectedTeams,
-        draftComplete: false,
-        currentPickStartTime: serverTimestamp() // ✅ Set timer for final pick
+      await supabase.from("drafts").upsert({
+        league_id: leagueId,
+        draft_order: draftOrder,
+        current_pick_index: finalPickIndex, // One pick before completion
+        selected_teams: selectedTeams,
+        draft_complete: false,
+        draft_start_time: new Date().toISOString() // ✅ Set timer for final pick
       });
 
       // ✅ MATCH DRAFTROOM: Update member lineups with current picks (but don't set starters/bench yet)
       const memberUpdates = Object.entries(selectedTeams).map(async ([uid, teams]) => {
         if (teams.length > 0) {
-          const memberRef = doc(db, "leagues", leagueId, "members", uid);
-          await updateDoc(memberRef, {
-            "lineup.drafted": teams,
-            freeAgentMoves: 0,
-            smackTalk: ""
-            // Don't set starters/bench yet since draft isn't complete
-          });
+          await supabase.from("league_members").update({
+            free_agent_moves: 0
+          }).eq("league_id", leagueId).eq("user_id", uid);
         }
       });
 
@@ -378,7 +348,7 @@ function AdminLeagueDetail() {
 
       const finalPicker = getCurrentPicker(draftOrder, finalPickIndex);
       const finalPickerName = members.find(m => m.id === finalPicker)?.displayName || "Unknown";
-      
+
       alert(`✅ Draft simulated up to final pick using live draft logic!\n\nFinal pick belongs to: ${finalPickerName}\nRemaining teams: ${availableTeams.length}`);
       refresh();
 
@@ -389,14 +359,14 @@ function AdminLeagueDetail() {
   };
 
   const handleSimulateNext10Picks = async () => {
-    if (!draftMeta || draftMeta.draftComplete) {
+    if (!draftMeta || draftMeta.draft_complete) {
       alert("No active draft found or draft is already complete.");
       return;
     }
 
-    const remainingPicks = (members.length * 7) - draftMeta.currentPickIndex;
+    const remainingPicks = (members.length * 7) - draftMeta.current_pick_index;
     const picksToSimulate = Math.min(10, remainingPicks);
-    
+
     if (picksToSimulate <= 0) {
       alert("No more picks remaining in the draft.");
       return;
@@ -408,28 +378,33 @@ function AdminLeagueDetail() {
 
     try {
       // 🔧 FIX 1: Get FRESH draft data to avoid stale state
-      const freshDraftDoc = await getDoc(doc(db, "leagues", leagueId, "meta", "draft"));
-      if (!freshDraftDoc.exists()) {
+      const { data: freshDraftData } = await supabase.from("drafts").select("*").eq("league_id", leagueId).single();
+      if (!freshDraftData) {
         alert("Draft data not found.");
         return;
       }
 
-      const freshDraftData = freshDraftDoc.data();
-      
       // Get teams data
-      const teamsSnap = await getDocs(collection(db, "teams"));
+      const { data: teamsData } = await supabase.from("teams").select("*");
       const allTeamsData = {};
-      teamsSnap.docs.forEach(doc => {
-        allTeamsData[doc.id] = doc.data();
+      (teamsData || []).forEach(t => {
+        allTeamsData[t.id] = t;
       });
 
       // 🔧 FIX 2: Use fresh data, not stale draftMeta
-      let { 
-        draftOrder, 
-        currentPickIndex, 
-        availableTeams, 
-        selectedTeams 
+      let {
+        draft_order: draftOrder,
+        current_pick_index: currentPickIndex,
+        selected_teams: selectedTeams
       } = freshDraftData;
+
+      // availableTeams not stored separately; reconstruct from selectedTeams vs all FBS teams
+      const { data: allTeams } = await supabase.from("teams").select("id,classification");
+      const allFbsTeamIds = (allTeams || [])
+        .filter(t => t.classification?.toLowerCase() === "fbs")
+        .map(t => t.id);
+      const pickedTeamIds = new Set(Object.values(selectedTeams || {}).flat());
+      let availableTeams = allFbsTeamIds.filter(id => !pickedTeamIds.has(id));
 
       console.log(`🔍 Starting simulation from pick ${currentPickIndex + 1}`);
       console.log(`🔍 Available teams at start: ${availableTeams.length}`);
@@ -455,7 +430,7 @@ function AdminLeagueDetail() {
       // Simulate picks one by one
       for (let pickIndex = currentPickIndex; pickIndex < endPickIndex; pickIndex++) {
         const currentUid = getCurrentPicker(draftOrder, pickIndex);
-        
+
         if (!currentUid) {
           console.error(`❌ No current UID for pick ${pickIndex + 1}`);
           break;
@@ -474,7 +449,7 @@ function AdminLeagueDetail() {
 
         // 🔧 FIX 6: Use current workingAvailableTeams, not original availableTeams
         const teamRankings = {};
-        
+
         workingAvailableTeams.forEach(teamId => {
           const teamData = allTeamsData[teamId];
           if (teamData && teamData.philMetricDraftRank !== undefined) {
@@ -505,7 +480,7 @@ function AdminLeagueDetail() {
 
         // Add to selected teams
         selectedTeams[currentUid].push(pickedTeam);
-        
+
         // 🔧 FIX 8: Remove from working available teams immediately
         workingAvailableTeams = workingAvailableTeams.filter(t => t !== pickedTeam);
 
@@ -528,57 +503,43 @@ function AdminLeagueDetail() {
 
       // 🔧 FIX 9: Update with working available teams
       const draftUpdateData = {
-        currentPickIndex: newPickIndex,
-        availableTeams: workingAvailableTeams, // Use the working copy
-        selectedTeams,
-        draftComplete
+        current_pick_index: newPickIndex,
+        selected_teams: selectedTeams,
+        draft_complete: draftComplete
       };
 
-      if (!draftComplete) {
-        draftUpdateData.currentPickStartTime = serverTimestamp();
-      }
-
-      // 🔧 FIX 10: Update Firebase with atomic operation
-      await updateDoc(doc(db, "leagues", leagueId, "meta", "draft"), draftUpdateData);
+      // 🔧 FIX 10: Update Supabase with updated draft data
+      await supabase.from("drafts").update(draftUpdateData).eq("league_id", leagueId);
 
       // Update member lineups
       const memberUpdates = Object.entries(selectedTeams).map(async ([uid, teams]) => {
-        const memberRef = doc(db, "leagues", leagueId, "members", uid);
-        
         if (draftComplete) {
           const starters = teams.slice(0, 5);
           const bench = teams.slice(5);
-          
-          await updateDoc(memberRef, {
-            "lineup.drafted": teams,
-            "lineup.starters": starters,
-            "lineup.bench": bench
-          });
-        } else {
-          await updateDoc(memberRef, {
-            "lineup.drafted": teams
-          });
+
+          await supabase.from("league_members").update({
+            starters,
+            bench
+          }).eq("league_id", leagueId).eq("user_id", uid);
         }
       });
 
       await Promise.all(memberUpdates);
 
       if (draftComplete) {
-        await updateDoc(doc(db, "leagues", leagueId), {
-          draftComplete: true
-        });
+        await supabase.from("leagues").update({ draft_complete: true }).eq("id", leagueId);
       }
 
       // 🔧 FIX 11: Enhanced success message with pick details
       const simulatedCount = simulatedPicks.length;
       let message = `✅ Successfully simulated ${simulatedCount} pick${simulatedCount !== 1 ? 's' : ''}!\n\n`;
-      
+
       // Show the picks that were made
       message += "Picks made:\n";
       simulatedPicks.forEach(pick => {
         message += `Pick ${pick.pick}: ${pick.team} → ${pick.manager}\n`;
       });
-      
+
       if (draftComplete) {
         message += "\n🎉 DRAFT IS NOW COMPLETE!";
       } else {
@@ -602,23 +563,19 @@ function AdminLeagueDetail() {
     if (!window.confirm("This will delete all draft data and clear every lineup. Continue?")) return;
 
     try {
-      await deleteDoc(doc(db, "leagues", leagueId, "meta", "draft"));
+      await supabase.from("drafts").delete().eq("league_id", leagueId);
 
-      await updateDoc(doc(db, "leagues", leagueId), {
-        draftComplete: false
-      });
+      await supabase.from("leagues").update({ draft_complete: false }).eq("id", leagueId);
 
-      const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
-      const clears = membersSnap.docs.map(docSnap =>
-        updateDoc(docSnap.ref, {
-          "lineup.drafted": [],
-          "lineup.starters": [],
-          "lineup.bench": [],
-          freeAgentMoves: 0,  // Reset free agent moves
-          points: 0,         // Reset points
-          weeklyPoints: 0,   // Reset weekly points
-          smackTalk: ""      // Reset smack talk
-        })
+      const { data: membersData } = await supabase.from("league_members").select("user_id").eq("league_id", leagueId);
+      const clears = (membersData || []).map(m =>
+        supabase.from("league_members").update({
+          starters: [],
+          bench: [],
+          free_agent_moves: 0,
+          points: 0,
+          weekly_points: 0
+        }).eq("league_id", leagueId).eq("user_id", m.user_id)
       );
 
       await Promise.all(clears);
@@ -634,16 +591,16 @@ function AdminLeagueDetail() {
   const handleSeedRemainingUsers = async () => {
     if (!league) return;
 
-    const needed = league.maxManagers - members.length;
+    const needed = league.max_managers - members.length;
     if (needed <= 0) {
       alert("League is already full.");
       return;
     }
 
     try {
-      const usersSnap = await getDocs(collection(db, "users"));
+      const { data: usersData } = await supabase.from("users").select("*");
       const currentIds = new Set(members.map(m => m.id));
-      const available = usersSnap.docs.filter(doc => !currentIds.has(doc.id));
+      const available = (usersData || []).filter(u => !currentIds.has(u.id));
 
       if (available.length < needed) {
         alert("Not enough users to fill the league.");
@@ -652,37 +609,26 @@ function AdminLeagueDetail() {
 
       const selected = available.sort(() => 0.5 - Math.random()).slice(0, needed);
 
-      const batchAdds = selected.map(async (docSnap) => {
-        const data = docSnap.data();
-        const uidSuffix = docSnap.id.slice(-4);
+      const batchAdds = selected.map(async (userData) => {
+        const uidSuffix = userData.id.slice(-4);
 
         const displayName =
-          data.displayName?.trim() ||
-          (data.email?.split("@")[0]?.replace(/\W/g, "") || `User${uidSuffix}`);
+          userData.first_name?.trim() ||
+          (userData.email?.split("@")[0]?.replace(/\W/g, "") || `User${uidSuffix}`);
 
         const teamName =
-          data.teamName?.trim() ||
+          userData.team_name?.trim() ||
           `Team ${uidSuffix}`;
 
-        const memberRef = doc(db, "leagues", leagueId, "members", docSnap.id);
-        await setDoc(memberRef, {
-          displayName,
-          email: data.email || "",
-          teamName,
-          lineup: {
-            drafted: [],
-            starters: [],
-            bench: []
-          },
-          freeAgentMoves: 0,   // Initialize free agent moves
-          points: 0,          // Initialize points
-          weeklyPoints: 0,    // Initialize weekly points
-          smackTalk: "",      // Initialize smack talk
-          joinedAt: new Date()
-        });
-
-        await updateDoc(doc(db, "leagues", leagueId), {
-          members: arrayUnion(docSnap.id)
+        await supabase.from("league_members").insert({
+          league_id: leagueId,
+          user_id: userData.id,
+          team_name: teamName,
+          free_agent_moves: 0,
+          points: 0,
+          weekly_points: 0,
+          starters: [],
+          bench: []
         });
       });
 
@@ -703,40 +649,40 @@ function AdminLeagueDetail() {
 
   const draftStatus = () => {
     if (!draftMeta) return <span style={{ color: "gray" }}>Not started</span>;
-    if (draftMeta.draftComplete) return <span style={{ color: "green" }}>✅ Complete</span>;
+    if (draftMeta.draft_complete) return <span style={{ color: "green" }}>✅ Complete</span>;
     return <span style={{ color: "orange" }}>🕐 In Progress</span>;
   };
 
   const formatDraftType = () => {
-    if (league.draftType === "live") {
+    if (league.draft_type === "live") {
       return `Live Draft`;
-    } else if (league.draftType === "manual") {
+    } else if (league.draft_type === "manual") {
       return `Manual Draft`;
     }
-    return league.draftType || "Unknown";
+    return league.draft_type || "Unknown";
   };
 
   const formatDraftOrderType = () => {
-    if (league.draftOrderType === "random") {
+    if (league.draft_order_type === "random") {
       return "Random Order";
-    } else if (league.draftOrderType === "admin") {
+    } else if (league.draft_order_type === "admin") {
       return "Commissioner Sets Order";
     }
-    return league.draftOrderType || "Not Set";
+    return league.draft_order_type || "Not Set";
   };
 
   const formatDraftDateTime = () => {
-    if (!league.draftDate) return "-";
-    
+    if (!league.draft_date) return "-";
+
     try {
-      const date = league.draftDate.toDate ? league.draftDate.toDate() : new Date(league.draftDate);
+      const date = new Date(league.draft_date);
       return date.toLocaleString("en-US", {
         timeZone: "America/New_York",
         weekday: "short",
         year: "numeric",
-        month: "short", 
+        month: "short",
         day: "numeric",
-        hour: "numeric", 
+        hour: "numeric",
         minute: "2-digit",
         timeZoneName: "short"
       });
@@ -750,29 +696,29 @@ function AdminLeagueDetail() {
   if (!league) return <p>League not found.</p>;
 
   return (
-    <div style={{ 
+    <div style={{
       minHeight: "100vh",
       backgroundColor: "#ffffff",
       padding: "0"
     }}>
-      <div style={{ 
+      <div style={{
         padding: "2rem",
         backgroundColor: "#ffffff",
         minHeight: "100vh"
       }}>
         <h2>Admin View: {league.name}</h2>
-        
+
         {/* Current Week Management Section */}
-        <div style={{ 
-          backgroundColor: "#f0f8ff", 
-          border: "1px solid #0ea5e9", 
-          borderRadius: "8px", 
-          padding: "1rem", 
-          marginBottom: "2rem" 
+        <div style={{
+          backgroundColor: "#f0f8ff",
+          border: "1px solid #0ea5e9",
+          borderRadius: "8px",
+          padding: "1rem",
+          marginBottom: "2rem"
         }}>
           <h3 style={{ margin: "0 0 1rem 0", color: "#0c4a6e" }}>Season Management</h3>
           <p><strong>Current Week (Global):</strong> <span style={{ color: "#1e40af", fontSize: "1.1em" }}>{currentWeek}</span></p>
-          
+
           <div style={{ marginTop: "1rem", display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
             <select
               value={newWeekValue}
@@ -783,8 +729,8 @@ function AdminLeagueDetail() {
                 <option key={week} value={week}>{week}</option>
               ))}
             </select>
-            
-            <button 
+
+            <button
               onClick={handleUpdateCurrentWeek}
               style={{
                 backgroundColor: "#1e40af",
@@ -798,7 +744,7 @@ function AdminLeagueDetail() {
               Update Global Week
             </button>
           </div>
-          
+
           <p style={{ fontSize: "0.9em", color: "#64748b", marginTop: "0.5rem", marginBottom: 0 }}>
             ⚠️ This updates the current week for ALL leagues globally.
           </p>
@@ -806,22 +752,21 @@ function AdminLeagueDetail() {
 
         {/* League Info */}
         <p><strong>League ID:</strong> {league.id}</p>
-        <p><strong>Admin UID:</strong> {league.admin}</p>
-        <p><strong>Created By:</strong> {league.createdBy}</p>
-        <p><strong>Scoring Type:</strong> {league.scoringType}</p>
-        <p><strong>Max Managers:</strong> {league.maxManagers}</p>
-        <p><strong>Members:</strong> {league.members?.length || 0}</p>
+        <p><strong>Admin UID:</strong> {league.admin_id}</p>
+        <p><strong>Created By:</strong> {league.created_by}</p>
+        <p><strong>Scoring Type:</strong> {league.scoring_type}</p>
+        <p><strong>Max Managers:</strong> {league.max_managers}</p>
+        <p><strong>Members:</strong> {members.length}</p>
         <p><strong>Draft Status:</strong> {draftStatus()}</p>
         <p><strong>Draft Type:</strong> {formatDraftType()}</p>
         <p><strong>Draft Order:</strong> {formatDraftOrderType()}</p>
-        {league.draftType === "live" && (
+        {league.draft_type === "live" && (
           <>
             <p><strong>Draft Date:</strong> {formatDraftDateTime()}</p>
-            <p><strong>Time Per Pick:</strong> {league.timePerPick ? `${league.timePerPick} minute${league.timePerPick !== 1 ? 's' : ''}` : "-"}</p>
+            <p><strong>Time Per Pick:</strong> {league.time_per_pick ? `${league.time_per_pick} minute${league.time_per_pick !== 1 ? 's' : ''}` : "-"}</p>
           </>
         )}
-        <p><strong>League Current Week:</strong> {league.currentWeek || "Not Set"}</p>
-        <p><strong>Created At:</strong> {league.createdAt?.toDate().toLocaleString()}</p>
+        <p><strong>League Current Week:</strong> {league.current_week || "Not Set"}</p>
 
         <div style={{ marginTop: "1rem" }}>
           <button onClick={handleSeedRemainingUsers}>
@@ -832,31 +777,31 @@ function AdminLeagueDetail() {
             Simulate Full Draft
           </button>
 
-          <button 
-            onClick={handleSimulateAllButFinalPick} 
-            style={{ 
-              marginLeft: "1rem", 
-              backgroundColor: "#1976d2", 
-              color: "white", 
-              border: "none", 
-              padding: "8px 12px", 
-              borderRadius: "4px" 
+          <button
+            onClick={handleSimulateAllButFinalPick}
+            style={{
+              marginLeft: "1rem",
+              backgroundColor: "#1976d2",
+              color: "white",
+              border: "none",
+              padding: "8px 12px",
+              borderRadius: "4px"
             }}
           >
             🎯 Simulate All But Final Pick
           </button>
 
-          <button 
+          <button
             onClick={handleSimulateNext10Picks}
-            disabled={!draftMeta || draftMeta.draftComplete}
-            style={{ 
-              marginLeft: "1rem", 
-              backgroundColor: draftMeta && !draftMeta.draftComplete ? "#9c27b0" : "#ccc", 
-              color: "white", 
-              border: "none", 
-              padding: "8px 12px", 
+            disabled={!draftMeta || draftMeta.draft_complete}
+            style={{
+              marginLeft: "1rem",
+              backgroundColor: draftMeta && !draftMeta.draft_complete ? "#9c27b0" : "#ccc",
+              color: "white",
+              border: "none",
+              padding: "8px 12px",
               borderRadius: "4px",
-              cursor: draftMeta && !draftMeta.draftComplete ? "pointer" : "not-allowed"
+              cursor: draftMeta && !draftMeta.draft_complete ? "pointer" : "not-allowed"
             }}
           >
             ⚡ Simulate Next 10 Picks
@@ -880,9 +825,7 @@ function AdminLeagueDetail() {
                 <th style={th}>Email</th>
                 <th style={th}>Starters</th>
                 <th style={th}>Bench</th>
-                <th style={th}>Drafted</th>
                 <th style={th}>FA Moves</th>
-                <th style={th}>Joined</th>
                 <th style={th}>Actions</th>
               </tr>
             </thead>
@@ -891,17 +834,13 @@ function AdminLeagueDetail() {
                 <tr key={m.id} style={{ backgroundColor: idx % 2 === 0 ? "#fafafa" : "white" }}>
                   <td style={td}>{m.id}</td>
                   <td style={td}>{m.displayName}</td>
-                  <td style={td}>{m.teamName}</td>
+                  <td style={td}>{m.team_name}</td>
                   <td style={td}>{m.email}</td>
-                  <td style={td}>{formatList(m.lineup?.starters)}</td>
-                  <td style={td}>{formatList(m.lineup?.bench)}</td>
-                  <td style={td}>{formatList(m.lineup?.drafted)}</td>
-                  <td style={td}>{m.freeAgentMoves || 0}</td>
+                  <td style={td}>{formatList(m.starters)}</td>
+                  <td style={td}>{formatList(m.bench)}</td>
+                  <td style={td}>{m.free_agent_moves || 0}</td>
                   <td style={td}>
-                    {m.joinedAt?.toDate().toLocaleString() || "-"}
-                  </td>
-                  <td style={td}>
-                    {m.id !== league.admin ? (
+                    {m.id !== league.admin_id ? (
                       <>
                         <button onClick={() => handleKick(m.id)} style={{ marginRight: "0.5rem", color: "red" }}>
                           Kick

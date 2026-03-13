@@ -2,8 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import { doc, getDoc, updateDoc, collection, getDocs, addDoc, increment } from 'firebase/firestore';
-import { db } from '../firebase/firebase';
+import { supabase } from '../supabase/supabase';
 import { weeklyLineupUtils } from '../utils/weeklyLineupUtils';
 import { ChevronLeft, ChevronRight, Lock, Clock, CheckCircle, ChevronDown, ChevronUp, Crown, Zap } from 'lucide-react';
 
@@ -19,35 +18,34 @@ const isWeekEditable = (week, currentWeek) => {
  */
 const getTeamGameInfo = async (teamName, week) => {
   try {
-    const gamesSnap = await getDocs(
-      collection(db, "schedule", "2025", "weeks", week.toString(), "games")
-    );
+    // Schedule data is not in Supabase; fall back to teams table for basic info
+    const { data: teamRow } = await supabase
+      .from('teams')
+      .select('*')
+      .eq('school', teamName)
+      .single();
 
-    const teamGames = [];
-    gamesSnap.forEach(gameDoc => {
-      const gameData = gameDoc.data();
-      if (gameData.homeTeam === teamName || gameData.awayTeam === teamName) {
-        teamGames.push({
-          id: gameDoc.id,
-          date: toJSDate(gameData.date),
-          homeTeam: gameData.homeTeam,
-          awayTeam: gameData.awayTeam,
-          gameComplete: gameData.gameComplete || false,
-          venue: gameData.venue || null,
-          homeScore: gameData.homeScore || 0,
-          awayScore: gameData.awayScore || 0,
-          gameStatus: gameData.gameStatus || 'scheduled',
-          period: gameData.period,
-          clock: gameData.clock,
-          ...gameData
-        });
-      }
-    });
+    if (!teamRow) return null;
 
-    if (teamGames.length === 0) return null;
+    // Build a lightweight game-info-like object from teams table fields
+    if (teamRow.is_on_bye) return null;
 
-    teamGames.sort((a, b) => a.date - b.date);
-    return teamGames[0];
+    const nextOpponent = teamRow.next_opponent || null;
+    if (!nextOpponent) return null;
+
+    return {
+      id: null,
+      date: null,
+      homeTeam: teamName,
+      awayTeam: nextOpponent,
+      gameComplete: false,
+      gameStatus: 'scheduled',
+      homeScore: 0,
+      awayScore: 0,
+      homeSpread: null,
+      period: null,
+      clock: null
+    };
   } catch (error) {
     console.error(`Error getting game info for ${teamName}, week ${week}:`, error);
     return null;
@@ -209,29 +207,8 @@ const isTeamLocked = async (teamName, week, currentTime = window.TEST_CURRENT_TI
 };
 
 const getTeamsWithMultipleGames = async (week) => {
-  try {
-    const gamesSnap = await getDocs(
-      collection(db, "schedule", "2025", "weeks", week.toString(), "games")
-    );
-
-    const teamGameCounts = {};
-    gamesSnap.forEach(gameDoc => {
-      const gameData = gameDoc.data();
-      if (gameData.homeTeam) {
-        teamGameCounts[gameData.homeTeam] = (teamGameCounts[gameData.homeTeam] || 0) + 1;
-      }
-      if (gameData.awayTeam) {
-        teamGameCounts[gameData.awayTeam] = (teamGameCounts[gameData.awayTeam] || 0) + 1;
-      }
-    });
-
-    return Object.entries(teamGameCounts)
-      .filter(([teamName, count]) => count > 1)
-      .map(([teamName]) => teamName);
-  } catch (error) {
-    console.error(`Error getting teams with multiple games for week ${week}:`, error);
-    return [];
-  }
+  // Schedule data not in Supabase; return empty array
+  return [];
 };
 
 const enhanceTeamWithLiveData = (team) => {
@@ -519,84 +496,56 @@ const WeeklyLineupManager = ({
   const fixTexasAMNormalization = async () => {
     try {
       console.log("Starting Texas A&M normalization fix...");
-      
-      const memberRef = doc(db, "leagues", leagueId, "members", userId);
-      const memberSnap = await getDoc(memberRef);
-      
-      if (memberSnap.exists()) {
-        const memberData = memberSnap.data();
-        const currentLineup = memberData.lineup;
-        
-        if (currentLineup) {
-          let needsUpdate = false;
-          
-          const fixedStarters = currentLineup.starters.map(teamName => {
-            if (teamName === "texas-am") {
-              needsUpdate = true;
-              return "texas-a-m";
-            }
-            return teamName;
-          });
-          
-          const fixedBench = currentLineup.bench.map(teamName => {
-            if (teamName === "texas-am") {
-              needsUpdate = true;
-              return "texas-a-m";
-            }
-            return teamName;
-          });
-          
-          if (needsUpdate) {
-            await updateDoc(memberRef, {
-              lineup: {
-                starters: fixedStarters,
-                bench: fixedBench
-              }
-            });
-            console.log("✅ Fixed member's current lineup");
-          }
+
+      // Fix league_members current lineup
+      const { data: member } = await supabase
+        .from('league_members')
+        .select('starters, bench')
+        .eq('league_id', leagueId)
+        .eq('user_id', userId)
+        .single();
+
+      if (member) {
+        let needsUpdate = false;
+        const fixName = name => {
+          if (name === "texas-am") { needsUpdate = true; return "texas-a-m"; }
+          return name;
+        };
+        const fixedStarters = (member.starters || []).map(fixName);
+        const fixedBench = (member.bench || []).map(fixName);
+        if (needsUpdate) {
+          await supabase
+            .from('league_members')
+            .update({ starters: fixedStarters, bench: fixedBench })
+            .eq('league_id', leagueId)
+            .eq('user_id', userId);
+          console.log("✅ Fixed member's current lineup");
         }
       }
-      
-      const weeklyLineupsRef = doc(db, "leagues", leagueId, "weeklyLineups", userId);
-      const weeklyLineupsSnap = await getDoc(weeklyLineupsRef);
-      
-      if (weeklyLineupsSnap.exists()) {
-        const weeklyData = weeklyLineupsSnap.data();
-        let needsWeeklyUpdate = false;
-        const updatedWeeklyData = {};
-        
-        Object.keys(weeklyData).forEach(weekKey => {
-          const weekLineup = weeklyData[weekKey];
-          
-          const fixedStarters = weekLineup.starters?.map(teamName => {
-            if (teamName === "texas-am") {
-              needsWeeklyUpdate = true;
-              return "texas-a-m";
-            }
-            return teamName;
-          }) || [];
-          
-          const fixedBench = weekLineup.bench?.map(teamName => {
-            if (teamName === "texas-am") {
-              needsWeeklyUpdate = true;
-              return "texas-a-m";
-            }
-            return teamName;
-          }) || [];
-          
-          updatedWeeklyData[weekKey] = {
-            ...weekLineup,
-            starters: fixedStarters,
-            bench: fixedBench
-          };
-        });
-        
-        if (needsWeeklyUpdate) {
-          await updateDoc(weeklyLineupsRef, updatedWeeklyData);
-          console.log("✅ Fixed weekly lineups data");
+
+      // Fix weekly_lineups rows
+      const { data: weeklyRows } = await supabase
+        .from('weekly_lineups')
+        .select('id, starters, bench')
+        .eq('league_id', leagueId)
+        .eq('user_id', userId);
+
+      for (const row of weeklyRows || []) {
+        let needsUpdate = false;
+        const fixName = name => {
+          if (name === "texas-am") { needsUpdate = true; return "texas-a-m"; }
+          return name;
+        };
+        const fixedStarters = (row.starters || []).map(fixName);
+        const fixedBench = (row.bench || []).map(fixName);
+        if (needsUpdate) {
+          await supabase
+            .from('weekly_lineups')
+            .update({ starters: fixedStarters, bench: fixedBench })
+            .eq('id', row.id);
         }
       }
+      if ((weeklyRows || []).length > 0) console.log("✅ Fixed weekly lineups data");
       
       console.log("🎉 Texas A&M normalization fix completed!");
       
@@ -609,17 +558,20 @@ const WeeklyLineupManager = ({
 
   const loadTripPlayStatus = async () => {
     try {
-      const memberRef = doc(db, "leagues", leagueId, "members", userId);
-      const memberSnap = await getDoc(memberRef);
-      
-      if (memberSnap.exists()) {
-        const memberData = memberSnap.data();
-        const hasTripPlayValue = memberData.hasTripPlay || false;
-        const tripPlayUsedWeekValue = memberData.tripPlayUsedWeek || null;
-        
+      const { data: member, error } = await supabase
+        .from('league_members')
+        .select('*')
+        .eq('league_id', leagueId)
+        .eq('user_id', userId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+
+      if (member) {
+        const hasTripPlayValue = member.has_trip_play || false;
+        const tripPlayUsedWeekValue = member.trip_play_used_week || null;
         setHasTripPlay(hasTripPlayValue);
         setTripPlayUsedWeek(tripPlayUsedWeekValue);
-        
         console.log("Trip Play Status:", { hasTripPlay: hasTripPlayValue, usedWeek: tripPlayUsedWeekValue });
       }
     } catch (error) {
@@ -669,45 +621,56 @@ const WeeklyLineupManager = ({
       setAvailableWeeks(weeks);
 
       const lineupData = {};
-      
-      // Get current week lineup from member document
-      const memberRef = doc(db, "leagues", leagueId, "members", userId);
-      const memberSnap = await getDoc(memberRef);
-      const memberData = memberSnap.data();
-      const currentLineup = memberData?.lineup;
 
-      // Get historical lineups from weeklyStandings
-      const weeklyStandingsRef = doc(db, "leagues", leagueId, "weeklyStandings", userId);
-      const weeklyStandingsSnap = await getDoc(weeklyStandingsRef);
-      const historicalData = weeklyStandingsSnap.exists() ? weeklyStandingsSnap.data() : {};
+      // Get current week lineup from league_members
+      const { data: memberData } = await supabase
+        .from('league_members')
+        .select('starters, bench, captain, trip_play_team')
+        .eq('league_id', leagueId)
+        .eq('user_id', userId)
+        .single();
+
+      const currentLineup = memberData || null;
+
+      // Get historical lineups from weekly_lineups table
+      const { data: weeklyRows } = await supabase
+        .from('weekly_lineups')
+        .select('*')
+        .eq('league_id', leagueId)
+        .eq('user_id', userId);
+
+      const historicalData = {};
+      (weeklyRows || []).forEach(row => {
+        historicalData[`week${row.week}`] = row;
+      });
 
       weeks.forEach(week => {
         const weekKey = `week${week}`;
-        
+        const histRow = historicalData[weekKey];
+
         if (week === currentWeek && currentLineup) {
-          // Current week - read from member document
+          // Current week - read from league_members
           lineupData[weekKey] = {
             starters: currentLineup.starters || Array(5).fill(null),
             bench: currentLineup.bench || Array(2).fill(null),
             captain: currentLineup.captain || null,
-            tripPlayTeam: currentLineup.tripPlayTeam || null,
+            tripPlayTeam: currentLineup.trip_play_team || null,
             lockedTeams: [],
             teamLockTimes: {},
             lockedAt: null,
             isEditable: true
           };
-        } else if (historicalData[weekKey]?.lineup) {
-          // Past week - read from weeklyStandings (read-only)
-          const historicalLineup = historicalData[weekKey].lineup;
+        } else if (histRow) {
+          // Past/future week - read from weekly_lineups table (read-only for past)
           lineupData[weekKey] = {
-            starters: historicalLineup.starters || Array(5).fill(null),
-            bench: historicalLineup.bench || Array(2).fill(null),
-            captain: historicalLineup.captain || null,
-            tripPlayTeam: historicalLineup.tripPlayTeam || null,
+            starters: histRow.starters || Array(5).fill(null),
+            bench: histRow.bench || Array(2).fill(null),
+            captain: histRow.captain || null,
+            tripPlayTeam: histRow.trip_play_team || null,
             lockedTeams: [],
             teamLockTimes: {},
-            lockedAt: historicalData[weekKey].snapshotAt || null,
-            isEditable: false
+            lockedAt: null,
+            isEditable: week === currentWeek
           };
         } else {
           // Future week or no data - empty lineup
@@ -734,55 +697,13 @@ const WeeklyLineupManager = ({
   };
 
   const calculateWeekStatuses = async (weeks) => {
+    // Schedule data not in Supabase; derive simple statuses from currentWeek
     const statuses = {};
-    const now = new Date();
     for (const week of weeks) {
-      try {
-        const gamesSnap = await getDocs(
-          collection(db, "schedule", "2025", "weeks", week.toString(), "games")
-        );
-
-        let firstGameTime = null;
-        let lastGameTime = null;
-        let allGamesComplete = true;
-        let hasLiveGames = false;
-
-        gamesSnap.forEach(gameDoc => {
-          const gameData = gameDoc.data();
-          if (gameData.date) {
-            const gameTime = toJSDate(gameData.date);
-            if (gameTime) {
-              if (!firstGameTime || gameTime < firstGameTime) firstGameTime = gameTime;
-              if (!lastGameTime || gameTime > lastGameTime) lastGameTime = gameTime;
-            }
-          }
-          if (!gameData.gameComplete) allGamesComplete = false;
-          
-          if (gameData.gameStatus === 'in_progress' || gameData.gameStatus === 'live') {
-            hasLiveGames = true;
-          }
-        });
-
-        let status = 'locked';
-        let lockTime = null;
-        let unlockTime = null;
-
-        if (firstGameTime) {
-          lockTime = new Date(firstGameTime.getTime() - (60 * 60 * 1000));
-          if (lastGameTime) unlockTime = new Date(lastGameTime.getTime() + (60 * 60 * 1000));
-
-          if (week === currentWeek && now < lockTime) status = 'editable';
-          else if (week === currentWeek && hasLiveGames) status = 'live';
-          else if (week === currentWeek && now >= lockTime && !allGamesComplete) status = 'locked_playing';
-          else if (allGamesComplete && week < currentWeek) status = 'completed';
-          else if (week > currentWeek) status = 'future';
-        }
-
-        statuses[week] = { status, lockTime, unlockTime, firstGameTime, lastGameTime, allGamesComplete, hasLiveGames };
-      } catch (error) {
-        console.error(`Error calculating status for week ${week}:`, error);
-        statuses[week] = { status: 'locked' };
-      }
+      let status = 'future';
+      if (week < currentWeek) status = 'completed';
+      else if (week === currentWeek) status = 'editable';
+      statuses[week] = { status, lockTime: null, unlockTime: null, firstGameTime: null, lastGameTime: null, allGamesComplete: week < currentWeek, hasLiveGames: false };
     }
     setWeekStatuses(statuses);
   };
@@ -806,46 +727,52 @@ const WeeklyLineupManager = ({
       console.log("normalized tripPlayTeam:", normalizedTripPlayTeam);
 
       // Get current lineup to check previous trip play state
-      const memberRef = doc(db, "leagues", leagueId, "members", userId);
-      const memberSnap = await getDoc(memberRef);
-      const currentMemberData = memberSnap.data();
-      const currentTripPlayTeam = currentMemberData?.lineup?.tripPlayTeam;
+      const { data: currentMemberData } = await supabase
+        .from('league_members')
+        .select('trip_play_team, has_trip_play, trip_play_used_week')
+        .eq('league_id', leagueId)
+        .eq('user_id', userId)
+        .single();
+      const currentTripPlayTeam = currentMemberData?.trip_play_team;
 
-      // Prepare update object
-      const updateData = { 
-        lineup: { 
-          starters: normalizedStarters, 
-          bench: normalizedBench,
-          captain: normalizedCaptain,
-          tripPlayTeam: normalizedTripPlayTeam
-        } 
+      // Prepare update object for league_members
+      const memberUpdate = {
+        starters: normalizedStarters,
+        bench: normalizedBench,
+        captain: normalizedCaptain,
+        trip_play_team: normalizedTripPlayTeam
       };
 
       // Handle trip play state changes
       if (tripPlayTeam && hasTripPlay) {
         // First time using trip play - mark as used
-        updateData.hasTripPlay = false;
-        updateData.tripPlayUsedWeek = week;
+        memberUpdate.has_trip_play = false;
+        memberUpdate.trip_play_used_week = week;
         setHasTripPlay(false);
         setTripPlayUsedWeek(week);
         console.log("Trip play used for first time on week", week);
-        
+
       } else if (!tripPlayTeam && currentTripPlayTeam && tripPlayUsedWeek === week) {
         // Removing trip play from the same week it was used - restore availability
-        updateData.hasTripPlay = true;
-        updateData.tripPlayUsedWeek = null;
+        memberUpdate.has_trip_play = true;
+        memberUpdate.trip_play_used_week = null;
         setHasTripPlay(true);
         setTripPlayUsedWeek(null);
         console.log("Trip play removed and restored for future use");
-        
+
       } else if (!tripPlayTeam && currentTripPlayTeam && tripPlayUsedWeek !== week) {
         // Trying to remove trip play but it was used in a different week - not allowed
         console.warn("Cannot remove trip play - it was used in a different week");
-        // You might want to show an alert here or handle this case differently
       }
 
-      // Save to member document (current week only)
-      await updateDoc(memberRef, updateData);
+      // Save to league_members (current week only)
+      const { error: memberSaveError } = await supabase
+        .from('league_members')
+        .update(memberUpdate)
+        .eq('league_id', leagueId)
+        .eq('user_id', userId);
+
+      if (memberSaveError) throw memberSaveError;
 
       // Update frontend state
       const weekKey = `week${week}`;
@@ -1241,31 +1168,44 @@ const WeeklyLineupContent = ({
       setIsSaving(true);
       await saveLineupChanges(newStarters, newBench, newCaptain, newTripPlayTeam);
 
-// Fetch manager name from users collection
+// Fetch manager name from users table
       let managerName = "Unknown Manager";
       try {
-        const userDoc = await getDoc(doc(db, "users", userId));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          managerName = userData.firstName || userData.displayName || userData.name || "Unknown Manager";
+        const { data: userData } = await supabase
+          .from('users')
+          .select('first_name, last_name')
+          .eq('id', userId)
+          .single();
+        if (userData) {
+          managerName = userData.first_name || "Unknown Manager";
         }
       } catch (userError) {
         console.warn("Could not fetch user name:", userError);
       }
 
-      const moveHistoryRef = collection(db, "leagues", leagueId, "moveHistory");
-      await addDoc(moveHistoryRef, {
-        userId,
-        managerName: managerName,
-        moveType: "drop",
-        droppedTeam: team.school || team.name,
-        pickedUpTeam: null,
-        timestamp: new Date(),
+      await supabase.from('move_history').insert({
+        league_id: leagueId,
+        user_id: userId,
+        team_name: managerName,
+        move_type: "drop",
+        dropped: team.school || team.name,
+        picked_up: null,
         week: currentWeek,
       });
 
-      const memberRef = doc(db, "leagues", leagueId, "members", userId);
-      await updateDoc(memberRef, { freeAgentMoves: increment(1) });
+      // Increment free_agent_moves in league_members
+      const { data: currentMember } = await supabase
+        .from('league_members')
+        .select('free_agent_moves')
+        .eq('league_id', leagueId)
+        .eq('user_id', userId)
+        .single();
+
+      await supabase
+        .from('league_members')
+        .update({ free_agent_moves: (currentMember?.free_agent_moves || 0) + 1 })
+        .eq('league_id', leagueId)
+        .eq('user_id', userId);
     } catch (e) {
       console.error("Error cutting team and recording move:", e);
     } finally {

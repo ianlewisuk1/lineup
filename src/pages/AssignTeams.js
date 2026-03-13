@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { db, auth } from "../firebase/firebase";
-import { collection, getDocs, doc, updateDoc, query, where } from "firebase/firestore";
-import { getDoc } from "firebase/firestore"; // Make sure this is at the top
+import { supabase } from "../supabase/supabase";
 
 
 const allTeams = [
@@ -15,19 +13,16 @@ function AssignTeams() {
 
   useEffect(() => {
     const fetchLeagueUsers = async () => {
-      const currentUser = auth.currentUser;
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (!currentUser) return;
 
       // Get current user's leagueId
-      const userDocRef = doc(db, "users", currentUser.uid);
-      const userDocSnap = await getDoc(userDocRef);
-      const leagueId = userDocSnap.data().leagueId;
+      const { data: userDoc } = await supabase.from("users").select("*").eq("id", currentUser.id).single();
+      const leagueId = userDoc.leagueId;
 
       // Query users in that league
-      const q = query(collection(db, "users"), where("leagueId", "==", leagueId));
-      const snapshot = await getDocs(q);
-      const usersInLeague = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setUsers(usersInLeague);
+      const { data: usersInLeague } = await supabase.from("users").select("*").eq("leagueId", leagueId);
+      setUsers(usersInLeague || []);
     };
 
     fetchLeagueUsers();
@@ -41,9 +36,7 @@ function AssignTeams() {
         return;
       }
 
-      await updateDoc(doc(db, "users", userId), {
-        lineup: selectedTeams
-      });
+      await supabase.from("users").update({ lineup: selectedTeams }).eq("id", userId);
 
       alert("Teams assigned!");
     } catch (err) {

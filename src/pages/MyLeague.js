@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { db, auth } from "../firebase/firebase";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
+import { supabase } from "../supabase/supabase";
 import { Trophy, Users, Star, TrendingUp, Settings, ChevronDown, ChevronUp, Calendar, Crown, Zap } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 import ScoringSystemModal from "../components/ScoringSystemModal";
@@ -1098,52 +1097,55 @@ function MyLeague() {
   const fetchScheduleData = async (weekNum) => {
   try {
     setScheduleLoading(true);
-    
+
     // Fetch current week's games
-    const gamesSnap = await getDocs(
-      collection(db, "schedule", "2025", "weeks", weekNum.toString(), "games")
-    );
-    
+    const { data: gamesData } = await supabase
+      .from('games')
+      .select('*')
+      .eq('year', 2025)
+      .eq('week', weekNum.toString());
+
     const gamesByTeam = {};
-    
-    gamesSnap.forEach(doc => {
-      const game = doc.data();
-      if (game.homeTeam && game.awayTeam) {
+
+    (gamesData || []).forEach(game => {
+      const homeTeam = game.home_team;
+      const awayTeam = game.away_team;
+      if (homeTeam && awayTeam) {
         // Create game data objects
         const homeData = {
-          opponent: game.awayTeam,
+          opponent: awayTeam,
           isHome: true,
-          gameStatus: game.gameStatus || 'scheduled',
-          gameComplete: game.gameComplete || false,
-          homeScore: game.homeScore || 0,
-          awayScore: game.awayScore || 0,
-          hasLiveGame: game.gameStatus === 'in_progress'
+          gameStatus: game.game_status || 'scheduled',
+          gameComplete: game.game_complete || false,
+          homeScore: game.home_score || 0,
+          awayScore: game.away_score || 0,
+          hasLiveGame: game.game_status === 'in_progress'
         };
-        
+
         const awayData = {
-          opponent: game.homeTeam,
+          opponent: homeTeam,
           isHome: false,
-          gameStatus: game.gameStatus || 'scheduled',
-          gameComplete: game.gameComplete || false,
-          homeScore: game.homeScore || 0,
-          awayScore: game.awayScore || 0,
-          hasLiveGame: game.gameStatus === 'in_progress'
+          gameStatus: game.game_status || 'scheduled',
+          gameComplete: game.game_complete || false,
+          homeScore: game.home_score || 0,
+          awayScore: game.away_score || 0,
+          hasLiveGame: game.game_status === 'in_progress'
         };
-        
+
         // Store with both original names AND lowercase names for reliable lookup
-        gamesByTeam[game.homeTeam] = homeData;
-        gamesByTeam[game.awayTeam] = awayData;
-        gamesByTeam[game.homeTeam.toLowerCase()] = homeData;
-        gamesByTeam[game.awayTeam.toLowerCase()] = awayData;
+        gamesByTeam[homeTeam] = homeData;
+        gamesByTeam[awayTeam] = awayData;
+        gamesByTeam[homeTeam.toLowerCase()] = homeData;
+        gamesByTeam[awayTeam.toLowerCase()] = awayData;
 
         // also store normalized + canonical keys for robust matching
-        gamesByTeam[normalize(game.homeTeam)] = homeData;
-        gamesByTeam[normalize(game.awayTeam)] = awayData;
-        gamesByTeam[`__canon__:${canonicalizeTeam(game.homeTeam)}`] = homeData;
-        gamesByTeam[`__canon__:${canonicalizeTeam(game.awayTeam)}`] = awayData;
+        gamesByTeam[normalize(homeTeam)] = homeData;
+        gamesByTeam[normalize(awayTeam)] = awayData;
+        gamesByTeam[`__canon__:${canonicalizeTeam(homeTeam)}`] = homeData;
+        gamesByTeam[`__canon__:${canonicalizeTeam(awayTeam)}`] = awayData;
       }
     });
-    
+
     setScheduleData(gamesByTeam);
     // console.log('Schedule data loaded  :', Object.keys(gamesByTeam));
   } catch (error) {
@@ -1156,17 +1158,13 @@ function MyLeague() {
   // NEW: Load available historical weeks
   const loadAvailableWeeks = async () => {
     try {
-      const weeklyStandingsRef = collection(db, "leagues", leagueId, "weeklyStandings");
-      const snapshot = await getDocs(weeklyStandingsRef);
-      
-      if (!snapshot.empty) {
-        // Get a sample user's document to see which weeks exist
-        const sampleDoc = snapshot.docs[0].data();
-        const weeks = Object.keys(sampleDoc)
-          .filter(key => key.startsWith('week'))
-          .map(key => parseInt(key.replace('week', '')))
-          .sort((a, b) => a - b);
-        
+      const { data: standingsData } = await supabase
+        .from('weekly_standings')
+        .select('week')
+        .eq('league_id', leagueId);
+
+      if (standingsData && standingsData.length > 0) {
+        const weeks = [...new Set(standingsData.map(row => parseInt(row.week)))].sort((a, b) => a - b);
         setAvailableWeeks(weeks);
         console.log('Available historical weeks:', weeks);
       }
@@ -1178,47 +1176,43 @@ function MyLeague() {
   // NEW: Load historical standings for a specific week
   const loadWeeklyStandings = async (week) => {
     console.log(`DEBUG: loadWeeklyStandings called for week ${week}`);
-    
+
     if (weeklyStandings[week]) {
       console.log(`DEBUG: Week ${week} data already exists, skipping`);
       return; // Already loaded
     }
-    
+
     try {
       console.log(`DEBUG: Starting to load week ${week} standings...`);
       setStandingsLoading(true);
-      
-      const weeklyStandingsRef = collection(db, "leagues", leagueId, "weeklyStandings");
-      const snapshot = await getDocs(weeklyStandingsRef);
-      
-      console.log(`DEBUG: Got snapshot with ${snapshot.docs.length} documents`);
-      
-      const weekStandings = [];
-      
-      snapshot.forEach(doc => {
-        const userData = doc.data();
-        const weekData = userData[`week${week}`];
-        
-        if (weekData) {
-          weekStandings.push({
-            id: doc.id,
-            ...weekData
-          });
-        }
-      });
-      
+
+      const { data: standingsData } = await supabase
+        .from('weekly_standings')
+        .select('*')
+        .eq('league_id', leagueId)
+        .eq('week', week.toString());
+
+      console.log(`DEBUG: Got snapshot with ${(standingsData || []).length} documents`);
+
+      const weekStandings = (standingsData || []).map(row => ({
+        id: row.user_id,
+        rank: row.rank,
+        points: row.points,
+        teamName: row.team_name
+      }));
+
       console.log(`DEBUG: Found ${weekStandings.length} members with week ${week} data`);
-      
+
       // Sort by rank
       weekStandings.sort((a, b) => (a.rank || 0) - (b.rank || 0));
-      
+
       setWeeklyStandings(prev => ({
         ...prev,
         [week]: weekStandings
       }));
-      
+
       console.log(`Loaded Week ${week} standings:`, weekStandings);
-      
+
     } catch (error) {
       console.error(`Error loading Week ${week} standings:`, error);
     } finally {
@@ -1330,20 +1324,19 @@ function MyLeague() {
         console.log("Using leagueId:", leagueId);
 
         // Fetch league info for name
-        const leagueDoc = await getDoc(doc(db, "leagues", leagueId));
-        if (leagueDoc.exists()) {
-          const leagueData = leagueDoc.data();
+        const { data: leagueData } = await supabase.from('leagues').select('*').eq('id', leagueId).single();
+        if (leagueData) {
           setLeagueName(leagueData.name || "League");
-          setMaxManagers(leagueData.maxManagers || 8);
+          setMaxManagers(leagueData.max_managers || 8);
         }
 
         // Fetch current week from global config
-        const configDoc = await getDoc(doc(db, "config", "season"));
+        const { data: configData } = await supabase.from('config').select('value').eq('key', 'season').single();
         let weekData = "Preseason";
-        if (configDoc.exists()) {
-          weekData = configDoc.data().currentWeek || "Preseason";
+        if (configData) {
+          weekData = configData.value?.currentWeek || "Preseason";
           setCurrentWeek(weekData);
-          
+
           // NEW: Fetch schedule data for current week
           if (weekData !== "Preseason") {
             const getCurrentWeekNumber = () => {
@@ -1352,7 +1345,7 @@ function MyLeague() {
               const weekMatch = weekData.match(/\d+/);
               return weekMatch ? parseInt(weekMatch[0]) : 1;
             };
-            
+
             const weekNum = getCurrentWeekNumber();
             await fetchScheduleData(weekNum);
           } else {
@@ -1366,7 +1359,7 @@ function MyLeague() {
         await loadAvailableWeeks();
 
         // Load previous week data for ranking comparisons
-        if (weekData !== "Preseason") {  // Remove the string check
+        if (weekData !== "Preseason") {
           const getCurrentWeekNumber = () => {
             if (typeof weekData === 'number') return weekData;
             if (!weekData || typeof weekData !== 'string') return 1;
@@ -1374,7 +1367,7 @@ function MyLeague() {
             return weekMatch ? parseInt(weekMatch[0]) : 1;
           };
           const currentWeekNum = getCurrentWeekNumber();
-          
+
           if (currentWeekNum > 1) {
             const previousWeek = currentWeekNum - 1;
             loadWeeklyStandings(previousWeek);
@@ -1382,27 +1375,31 @@ function MyLeague() {
         }
 
         // Fetch all teams first to get team logos and current season data
-        const teamsRef = collection(db, "teams");
-        const teamsSnapshot = await getDocs(teamsRef);
+        const { data: teamsSnapshot } = await supabase.from('teams').select('*');
         const teamsMap = {};
-        teamsSnapshot.docs.forEach(doc => {
-          const teamData = doc.data();
+        (teamsSnapshot || []).forEach(teamData => {
           if (teamData.school) {
             teamsMap[normalize(teamData.school)] = {
-              logo: teamData.logos1 || teamData.logos2 || null,
-              logos1: teamData.logos1 || null,
-              logos2: teamData.logos2 || null,
-              colors: teamData.colors || {},
+              logo: (teamData.logos && teamData.logos[0]) || null,
+              logos1: (teamData.logos && teamData.logos[0]) || null,
+              logos2: (teamData.logos && teamData.logos[1]) || null,
+              colors: { primary: teamData.color, secondary: teamData.alternate_color },
               // Add additional team info for the card
               conference: teamData.conference || "Unknown",
               mascot: teamData.mascot || "",
-              city: teamData.city || "",
-              state: teamData.state || "",
-              currentSeason: teamData.currentSeason || {}, // Include full currentSeason object
-              gameComplete: teamData.currentSeason?.gameComplete || false,
-              nextOpponentSpread: teamData.currentSeason?.nextOpponentSpread || null,
-              name: teamData.school,  // ADD THIS LINE
-              school: teamData.school // ADD THIS LINE
+              city: teamData.school || "",
+              state: "",
+              currentSeason: {
+                weeklyPoints: teamData.weekly_points || {},
+                gameComplete: teamData.game_complete || false,
+                nextOpponentSpread: teamData.next_opponent_spread || null,
+                nextOpponentSpreadDisplay: teamData.next_opponent_spread_display || null,
+                record: teamData.record || null
+              },
+              gameComplete: teamData.game_complete || false,
+              nextOpponentSpread: teamData.next_opponent_spread || null,
+              name: teamData.school,
+              school: teamData.school
             };
           }
         });
@@ -1412,9 +1409,11 @@ function MyLeague() {
         // console.log('🏈 All teams loaded:', Object.keys(teamsMap));
 
         // Fetch league members with captain and trip play data
-        const membersRef = collection(db, "leagues", leagueId, "members");
-        const snapshot = await getDocs(membersRef);
-        
+        const { data: membersSnapshot } = await supabase
+          .from('league_members')
+          .select('*')
+          .eq('league_id', leagueId);
+
         // Get current week number for captain data fetching
         const getCurrentWeekNumber = () => {
           if (typeof weekData === 'number') return weekData;
@@ -1423,53 +1422,44 @@ function MyLeague() {
           return weekMatch ? parseInt(weekMatch[0]) : 1;
         };
         const currentWeekNum = getCurrentWeekNumber();
-        
+
         const membersData = await Promise.all(
-          snapshot.docs.map(async (memberDoc) => {
-            const memberData = memberDoc.data();
-            
+          (membersSnapshot || []).map(async (memberData) => {
             // Fetch user data for first name
             let firstName = "Unknown";
             try {
-              if (memberDoc.id) {
-                const userDoc = await getDoc(doc(db, "users", memberDoc.id));
-                if (userDoc.exists()) {
-                  const userData = userDoc.data();
-                  firstName = userData.firstName || userData.displayName || "Unknown";
-                }
+              if (memberData.user_id) {
+                const { data: userData } = await supabase.from('users').select('first_name').eq('id', memberData.user_id).single();
+                firstName = userData?.first_name || "Unknown";
               }
             } catch (userError) {
               console.warn("Could not fetch user data:", userError);
             }
 
             // Read captain from member document
-            let captain = null;
-            try {
-              captain = memberData.lineup?.captain || null;
-            } catch (captainError) {
-              console.warn(`Could not fetch captain for user ${memberDoc.id}:`, captainError);
-            }
+            const captain = memberData.captain || null;
 
             // Read trip play data from member document
-            let tripPlayTeam = null;
-            let hasTripPlay = false;
-            let tripPlayUsedWeek = null;
-            
-            try {
-              tripPlayTeam = memberData.lineup?.tripPlayTeam || null;
-              hasTripPlay = memberData.hasTripPlay || false;
-              tripPlayUsedWeek = memberData.tripPlayUsedWeek || null;
-            } catch (tripPlayError) {
-              console.warn(`Could not fetch trip play data for user ${memberDoc.id}:`, tripPlayError);
-            }
+            const tripPlayTeam = memberData.trip_play_team || null;
+            const hasTripPlay = memberData.has_trip_play || false;
+            const tripPlayUsedWeek = memberData.trip_play_used_week || null;
 
             return {
-              id: memberDoc.id,
+              id: memberData.user_id,
               firstName,
               captain,
               tripPlayTeam,
               hasTripPlay,
               tripPlayUsedWeek,
+              lineup: {
+                starters: memberData.starters || [],
+                bench: memberData.bench || []
+              },
+              teamAvatar: memberData.team_avatar || null,
+              smackTalk: memberData.smack_talk || null,
+              weeklyPoints: memberData.weekly_points || 0,
+              points: memberData.points || 0,
+              teamName: memberData.team_name || "Unnamed Team",
               ...memberData
             };
           })
@@ -1541,9 +1531,9 @@ function MyLeague() {
         
         if (currentWeekNum >= 12) {
           try {
-            const playoffDoc = await getDoc(doc(db, "leagues", leagueId, "playoffs", "2025"));
-            if (playoffDoc.exists()) {
-              setPlayoffBracket(playoffDoc.data());
+            const { data: playoffDoc } = await supabase.from("playoffs").select("*").eq("league_id", leagueId).eq("year", 2025).single();
+            if (playoffDoc) {
+              setPlayoffBracket(playoffDoc);
             }
           } catch (error) {
             console.error("Error fetching playoff bracket:", error);
@@ -2191,23 +2181,20 @@ function MyLeague() {
           const currentWeekNum = getCurrentWeekNumber();
           
           // Fetch schedule for 2025
-          const weeksSnap = await getDocs(collection(db, "schedule", "2025", "weeks"));
-          
-          for (const weekDoc of weeksSnap.docs) {
-            const weekNum = weekDoc.id;
-            const gamesSnap = await getDocs(collection(db, "schedule", "2025", "weeks", weekNum, "games"));
-            
-            gamesSnap.forEach(gameDoc => {
-              const game = gameDoc.data();
-              // Check if this team is playing in this game
-              if (game.homeTeam === team.name || game.awayTeam === team.name) {
-                scheduleData.push({
-                  ...game,
-                  week: parseInt(weekNum),
-                  gameId: gameDoc.id
-                });
-              }
-            });
+          const { data: gamesData } = await supabase.from("games").select("*").eq("year", 2025);
+
+          for (const game of (gamesData || [])) {
+            const weekNum = game.week;
+            // Check if this team is playing in this game
+            if (game.home_team === team.name || game.away_team === team.name) {
+              scheduleData.push({
+                ...game,
+                homeTeam: game.home_team,
+                awayTeam: game.away_team,
+                week: parseInt(weekNum),
+                gameId: game.id
+              });
+            }
           }
 
           // Sort by week
@@ -2739,7 +2726,7 @@ function MyLeague() {
   const handleLogout = async () => {
     if (window.confirm("Are you sure you want to log out?")) {
       try {
-        await auth.signOut();
+        await supabase.auth.signOut();
         navigate("/");
       } catch (err) {
         console.error("Logout error:", err);

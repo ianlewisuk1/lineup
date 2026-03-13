@@ -5,9 +5,7 @@ import {
   Route,
   useNavigate
 } from "react-router-dom";
-import { auth, db } from "./firebase/firebase";
-import { signOut, setPersistence, browserLocalPersistence } from "firebase/auth"; // Import setPersistence
-import { doc, getDoc } from "firebase/firestore"; // Add these two lines
+import { supabase } from "./supabase/supabase";
 
 import SignUp from "./pages/SignUp";
 import Login from "./pages/Login";
@@ -49,20 +47,19 @@ function App() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Set Firebase Auth persistence to local right before checking the auth state
-    setPersistence(auth, browserLocalPersistence)
-      .catch((error) => {
-        console.error("Error setting persistence:", error);
-      });
-
-    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
+    // Get initial session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) {
-        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-        const userData = userDoc.data();
+        const { data: userData } = await supabase
+          .from("users")
+          .select("first_name, last_name")
+          .eq("id", currentUser.id)
+          .single();
         setDisplayName(
-          userData?.firstName
-            ? `${userData.firstName} ${userData.lastName || ""}`
+          userData?.first_name
+            ? `${userData.first_name} ${userData.last_name || ""}`
             : currentUser.email
         );
       } else {
@@ -70,7 +67,26 @@ function App() {
       }
     });
 
-    return () => unsubscribe();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        const { data: userData } = await supabase
+          .from("users")
+          .select("first_name, last_name")
+          .eq("id", currentUser.id)
+          .single();
+        setDisplayName(
+          userData?.first_name
+            ? `${userData.first_name} ${userData.last_name || ""}`
+            : currentUser.email
+        );
+      } else {
+        setDisplayName("");
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleLogout = async () => {
@@ -78,7 +94,7 @@ function App() {
     if (!confirmed) return;
 
     try {
-      await signOut(auth);
+      await supabase.auth.signOut();
       navigate("/");
     } catch (err) {
       console.error("Logout error:", err);

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase/firebase';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { supabase } from '../supabase/supabase';
 import { ChevronDown, ChevronUp, Activity, Clock, TrendingUp, UserX, UserPlus } from 'lucide-react';
 
 const RecentMovesWidget = ({ leagueId }) => {
@@ -11,35 +10,42 @@ const RecentMovesWidget = ({ leagueId }) => {
   useEffect(() => {
     if (!leagueId) return;
 
-    try {
-      const movesRef = collection(db, 'leagues', leagueId, 'moveHistory');
-      const q = query(movesRef, orderBy('timestamp', 'desc'), limit(15));
+    const fetchMoves = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('move_history')
+          .select('*')
+          .eq('league_id', leagueId)
+          .order('created_at', { ascending: false })
+          .limit(15);
 
-      const unsubscribe = onSnapshot(q, 
-        (snapshot) => {
-          const movesData = [];
-          snapshot.forEach(doc => {
-            const data = doc.data();
-            movesData.push({
-              id: doc.id,
-              ...data,
-              timestamp: data.timestamp?.toDate() || new Date()
-            });
-          });
-          setMoves(movesData);
-          setLoading(false);
-        },
-        (error) => {
-          console.error('Error listening to moves:', error);
-          setLoading(false);
-        }
-      );
+        if (error) throw error;
 
-      return () => unsubscribe();
-    } catch (error) {
-      console.error('Error setting up moves listener:', error);
-      setLoading(false);
-    }
+        const movesData = (data || []).map(row => ({
+          id: row.id,
+          ...row,
+          timestamp: row.created_at ? new Date(row.created_at) : new Date()
+        }));
+        setMoves(movesData);
+      } catch (error) {
+        console.error('Error fetching moves:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMoves();
+
+    const channel = supabase
+      .channel(`move_history:${leagueId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'move_history', filter: `league_id=eq.${leagueId}` },
+        () => { fetchMoves(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [leagueId]);
 
   const formatTimeAgo = (timestamp) => {

@@ -1,13 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { db, auth } from "../firebase/firebase";
-import {
-  collection,
-  getDocs,
-  getDoc,
-  doc,
-  updateDoc,
-  addDoc
-} from "firebase/firestore";
+import { supabase } from "../supabase/supabase";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Plus, Search, Filter, ChevronDown } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
@@ -18,8 +10,8 @@ const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
     onClick={() => onSort(sortKey)}
     className={`
       px-3 py-2 border rounded-lg text-xs font-medium cursor-pointer flex items-center gap-1 transition-all duration-200
-      ${sortConfig.key === sortKey 
-        ? 'bg-blue-500/20 border-blue-400/50 text-blue-200' 
+      ${sortConfig.key === sortKey
+        ? 'bg-blue-500/20 border-blue-400/50 text-blue-200'
         : 'bg-white/10 border-white/20 text-white/70 hover:bg-white/20'
       }
     `}
@@ -33,7 +25,7 @@ const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
 
 function FreeAgents() {
   const { leagueId } = useParams();
-  const navigate = useNavigate(); 
+  const navigate = useNavigate();
   const [teamsByConference, setTeamsByConference] = useState({});
   const [conferenceList, setConferenceList] = useState([]);
   const [activeConference, setActiveConference] = useState("National");
@@ -47,11 +39,12 @@ function FreeAgents() {
   const [teamToAdd, setTeamToAdd] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: "school", direction: "asc" });
   const [searchQuery, setSearchQuery] = useState("");
-  
+  const [currentUser, setCurrentUser] = useState(null);
+
   // ADDED: Free agency lock state
   const [faLocked, setFaLocked] = useState(false);
   const [configLoading, setConfigLoading] = useState(true);
-  
+
   // Custom notification modal states
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
@@ -96,11 +89,14 @@ function FreeAgents() {
   // ADDED: Function to fetch config data and check faLocked status
   const fetchConfigData = async () => {
     try {
-      const configRef = doc(db, "config", "season");
-      const configSnap = await getDoc(configRef);
-      
-      if (configSnap.exists()) {
-        const configData = configSnap.data();
+      const { data: configRow, error } = await supabase
+        .from('config')
+        .select('value')
+        .eq('key', 'season')
+        .single();
+
+      if (!error && configRow) {
+        const configData = configRow.value || {};
         setFaLocked(configData.faLocked || false);
       } else {
         // If config doesn't exist, default to unlocked
@@ -118,7 +114,7 @@ function FreeAgents() {
   const handleLogout = async () => {
     if (window.confirm("Are you sure you want to log out?")) {
       try {
-        await auth.signOut();
+        await supabase.auth.signOut();
         navigate("/");
       } catch (err) {
         console.error("Logout error:", err);
@@ -131,34 +127,39 @@ function FreeAgents() {
     const fetchData = async () => {
       // Fetch config data first
       await fetchConfigData();
-      
-      const teamsSnap = await getDocs(collection(db, "teams"));
-      const membersSnap = await getDocs(collection(db, "leagues", leagueId, "members"));
+
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+
+      const { data: teamsData } = await supabase.from('teams').select('*');
+      const { data: memberRows } = await supabase
+        .from('league_members')
+        .select('*')
+        .eq('league_id', leagueId);
 
       const teamsMap = {};
       const drafted = {};
-      
+
       // Build drafted teams object
-      membersSnap.forEach(doc => {
-        const { displayName, teamName, lineup } = doc.data();
-        const starters = lineup?.starters || [];
-        const bench = lineup?.bench || [];
+      (memberRows || []).forEach(row => {
+        const starters = row.starters || [];
+        const bench = row.bench || [];
         const current = [...starters, ...bench];
 
         current.forEach(teamId => {
           // Teams are stored as document IDs, so use them directly
           if (teamId && teamId.trim()) {
             drafted[teamId] = {
-              ownerName: displayName,
-              teamName: teamName || "Unnamed Squad"
+              ownerName: row.team_name || "Unknown",
+              teamName: row.team_name || "Unnamed Squad"
             };
           }
         });
       });
 
       // Build teams map with enhanced data structure
-      teamsSnap.forEach(doc => {
-        const data = doc.data();
+      (teamsData || []).forEach(data => {
         if ((data.classification || "").toUpperCase() !== "FBS") return;
 
         const conf = data.conference || "Unknown";
@@ -166,27 +167,26 @@ function FreeAgents() {
 
         // ENHANCED: Add all the data fields that Stats page uses
         teamsMap[conf].push({
-          id: doc.id,
+          id: data.id,
           ...data,
-          logo: data.logos1 || data.logos2 || null,
-          currentWeekPoints: data.currentSeason?.currentWeekPoints || null,
-          gameComplete: data.currentSeason?.gameComplete || false,
+          logo: (data.logos && data.logos[0]) || null,
+          currentWeekPoints: data.weekly_points?.currentWeekPoints || null,
+          gameComplete: data.weekly_points?.gameComplete || false,
           color: data.color || null,
           // ADDED: Include all currentSeason data for proper display
           currentSeason: {
-            ...data.currentSeason,
             // Ensure all fields exist with defaults
-            gamePoints: data.currentSeason?.gamePoints || 0,
-            record: data.currentSeason?.record || "0-0",
-            confRecord: data.currentSeason?.confRecord || "0-0", // FIXED: Use confRecord
-            atsRecord: data.currentSeason?.atsRecord || "0-0", // FIXED: Use atsRecord instead of ats
-            totalPointsFor: data.currentSeason?.totalPointsFor || 0,
-            totalPointsAgainst: data.currentSeason?.totalPointsAgainst || 0,
-            nextOpponent: data.currentSeason?.nextOpponent || null,
-            nextGameIsHome: data.currentSeason?.nextGameIsHome || null,
-            nextOpponentSpreadDisplay: data.currentSeason?.nextOpponentSpreadDisplay || null,
-            nextOpponentSpread: data.currentSeason?.nextOpponentSpread || null,
-            nextGameDate: data.currentSeason?.nextGameDate || null
+            gamePoints: data.game_points || 0,
+            record: data.record || "0-0",
+            confRecord: data.conf_record || "0-0", // FIXED: Use confRecord
+            atsRecord: data.ats_record || "0-0", // FIXED: Use atsRecord instead of ats
+            totalPointsFor: data.weekly_points?.totalPointsFor || 0,
+            totalPointsAgainst: data.weekly_points?.totalPointsAgainst || 0,
+            nextOpponent: data.next_opponent || null,
+            nextGameIsHome: data.next_game_is_home || null,
+            nextOpponentSpreadDisplay: data.next_opponent_spread_display || null,
+            nextOpponentSpread: data.next_opponent_spread || null,
+            nextGameDate: null
           }
         });
       });
@@ -199,15 +199,20 @@ function FreeAgents() {
       setDraftedTeams(drafted);
 
       // Get current user's teams
-      const user = auth.currentUser;
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
-      const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
-      const memberSnap = await getDoc(memberRef);
-      const lineup = memberSnap.data()?.lineup || {};
+      const { data: userMemberRow } = await supabase
+        .from('league_members')
+        .select('starters, bench')
+        .eq('league_id', leagueId)
+        .eq('user_id', user.id)
+        .single();
 
-      const starters = lineup.starters || [];
-      const bench = lineup.bench || [];
+      const starters = userMemberRow?.starters || [];
+      const bench = userMemberRow?.bench || [];
       setUserTeams([...starters, ...bench].filter(Boolean));
 
       setLoading(false);
@@ -225,14 +230,13 @@ function FreeAgents() {
     // Check if free agency is locked
     if (faLocked) {
       showError(
-        "Free Agency Closed", 
+        "Free Agency Closed",
         "Free agent moves are currently locked. Please try again later when the window reopens."
       );
       return;
     }
 
-    const user = auth.currentUser;
-    if (!user) return;
+    if (!currentUser) return;
 
     if (userTeams.length < 7) {
       setTeamToAdd(team);
@@ -246,40 +250,41 @@ function FreeAgents() {
 
   const confirmAddTeam = async () => {
     if (!teamToAdd) return;
-    
+
     // Double-check lock status before proceeding
     if (faLocked) {
       showError(
-        "Free Agency Closed", 
+        "Free Agency Closed",
         "Free agent moves are currently locked. Please try again later when the window reopens."
       );
       setShowAddModal(false);
       setTeamToAdd(null);
       return;
     }
-    
-    try {
-      const user = auth.currentUser;
-      if (!user) return;
 
-      const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
-      const memberSnap = await getDoc(memberRef);
-      const memberData = memberSnap.data();
-      
-      const lineup = memberData?.lineup || {};
-      const starters = [...(lineup.starters || [])];
-      const bench = [...(lineup.bench || [])];
-      
+    try {
+      if (!currentUser) return;
+
+      const { data: memberRow } = await supabase
+        .from('league_members')
+        .select('*')
+        .eq('league_id', leagueId)
+        .eq('user_id', currentUser.id)
+        .single();
+
+      const starters = [...(memberRow?.starters || [])];
+      const bench = [...(memberRow?.bench || [])];
+
       // NORMALIZE THE TEAM NAME BEFORE SAVING
       const normalizedTeamName = teamToAdd.school
         .toLowerCase()
         .replace(/\s+/g, "-")
         .replace(/&/g, "-")
         .replace(/[^a-z0-9\-]/g, "");
-      
+
       const emptyStarterIndex = starters.findIndex(t => !t);
       const emptyBenchIndex = bench.findIndex(t => !t);
-      
+
       if (emptyStarterIndex !== -1) {
         starters[emptyStarterIndex] = normalizedTeamName;
       } else if (emptyBenchIndex !== -1) {
@@ -290,19 +295,28 @@ function FreeAgents() {
       }
 
       // INCREMENT FREE AGENT MOVES COUNTER
-      const currentMoves = memberData?.freeAgentMoves || 0;
+      const currentMoves = memberRow?.free_agent_moves || 0;
 
-      await updateDoc(memberRef, {
-        "lineup.starters": starters,
-        "lineup.bench": bench,
-        "freeAgentMoves": currentMoves + 1
-      });
+      const { error: updateError } = await supabase
+        .from('league_members')
+        .update({
+          starters,
+          bench,
+          free_agent_moves: currentMoves + 1
+        })
+        .eq('league_id', leagueId)
+        .eq('user_id', currentUser.id);
+      if (updateError) throw updateError;
 
       // Get current week from config
       const getCurrentWeekFromConfig = async () => {
         try {
-          const configDoc = await getDoc(doc(db, "config", "season"));
-          return configDoc.exists() ? configDoc.data().currentWeek : 1;
+          const { data: configRow } = await supabase
+            .from('config')
+            .select('value')
+            .eq('key', 'season')
+            .single();
+          return configRow?.value?.currentWeek || 1;
         } catch (error) {
           console.error("Error fetching current week:", error);
           return 1;
@@ -314,43 +328,46 @@ function FreeAgents() {
       // Fetch manager name from users collection
       let managerName = "Unknown Manager";
       try {
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          managerName = userData.firstName || userData.displayName || userData.name || "Unknown Manager";
+        const { data: userData } = await supabase
+          .from('users')
+          .select('first_name')
+          .eq('id', currentUser.id)
+          .single();
+        if (userData) {
+          managerName = userData.first_name || "Unknown Manager";
         }
       } catch (userError) {
         console.warn("Could not fetch user name:", userError);
       }
 
-      // Log the move using same structure as WeeklyLineupManager
-      const moveHistoryRef = collection(db, "leagues", leagueId, "moveHistory");
-      await addDoc(moveHistoryRef, {
-        userId: user.uid,
-        managerName: managerName,
-        moveType: "pickup",
-        droppedTeam: null,
-        pickedUpTeam: teamToAdd.school,
-        timestamp: new Date(),
+      // Log the move
+      await supabase.from('move_history').insert({
+        league_id: leagueId,
+        user_id: currentUser.id,
+        team_name: memberRow?.team_name || "",
+        picked_up: teamToAdd.school,
+        dropped: null,
+        move_type: "pickup",
         week: actualCurrentWeek,
+        created_at: new Date().toISOString()
       });
 
       setUserTeams([...starters, ...bench].filter(Boolean));
-      
+
       // Update draftedTeams to reflect the new team ownership
       setDraftedTeams(prev => ({
         ...prev,
         [normalizedTeamName]: {
-          ownerName: memberData.displayName || "You",
-          teamName: memberData.teamName || "Your Team"
+          ownerName: memberRow?.team_name || "You",
+          teamName: memberRow?.team_name || "Your Team"
         }
       }));
-      
+
       setShowAddModal(false);
       setTeamToAdd(null);
-      
+
       showSuccess("Team Added!", `${teamToAdd.school} has been successfully added to your lineup!`);
-      
+
     } catch (error) {
       console.error("Error adding team:", error);
       showError("Error", "Failed to add team. Please try again.");
@@ -359,11 +376,11 @@ function FreeAgents() {
 
   const handleConfirmSwap = async () => {
     if (!selectedDropTeam || !pendingAddTeam) return;
-    
+
     // Double-check lock status before proceeding
     if (faLocked) {
       showError(
-        "Free Agency Closed", 
+        "Free Agency Closed",
         "Free agent moves are currently locked. Please try again later when the window reopens."
       );
       setShowSwapUI(false);
@@ -371,29 +388,30 @@ function FreeAgents() {
       setSelectedDropTeam("");
       return;
     }
-    
-    try {
-      const user = auth.currentUser;
-      if (!user) return;
 
-      const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
-      const memberSnap = await getDoc(memberRef);
-      const memberData = memberSnap.data();
-      
-      const lineup = memberData?.lineup || {};
-      const starters = [...(lineup.starters || [])];
-      const bench = [...(lineup.bench || [])];
-      
+    try {
+      if (!currentUser) return;
+
+      const { data: memberRow } = await supabase
+        .from('league_members')
+        .select('*')
+        .eq('league_id', leagueId)
+        .eq('user_id', currentUser.id)
+        .single();
+
+      const starters = [...(memberRow?.starters || [])];
+      const bench = [...(memberRow?.bench || [])];
+
       // NORMALIZE THE NEW TEAM NAME
       const normalizedNewTeam = pendingAddTeam
         .toLowerCase()
         .replace(/\s+/g, "-")
         .replace(/&/g, "-")
         .replace(/[^a-z0-9\-]/g, "");
-      
+
       const starterIndex = starters.findIndex(t => t === selectedDropTeam);
       const benchIndex = bench.findIndex(t => t === selectedDropTeam);
-      
+
       if (starterIndex !== -1) {
         starters[starterIndex] = normalizedNewTeam;
       } else if (benchIndex !== -1) {
@@ -401,19 +419,28 @@ function FreeAgents() {
       }
 
       // INCREMENT FREE AGENT MOVES COUNTER
-      const currentMoves = memberData?.freeAgentMoves || 0;
+      const currentMoves = memberRow?.free_agent_moves || 0;
 
-      await updateDoc(memberRef, {
-        "lineup.starters": starters,
-        "lineup.bench": bench,
-        "freeAgentMoves": currentMoves + 1
-      });
+      const { error: updateError } = await supabase
+        .from('league_members')
+        .update({
+          starters,
+          bench,
+          free_agent_moves: currentMoves + 1
+        })
+        .eq('league_id', leagueId)
+        .eq('user_id', currentUser.id);
+      if (updateError) throw updateError;
 
       // Get current week from config
       const getCurrentWeekFromConfig = async () => {
         try {
-          const configDoc = await getDoc(doc(db, "config", "season"));
-          return configDoc.exists() ? configDoc.data().currentWeek : 1;
+          const { data: configRow } = await supabase
+            .from('config')
+            .select('value')
+            .eq('key', 'season')
+            .single();
+          return configRow?.value?.currentWeek || 1;
         } catch (error) {
           console.error("Error fetching current week:", error);
           return 1;
@@ -421,7 +448,7 @@ function FreeAgents() {
       };
 
       // Get display name for dropped team
-      const droppedTeamData = Object.values(teamsByConference).flat().find(team => 
+      const droppedTeamData = Object.values(teamsByConference).flat().find(team =>
         team.school?.toLowerCase()
           .replace(/\s+/g, "-")
           .replace(/&/g, "-")
@@ -434,29 +461,32 @@ function FreeAgents() {
       // Fetch manager name from users collection
       let managerName = "Unknown Manager";
       try {
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          managerName = userData.firstName || userData.displayName || userData.name || "Unknown Manager";
+        const { data: userData } = await supabase
+          .from('users')
+          .select('first_name')
+          .eq('id', currentUser.id)
+          .single();
+        if (userData) {
+          managerName = userData.first_name || "Unknown Manager";
         }
       } catch (userError) {
         console.warn("Could not fetch user name:", userError);
       }
 
-      // Log the move using same structure as WeeklyLineupManager
-      const moveHistoryRef = collection(db, "leagues", leagueId, "moveHistory");
-      await addDoc(moveHistoryRef, {
-        userId: user.uid,
-        managerName: managerName,
-        moveType: "swap",
-        droppedTeam: droppedTeamName,
-        pickedUpTeam: pendingAddTeam,
-        timestamp: new Date(),
+      // Log the move
+      await supabase.from('move_history').insert({
+        league_id: leagueId,
+        user_id: currentUser.id,
+        team_name: memberRow?.team_name || "",
+        picked_up: pendingAddTeam,
+        dropped: droppedTeamName,
+        move_type: "swap",
         week: actualCurrentWeek,
+        created_at: new Date().toISOString()
       });
 
       setUserTeams([...starters, ...bench].filter(Boolean));
-      
+
       // Update draftedTeams to reflect the swap
       setDraftedTeams(prev => {
         const updated = { ...prev };
@@ -464,19 +494,19 @@ function FreeAgents() {
         delete updated[selectedDropTeam];
         // Add the new team as drafted by this user
         updated[normalizedNewTeam] = {
-          ownerName: memberData.displayName || "You",
-          teamName: memberData.teamName || "Your Team"
+          ownerName: memberRow?.team_name || "You",
+          teamName: memberRow?.team_name || "Your Team"
         };
         return updated;
       });
-      
+
       setShowSwapUI(false);
       setPendingAddTeam("");
       setSelectedDropTeam("");
-      
+
       // Use the droppedTeamName that was already calculated above
       showSuccess("Team Swapped!", `Successfully swapped ${droppedTeamName} for ${pendingAddTeam}!`);
-      
+
     } catch (error) {
       console.error("Error swapping teams:", error);
       showError("Error", "Failed to swap teams. Please try again.");
@@ -497,10 +527,10 @@ function FreeAgents() {
         .replace(/\s+/g, "-")
         .replace(/&/g, "-")
         .replace(/[^a-z0-9\-]/g, "");
-      
+
       // Check if this normalized school name is in the drafted teams
       const isDrafted = draftedTeams[normalizedSchoolName];
-      
+
       return !isDrafted;
     });
 
@@ -517,7 +547,7 @@ function FreeAgents() {
   const sortedTeams = [...getVisibleFreeAgents()].sort((a, b) => {
     const key = sortConfig.key;
     let aValue, bValue;
-    
+
     if (key === "currentSeason.record") {
       aValue = a.currentSeason?.record || "0-0";
       bValue = b.currentSeason?.record || "0-0";
@@ -551,7 +581,7 @@ function FreeAgents() {
   // ENHANCED: Improved next game formatting that matches Stats page logic
   const formatNextGame = (season) => {
     if (!season?.nextOpponent) return "—";
-    
+
     const isHome = season.nextGameIsHome;
     const spread = season.nextOpponentSpreadDisplay ?? season.nextOpponentSpread ?? "TBD";
     const prefix = isHome ? "vs" : "@";
@@ -561,10 +591,10 @@ function FreeAgents() {
     if (season.nextGameDate) {
       try {
         // Handle both string and object date formats
-        const date = typeof season.nextGameDate === 'string' 
+        const date = typeof season.nextGameDate === 'string'
           ? new Date(season.nextGameDate)
           : season.nextGameDate.toDate ? season.nextGameDate.toDate() : new Date(season.nextGameDate);
-        
+
         if (!isNaN(date.getTime())) {
           const month = date.getMonth() + 1;
           const day = date.getDate();
@@ -576,7 +606,7 @@ function FreeAgents() {
         dateStr = "";
       }
     }
-    
+
     return `${prefix} ${season.nextOpponent} (${spread})${dateStr}`;
   };
 
@@ -586,8 +616,8 @@ function FreeAgents() {
 
     const currentWeek = "Preseason";
     const previousWeek = currentWeek === "Preseason" ? null : `Week ${parseInt(currentWeek.replace("Week ", "")) - 1}`;
-    const previousWeekPoints = previousWeek && team.weeklyPoints?.[previousWeek] 
-      ? team.weeklyPoints[previousWeek] 
+    const previousWeekPoints = previousWeek && team.weekly_points?.[previousWeek]
+      ? team.weekly_points[previousWeek]
       : null;
 
     // ENHANCED: Calculate averages properly using helper functions
@@ -603,7 +633,7 @@ function FreeAgents() {
           {/* Team Logo */}
           <div className="w-8 h-8 rounded-full overflow-hidden border border-white/20 bg-white/5 flex-shrink-0 flex items-center justify-center">
             {team.logo ? (
-              <img 
+              <img
                 src={team.logo}
                 alt={team.school}
                 className="w-full h-full object-cover"
@@ -617,7 +647,7 @@ function FreeAgents() {
 
           {/* Team Name */}
           <div className="flex-1 min-w-0">
-            <h3 
+            <h3
               onClick={() => handleTeamClick(team.school)}
               className="text-sm font-semibold text-white mb-1 cursor-pointer hover:text-blue-300 transition-colors overflow-hidden text-ellipsis whitespace-nowrap"
             >
@@ -645,13 +675,13 @@ function FreeAgents() {
           </div>
 
           {/* MODIFIED: Add Button with lock status visual indication */}
-          <button 
+          <button
             onClick={() => handleAddTeam(team)}
             disabled={faLocked}
             className={`
               w-7 h-7 rounded-full border-none text-white cursor-pointer flex items-center justify-center shadow-lg transition-all duration-200 flex-shrink-0
-              ${faLocked 
-                ? 'bg-gray-500 cursor-not-allowed opacity-50' 
+              ${faLocked
+                ? 'bg-gray-500 cursor-not-allowed opacity-50'
                 : 'bg-green-500 hover:bg-green-600 hover:scale-105'
               }
             `}
@@ -752,7 +782,7 @@ function FreeAgents() {
           </span>
         </Link>
         <div className="flex items-center space-x-4">
-          <button 
+          <button
             onClick={handleLogout}
             className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
           >
@@ -763,7 +793,7 @@ function FreeAgents() {
 
       {/* Main Content */}
       <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-24">
-        
+
         {/* Header - matching DraftRoom style */}
         <div className="text-center mb-8">
           <div className="mb-4">
@@ -832,21 +862,21 @@ function FreeAgents() {
 
           {/* Sort Options */}
           <div className="flex flex-wrap gap-2 justify-center">
-            <SortButton 
-              label="Name" 
-              sortKey="school" 
+            <SortButton
+              label="Name"
+              sortKey="school"
               sortConfig={sortConfig}
               onSort={toggleSort}
             />
-            <SortButton 
-              label="Points" 
-              sortKey="points" 
+            <SortButton
+              label="Points"
+              sortKey="points"
               sortConfig={sortConfig}
               onSort={toggleSort}
             />
-            <SortButton 
-              label="Record" 
-              sortKey="currentSeason.record" 
+            <SortButton
+              label="Record"
+              sortKey="currentSeason.record"
               sortConfig={sortConfig}
               onSort={toggleSort}
             />
@@ -858,8 +888,8 @@ function FreeAgents() {
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 text-center">
             <div className="text-4xl mb-4">🏈</div>
             <p className="text-white/80 text-lg">
-              {searchQuery ? 
-                `No teams found matching "${searchQuery}"` : 
+              {searchQuery ?
+                `No teams found matching "${searchQuery}"` :
                 "No free agents available"
               }
             </p>
@@ -927,14 +957,14 @@ function FreeAgents() {
                   <option value="" className="bg-slate-800 text-white">Select a team to drop</option>
                   {userTeams.filter(Boolean).map((teamId) => {
                     // Get the actual school name from allTeams using the teamId
-                    const teamData = Object.values(teamsByConference).flat().find(team => 
+                    const teamData = Object.values(teamsByConference).flat().find(team =>
                       team.school?.toLowerCase()
                         .replace(/\s+/g, "-")
                         .replace(/&/g, "-")
                         .replace(/[^a-z0-9\-]/g, "") === teamId
                     );
                     const displayName = teamData?.school || teamId;
-                    
+
                     return (
                       <option key={teamId} value={teamId} className="bg-slate-800 text-white">
                         {displayName}
@@ -955,8 +985,8 @@ function FreeAgents() {
                     disabled={!selectedDropTeam}
                     className={`
                       flex-1 px-4 py-3 rounded-xl font-bold transition-all duration-300 transform
-                      ${selectedDropTeam 
-                        ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white hover:scale-105 shadow-lg hover:shadow-green-500/40' 
+                      ${selectedDropTeam
+                        ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white hover:scale-105 shadow-lg hover:shadow-green-500/40'
                         : 'bg-white/20 text-white/40 cursor-not-allowed'
                       }
                     `}
@@ -981,7 +1011,7 @@ function FreeAgents() {
               <h3 className="text-xl font-bold text-white mb-2">
                 {modalTitle}
               </h3>
-              
+
               <p className="text-white/80 mb-6">
                 {modalMessage}
               </p>
@@ -1008,7 +1038,7 @@ function FreeAgents() {
               <h3 className="text-xl font-bold text-white mb-2">
                 {modalTitle}
               </h3>
-              
+
               <p className="text-white/80 mb-6">
                 {modalMessage}
               </p>

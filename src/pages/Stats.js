@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { collection, getDocs } from "firebase/firestore";
-import { db, auth } from "../firebase/firebase";
+import { supabase } from "../supabase/supabase";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { Search, Filter, ChevronDown, BarChart3, ChevronUp } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
@@ -48,15 +47,19 @@ function Stats() {
 
   useEffect(() => {
     const fetchTeams = async () => {
-      const snap = await getDocs(collection(db, "teams"));
+      const { data, error } = await supabase.from('teams').select('*');
+      if (error) {
+        console.error("Error fetching teams:", error);
+        setLoading(false);
+        return;
+      }
       const list = [];
       const confSet = new Set();
 
-      snap.forEach(doc => {
-        const data = doc.data();
-        if ((data.classification || "").toUpperCase() === "FBS") {
-          list.push(data);
-          if (data.conference) confSet.add(data.conference);
+      (data || []).forEach(team => {
+        if ((team.classification || "").toUpperCase() === "FBS") {
+          list.push(team);
+          if (team.conference) confSet.add(team.conference);
         }
       });
 
@@ -79,9 +82,9 @@ function Stats() {
   const sortedTeams = [...filteredTeams].sort((a, b) => {
     const getValue = (team, key) => {
       if (key === "school") return team.school || "";
-      
+
       const season = team.currentSeason || {};
-      
+
       switch (key) {
         case "gamePoints":
           return Number(season.gamePoints) || 0;
@@ -96,13 +99,13 @@ function Stats() {
           const totalPointsAgainst = season.totalPointsAgainst || 0;
           return Number(calculateAverage(totalPointsAgainst, gamesPlayedAgainst)) || 0;
         case "sosRank":
-          return Number(team.sosRank) || 999;
+          return Number(team.sos_rank) || 999;
         case "philMetrics":
-          return Number(team.philMetrics) || 999;
+          return Number(team.phil_metrics) || 999;
         case "prevYearPoints":
-          return Number(team.prevYearPoints) || 0;
+          return Number(team.prev_year_points) || 0;
         case "nextOpponent":
-          return season.nextOpponent || "zzz";
+          return team.next_opponent || "zzz";
         case "record":
         case "confRecord":
           return season[key] || "zzz";
@@ -116,16 +119,16 @@ function Stats() {
     const aVal = getValue(a, sortColumn);
     const bVal = getValue(b, sortColumn);
 
-    const currentStat = statOptions.find(s => s.value === sortColumn) || 
+    const currentStat = statOptions.find(s => s.value === sortColumn) ||
                       { type: sortColumn === "school" ? "string" : "string" };
-    
+
     if (currentStat?.type === "number") {
       return sortDirection === "ascending" ? aVal - bVal : bVal - aVal;
     }
-    
+
     const aStr = String(aVal).toLowerCase();
     const bStr = String(bVal).toLowerCase();
-    
+
     if (sortDirection === "ascending") {
       return aStr.localeCompare(bStr);
     } else {
@@ -161,7 +164,7 @@ function Stats() {
     if (!cs || !cs.nextOpponent) return "—";
 
     const spread = cs.nextOpponentSpreadDisplay ?? cs.nextOpponentSpread ?? "TBD";
-    
+
     let prefix = "?";
     if (cs.nextGameIsHome === true) prefix = "vs";
     else if (cs.nextGameIsHome === false) prefix = "@";
@@ -171,7 +174,7 @@ function Stats() {
 
   const getStatValue = (team, statKey) => {
     const season = team.currentSeason || {};
-    
+
     switch (statKey) {
       case "gamePoints":
         return season.gamePoints ?? 0;
@@ -186,11 +189,11 @@ function Stats() {
         const totalPointsAgainst = season.totalPointsAgainst || 0;
         return calculateAverage(totalPointsAgainst, gamesPlayedAgainst);
       case "sosRank":
-        return team.sosRank ?? "—";
+        return team.sos_rank ?? "—";
       case "philMetrics":
-        return team.philMetrics !== undefined && team.philMetrics !== null ? team.philMetrics : "—";
+        return team.phil_metrics !== undefined && team.phil_metrics !== null ? team.phil_metrics : "—";
       case "prevYearPoints":
-        return team.prevYearPoints ?? "—";
+        return team.prev_year_points ?? "—";
       case "nextOpponent":
         return formatNextOpponent(team);
       case "record":
@@ -222,7 +225,7 @@ function Stats() {
   const handleLogout = async () => {
     if (window.confirm("Are you sure you want to log out?")) {
       try {
-        await auth.signOut();
+        await supabase.auth.signOut();
         navigate("/");
       } catch (err) {
         console.error("Logout error:", err);
@@ -269,7 +272,7 @@ function Stats() {
           </span>
         </Link>
         <div className="flex items-center space-x-4">
-          <button 
+          <button
             onClick={handleLogout}
             className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
           >
@@ -280,7 +283,7 @@ function Stats() {
 
       {/* Main Content */}
       <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-24">
-        
+
         {/* Header */}
         <div className="text-center mb-8">
           <div className="mb-4">
@@ -370,8 +373,8 @@ function Stats() {
           <div className="relative z-50 bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
             <div className="text-4xl mb-4">🔍</div>
             <p className="text-white/80 text-lg">
-              {searchQuery ? 
-                `No teams found matching "${searchQuery}"` : 
+              {searchQuery ?
+                `No teams found matching "${searchQuery}"` :
                 "No teams available"
               }
             </p>
@@ -386,20 +389,20 @@ function Stats() {
               >
                 Team (Conference)
                 {sortColumn === "school" && (
-                  sortDirection === "ascending" ? 
-                    <ChevronUp size={16} /> : 
+                  sortDirection === "ascending" ?
+                    <ChevronUp size={16} /> :
                     <ChevronDown size={16} />
                 )}
               </button>
-              
+
               <button
                 onClick={() => handleColumnSort(selectedStat)}
                 className="flex items-center gap-2 text-white font-semibold hover:text-blue-400 transition-colors duration-200"
               >
                 {currentStatLabel}
                 {sortColumn === selectedStat && (
-                  sortDirection === "ascending" ? 
-                    <ChevronUp size={16} /> : 
+                  sortDirection === "ascending" ?
+                    <ChevronUp size={16} /> :
                     <ChevronDown size={16} />
                 )}
               </button>

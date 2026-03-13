@@ -1,13 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { db, auth } from "../firebase/firebase";
-import {
-  doc,
-  getDoc,
-  updateDoc,
-  setDoc,
-  arrayUnion
-} from "firebase/firestore";
+import { supabase } from "../supabase/supabase";
 import { Users, UserPlus, Trophy, AlertCircle } from "lucide-react";
 
 function JoinLeague() {
@@ -26,7 +19,7 @@ function JoinLeague() {
     setSuccess("");
 
     try {
-      const user = auth.currentUser;
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not logged in");
 
       if (!teamName.trim()) {
@@ -41,48 +34,33 @@ function JoinLeague() {
         return;
       }
 
-      const leagueRef = doc(db, "leagues", leagueId);
-      const leagueSnap = await getDoc(leagueRef);
-      if (!leagueSnap.exists()) {
+      const { data: leagueData } = await supabase.from('leagues').select('id').eq('id', leagueId).single();
+      if (!leagueData) {
         setError("League not found. Please check the League ID.");
         setLoading(false);
         return;
       }
 
       // Guard against joining the same league twice
-      const memberRef = doc(db, "leagues", leagueId, "members", user.uid);
-      const memberSnap = await getDoc(memberRef);
-      if (memberSnap.exists()) {
+      const { data: existingMember } = await supabase.from('league_members').select('id').eq('league_id', leagueId).eq('user_id', user.id).single();
+      if (existingMember) {
         setError("You are already a member of this league.");
         setLoading(false);
         return;
       }
 
-      // Add user to league's members array
-      await updateDoc(leagueRef, {
-        members: arrayUnion(user.uid)
-      });
-
-      // Add leagueId to user's profile
-      await updateDoc(doc(db, "users", user.uid), {
-        leagueIds: arrayUnion(leagueId)
-      });
-
-      // Create member document with consistent structure (no displayName)
-      await setDoc(memberRef, {
-        teamName: teamName.trim(),
-        email: user.email || "",
-        joinedAt: new Date(),
-        lineup: {
-          starters: [],
-          bench: [],
-          currentRoster: []
-        },
+      // Create member record in league_members table
+      await supabase.from('league_members').insert({
+        league_id: leagueId,
+        user_id: user.id,
+        team_name: teamName.trim(),
         points: 0,
-        weeklyPoints: 0,
-        weeklyPointsHistory: {},
-        freeAgentMoves: 0
-      }, { merge: true });
+        weekly_points: 0,
+        weekly_points_history: {},
+        free_agent_moves: 0,
+        starters: [],
+        bench: []
+      });
 
       setSuccess("Successfully joined the league!");
       setTimeout(() => {

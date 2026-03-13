@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { auth, db, storage } from '../firebase/firebase';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { supabase } from '../supabase/supabase';
 import { X } from 'lucide-react';
-import { ref, uploadBytes, uploadString, getDownloadURL } from "firebase/storage";
 
 // Image resizing helper function
 // Image resizing helper function
@@ -81,34 +79,42 @@ const EditProfileModal = ({ onClose }) => {
  const [teamName, setTeamName] = useState('');
  const [teamAvatar, setTeamAvatar] = useState('');
 
- // Uploads a Blob/File OR a data URL string to Storage and returns the download URL
+ // Uploads a Blob/File OR a data URL string to Supabase Storage and returns the public URL
 async function uploadAvatar(fileOrDataUrl) {
-  const uid = auth.currentUser?.uid;
-  const token = await auth.currentUser?.getIdToken?.();
-  console.log('uploadAvatar uid:', uid, 'has token:', !!token);
+  const { data: { user } } = await supabase.auth.getUser();
+  const uid = user?.id;
+  console.log('uploadAvatar uid:', uid);
 
   if (!uid) throw new Error("Not signed in");
 
-  // preserve type/extension if Blob
+  let blob = fileOrDataUrl;
   let ext = 'png';
   let contentType = 'image/png';
+
   if (fileOrDataUrl instanceof Blob) {
     contentType = fileOrDataUrl.type || 'image/png';
     const maybe = contentType.split('/')[1];
     ext = (maybe === 'jpeg') ? 'jpg' : (maybe || 'png');
-  }
-
-  const r = ref(storage, `avatars/${uid}/avatar.${ext}`);
-
-  if (fileOrDataUrl instanceof Blob) {
-    await uploadBytes(r, fileOrDataUrl, { contentType });
   } else if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
-    await uploadString(r, fileOrDataUrl, 'data_url');
+    // Convert data URL to Blob
+    const res = await fetch(fileOrDataUrl);
+    blob = await res.blob();
+    contentType = blob.type || 'image/png';
+    const maybe = contentType.split('/')[1];
+    ext = (maybe === 'jpeg') ? 'jpg' : (maybe || 'png');
   } else {
     throw new Error('uploadAvatar: expected Blob/File or data URL string');
   }
 
-  return await getDownloadURL(r);
+  const path = `avatars/${uid}/avatar.${ext}`;
+  const { error: uploadError } = await supabase.storage
+    .from('avatars')
+    .upload(path, blob, { contentType, upsert: true });
+
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+  return data.publicUrl;
 }
 
  const avatarOptions = [
@@ -145,35 +151,40 @@ async function uploadAvatar(fileOrDataUrl) {
  }, [selectedLeague]);
 
  const loadUserData = async () => {
-   const currentUser = auth.currentUser;
+   const { data: { user: currentUser } } = await supabase.auth.getUser();
    if (!currentUser) {
      setLoading(false);
      return;
    }
 
    try {
-     const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-     if (userSnap.exists()) {
-       const userData = userSnap.data();
-       setFirstName(userData.firstName || '');
-       setLastName(userData.lastName || '');
+     const { data: userData, error: userError } = await supabase
+       .from('users')
+       .select('*')
+       .eq('id', currentUser.id)
+       .single();
+
+     if (userError) throw userError;
+
+     if (userData) {
+       setFirstName(userData.first_name || '');
+       setLastName(userData.last_name || '');
        setEmail(userData.email || currentUser.email || '');
 
-       const leagueIds = userData.leagueIds || [];
-       if (leagueIds.length) {
-         // Fetch leagues in parallel
-         const leagueDocs = await Promise.all(
-           leagueIds.map((id) => getDoc(doc(db, 'leagues', id)))
-         );
-         const leagues = leagueDocs
-           .map((snap, idx) => (snap.exists() ? { id: leagueIds[idx], name: snap.data().name || 'Unnamed League' } : null))
-           .filter(Boolean);
+       // Fetch leagues this user is a member of
+       const { data: memberRows, error: memberError } = await supabase
+         .from('league_members')
+         .select('league_id, leagues(id, name)')
+         .eq('user_id', currentUser.id);
 
-         setUserLeagues(leagues);
-         if (leagues.length > 0) setSelectedLeague(leagues[0].id);
-       } else {
-         setUserLeagues([]);
-       }
+       if (memberError) throw memberError;
+
+       const leagues = (memberRows || [])
+         .map(row => row.leagues ? { id: row.leagues.id, name: row.leagues.name || 'Unnamed League' } : null)
+         .filter(Boolean);
+
+       setUserLeagues(leagues);
+       if (leagues.length > 0) setSelectedLeague(leagues[0].id);
      }
    } catch (err) {
      console.error('Error loading user data:', err);
@@ -183,15 +194,22 @@ async function uploadAvatar(fileOrDataUrl) {
  };
 
  const loadLeagueData = async () => {
-   const currentUser = auth.currentUser;
+   const { data: { user: currentUser } } = await supabase.auth.getUser();
    if (!currentUser || !selectedLeague) return;
 
    try {
-     const memberSnap = await getDoc(doc(db, 'leagues', selectedLeague, 'members', currentUser.uid));
-     if (memberSnap.exists()) {
-       const m = memberSnap.data();
-       setTeamName(m.teamName || '');
-       setTeamAvatar(m.teamAvatar || '');
+     const { data: member, error: memberError } = await supabase
+       .from('league_members')
+       .select('team_name, team_avatar')
+       .eq('league_id', selectedLeague)
+       .eq('user_id', currentUser.id)
+       .single();
+
+     if (memberError && memberError.code !== 'PGRST116') throw memberError;
+
+     if (member) {
+       setTeamName(member.team_name || '');
+       setTeamAvatar(member.team_avatar || '');
      } else {
        setTeamName('');
        setTeamAvatar('');
@@ -215,7 +233,7 @@ async function uploadAvatar(fileOrDataUrl) {
       return;
     }
 
-    const currentUser = auth.currentUser;
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (!currentUser || !selectedLeague) return;
 
     setUploading(true);
@@ -229,10 +247,7 @@ async function uploadAvatar(fileOrDataUrl) {
         return;
       }
 
-      console.log('Uploading to Firebase (SDK helper)...');
-      console.log('uid', auth.currentUser?.uid);
-    const token = await auth.currentUser?.getIdToken?.();
-    console.log('has token', !!token);
+      console.log('Uploading to Supabase storage...');
       const url = await uploadAvatar(resizedFile);
       console.log('Upload complete:', url);
       setTeamAvatar(url);
@@ -247,31 +262,36 @@ async function uploadAvatar(fileOrDataUrl) {
 
 
  const handleSave = async () => {
-   const currentUser = auth.currentUser;
+   const { data: { user: currentUser } } = await supabase.auth.getUser();
    if (!currentUser) return;
 
    setSaving(true);
    try {
-     await updateDoc(doc(db, 'users', currentUser.uid), {
-       firstName: firstName.trim(),
-       lastName: lastName.trim(),
-       email: email.trim(),
-     });
+     const { error: userError } = await supabase
+       .from('users')
+       .update({
+         first_name: firstName.trim(),
+         last_name: lastName.trim(),
+         email: email.trim(),
+       })
+       .eq('id', currentUser.id);
+
+     if (userError) throw userError;
 
      if (selectedLeague) {
        const memberData = {
-         teamName: teamName.trim(),
-         teamAvatar: teamAvatar,
+         team_name: teamName.trim(),
+         team_avatar: teamAvatar,
+         custom_avatar: teamAvatar.startsWith('http'),
        };
-       
-       // Add a flag to indicate if it's a custom upload
-       if (teamAvatar.startsWith('http')) {
-         memberData.customAvatar = true;
-       } else {
-         memberData.customAvatar = false;
-       }
-       
-       await updateDoc(doc(db, 'leagues', selectedLeague, 'members', currentUser.uid), memberData);
+
+       const { error: memberError } = await supabase
+         .from('league_members')
+         .update(memberData)
+         .eq('league_id', selectedLeague)
+         .eq('user_id', currentUser.id);
+
+       if (memberError) throw memberError;
      }
 
      onClose?.();

@@ -1,31 +1,32 @@
 // src/utils/logFreeAgentMove.js
-import { db } from '../firebase/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { supabase } from '../supabase/supabase';
 
 export async function logFreeAgentMove(leagueId, moveData) {
   console.log('🚀 Starting to log move:', { leagueId, moveData });
-  
+
   try {
     const move = {
-      userId: moveData.userId,
-      teamName: moveData.teamName,
-      pickedUp: moveData.pickedUp || null,
+      league_id: leagueId,
+      user_id: moveData.userId,
+      team_name: moveData.teamName,
+      picked_up: moveData.pickedUp || null,
       dropped: moveData.dropped || null,
-      timestamp: serverTimestamp(),
       week: moveData.week || 'Unknown',
-      moveType: moveData.moveType || 'swap' // 'pickup', 'drop', 'swap'
+      move_type: moveData.moveType || 'swap' // 'pickup', 'drop', 'swap'
     };
 
     console.log('📝 Move object to save:', move);
-    console.log('🎯 Collection path:', `leagues/${leagueId}/moveHistory`);
 
-    const moveRef = await addDoc(
-      collection(db, 'leagues', leagueId, 'moveHistory'),
-      move
-    );
+    const { data, error } = await supabase
+      .from('move_history')
+      .insert(move)
+      .select('id')
+      .single();
 
-    console.log('✅ Free agent move logged successfully:', moveRef.id);
-    return moveRef.id;
+    if (error) throw error;
+
+    console.log('✅ Free agent move logged successfully:', data.id);
+    return data.id;
   } catch (error) {
     console.error('❌ Error logging free agent move:', error);
     console.error('Error details:', error.message);

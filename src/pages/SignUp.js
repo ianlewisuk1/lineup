@@ -1,9 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../firebase/firebase";
-import { doc, setDoc } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { supabase } from "../supabase/supabase";
 
 function SignUp() {
   const navigate = useNavigate();
@@ -38,16 +35,15 @@ function SignUp() {
     }
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      const { data: { user }, error: signUpError } = await supabase.auth.signUp({ email, password });
+      if (signUpError) throw signUpError;
 
-      await setDoc(doc(db, "users", user.uid), {
-        firstName,
-        lastName,
-        email: user.email,
+      // The auth trigger auto-creates the users row; we update it with profile data
+      await supabase.from("users").update({
+        first_name: firstName,
+        last_name: lastName,
         dob,
-        leagueIds: []
-      });
+      }).eq("id", user.id);
 
       navigate("/home");
     } catch (err) {

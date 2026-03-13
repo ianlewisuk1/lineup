@@ -1,13 +1,5 @@
 import React, { useEffect, useState } from "react";
-import {
-  collection,
-  getDocs,
-  doc,
-  updateDoc,
-  deleteDoc,
-  setDoc,
-} from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { supabase } from "../supabase/supabase";
 
 function AdminTeamsPanel() {
   const [teams, setTeams] = useState([]);
@@ -26,8 +18,8 @@ function AdminTeamsPanel() {
 
   useEffect(() => {
     const fetchTeams = async () => {
-      const snap = await getDocs(collection(db, "teams"));
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const { data } = await supabase.from("teams").select("*");
+      const list = (data || []).map(t => ({ id: t.id, ...t }));
       setTeams(list);
       setLoading(false);
     };
@@ -35,8 +27,7 @@ function AdminTeamsPanel() {
   }, []);
 
   const handleUpdate = async (id, field, value) => {
-    const ref = doc(db, "teams", id);
-    await updateDoc(ref, { [field]: value });
+    await supabase.from("teams").update({ [field]: value }).eq("id", id);
     setTeams(prev =>
       prev.map(t => (t.id === id ? { ...t, [field]: value } : t))
     );
@@ -44,18 +35,17 @@ function AdminTeamsPanel() {
 
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this team?")) return;
-    await deleteDoc(doc(db, "teams", id));
+    await supabase.from("teams").delete().eq("id", id);
     setTeams(prev => prev.filter(t => t.id !== id));
   };
 
   const handleAddTeam = async () => {
     const newDoc = {
       ...newTeam,
+      id: newTeam.school,
       classification: "FBS",
-      currentSeason: {},
     };
-    const docRef = doc(db, "teams", newTeam.school);
-    await setDoc(docRef, newDoc);
+    await supabase.from("teams").upsert(newDoc);
     setTeams(prev => [...prev, { id: newDoc.school, ...newDoc }]);
     setNewTeam({
       school: "",

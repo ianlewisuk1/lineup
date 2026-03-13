@@ -1,12 +1,5 @@
 import React, { useEffect, useState } from "react";
-import {
-  collection,
-  getDocs,
-  doc,
-  updateDoc,
-  deleteDoc,
-} from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { supabase } from "../supabase/supabase";
 
 function AdminSchedulePanel() {
   const [week, setWeek] = useState("1");
@@ -17,20 +10,19 @@ function AdminSchedulePanel() {
   const [statusFilter, setStatusFilter] = useState("");
   const [sortBy, setSortBy] = useState("date");
   const [excludeFCSGames, setExcludeFCSGames] = useState(true); // Default to true
-  
+
   // Team classifications cache
   const [teamClassifications, setTeamClassifications] = useState({});
-  
+
   // Function to fetch team classifications
   const fetchTeamClassifications = async () => {
     try {
-      const teamsSnap = await getDocs(collection(db, "teams"));
+      const { data: teamsData } = await supabase.from("teams").select("*");
       const classifications = {};
-      teamsSnap.docs.forEach(doc => {
-        const teamData = doc.data();
+      (teamsData || []).forEach(teamData => {
         // Store by document ID
-        classifications[doc.id] = teamData.classification || 'fbs';
-        
+        classifications[teamData.id] = teamData.classification || 'fbs';
+
         // Store by alternate names if they exist
         if (teamData.alternateNames1) {
           classifications[teamData.alternateNames1] = teamData.classification || 'fbs';
@@ -38,21 +30,21 @@ function AdminSchedulePanel() {
         if (teamData.alternateNames2) {
           classifications[teamData.alternateNames2] = teamData.classification || 'fbs';
         }
-        
+
         // Also try common variations
         const docIdVariations = [
-          doc.id,
-          doc.id.replace(/-/g, ' '), // "alabama-a-m" -> "alabama a m"
-          doc.id.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), // "Alabama A M"
+          teamData.id,
+          teamData.id.replace(/-/g, ' '), // "alabama-a-m" -> "alabama a m"
+          teamData.id.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), // "Alabama A M"
         ];
         docIdVariations.forEach(variation => {
           classifications[variation] = teamData.classification || 'fbs';
         });
       });
-      
+
       console.log('Team Classifications loaded:', Object.keys(classifications).length, 'entries');
       console.log('Sample FCS teams found:', Object.entries(classifications).filter(([name, cls]) => cls === 'fcs').slice(0, 5));
-      
+
       setTeamClassifications(classifications);
       return classifications;
     } catch (error) {
@@ -60,32 +52,32 @@ function AdminSchedulePanel() {
       return {};
     }
   };
-  
+
   // Function to check if a team is FCS based on database
   const isFCSTeam = (teamName, classifications = teamClassifications) => {
     if (!teamName) return false;
-    
+
     // Try exact match first
     if (classifications[teamName] === 'fcs') {
       console.log(`${teamName} is FCS (exact match)`);
       return true;
     }
-    
+
     // Try case-insensitive match
     const lowerName = teamName.toLowerCase();
-    const matchingKey = Object.keys(classifications).find(key => 
+    const matchingKey = Object.keys(classifications).find(key =>
       key.toLowerCase() === lowerName
     );
-    
+
     if (matchingKey && classifications[matchingKey] === 'fcs') {
       console.log(`${teamName} is FCS (case-insensitive match via ${matchingKey})`);
       return true;
     }
-    
+
     console.log(`${teamName} is NOT FCS (no match found)`);
     return false;
   };
-  
+
   // Cross-reference data state
   const [crossRefData, setCrossRefData] = useState({});
   const [enableCrossRef, setEnableCrossRef] = useState(false);
@@ -98,51 +90,35 @@ function AdminSchedulePanel() {
 
   const fetchGames = async () => {
     setLoading(true);
-    
+
     // First fetch team classifications if not already loaded
     let classifications = teamClassifications;
     if (Object.keys(classifications).length === 0) {
       classifications = await fetchTeamClassifications();
     }
-    
+
     let allGames = [];
 
     if (week === "all") {
-      const weekNumbers = Array.from({ length: 20 }, (_, i) => i + 1);
-      for (const w of weekNumbers) {
-        const snap = await getDocs(
-          collection(db, "schedule", "2025", "weeks", String(w), "games")
-        );
-        const gamesWithWeek = snap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          week: w,
-        }));
-        allGames = [...allGames, ...gamesWithWeek];
-      }
+      const { data: gamesData } = await supabase.from("games").select("*").eq("year", 2025);
+      allGames = (gamesData || []).map(g => ({ ...g, week: g.week }));
     } else {
-      const snap = await getDocs(
-        collection(db, "schedule", "2025", "weeks", String(week), "games")
-      );
-      allGames = snap.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        week: parseInt(week),
-      }));
+      const { data: gamesData } = await supabase.from("games").select("*").eq("year", 2025).eq("week", String(week));
+      allGames = (gamesData || []).map(g => ({ ...g, week: parseInt(week) }));
     }
 
     // Filter out FCS vs FCS games at the data level if excludeFCSGames is true
     if (excludeFCSGames) {
       const originalCount = allGames.length;
       allGames = allGames.filter((game) => {
-        const awayIsFCS = isFCSTeam(game.awayTeam, classifications);
-        const homeIsFCS = isFCSTeam(game.homeTeam, classifications);
+        const awayIsFCS = isFCSTeam(game.away_team, classifications);
+        const homeIsFCS = isFCSTeam(game.home_team, classifications);
         const isFCSvsFCS = awayIsFCS && homeIsFCS;
-        
+
         if (isFCSvsFCS) {
-          console.log(`Excluding FCS vs FCS game: ${game.awayTeam} @ ${game.homeTeam}`);
+          console.log(`Excluding FCS vs FCS game: ${game.away_team} @ ${game.home_team}`);
         }
-        
+
         // Keep game if at least one team is NOT FCS
         return !isFCSvsFCS;
       });
@@ -150,43 +126,39 @@ function AdminSchedulePanel() {
     }
 
     setGames(allGames);
-    
+
     // Fetch cross-reference data if enabled
     if (enableCrossRef) {
       await fetchCrossReferenceData(allGames);
     }
-    
+
     setLoading(false);
   };
 
   // Fetch cross-reference data from other collections
   const fetchCrossReferenceData = async (gamesList) => {
     const crossRef = {};
-    
+
     try {
       // Get unique teams and weeks from games
       const teamsSet = new Set();
       const weeksSet = new Set();
-      
+
       gamesList.forEach(game => {
-        if (game.awayTeam) teamsSet.add(game.awayTeam);
-        if (game.homeTeam) teamsSet.add(game.homeTeam);
+        if (game.away_team) teamsSet.add(game.away_team);
+        if (game.home_team) teamsSet.add(game.home_team);
         weeksSet.add(game.week);
       });
 
-      const teams = Array.from(teamsSet);
       const weeks = Array.from(weeksSet);
 
-      // Fetch standings data if enabled
+      // Fetch standings data if enabled (using weekly_standings table)
       if (crossRefCollections.standings) {
         for (const w of weeks) {
           try {
-            const standingsSnap = await getDocs(
-              collection(db, "standings", "2025", "weeks", String(w), "teams")
-            );
-            standingsSnap.docs.forEach(doc => {
-              const teamData = doc.data();
-              const key = `${teamData.team}-${w}-standings`;
+            const { data: standingsData } = await supabase.from("weekly_standings").select("*").eq("week", String(w));
+            (standingsData || []).forEach(teamData => {
+              const key = `${teamData.team_name}-${w}-standings`;
               crossRef[key] = {
                 wins: teamData.wins || 0,
                 losses: teamData.losses || 0,
@@ -201,41 +173,6 @@ function AdminSchedulePanel() {
         }
       }
 
-      // Fetch team stats if enabled
-      if (crossRefCollections.stats) {
-        for (const team of teams) {
-          for (const w of weeks) {
-            try {
-              const statsSnap = await getDocs(
-                collection(db, "stats", "2025", "weeks", String(w), "teams")
-              );
-              const teamStats = statsSnap.docs.find(doc => doc.data().team === team);
-              if (teamStats) {
-                const key = `${team}-${w}-stats`;
-                crossRef[key] = teamStats.data();
-              }
-            } catch (err) {
-              console.log(`No stats data for ${team} week ${w}`);
-            }
-          }
-        }
-      }
-
-      // Fetch injury data if enabled
-      if (crossRefCollections.injuries) {
-        for (const team of teams) {
-          try {
-            const injuriesSnap = await getDocs(
-              collection(db, "injuries", "2025", "teams", team, "players")
-            );
-            const injuries = injuriesSnap.docs.map(doc => doc.data());
-            crossRef[`${team}-injuries`] = injuries;
-          } catch (err) {
-            console.log(`No injury data for ${team}`);
-          }
-        }
-      }
-
       setCrossRefData(crossRef);
     } catch (error) {
       console.error("Error fetching cross-reference data:", error);
@@ -246,52 +183,31 @@ function AdminSchedulePanel() {
     fetchGames();
   }, [week, enableCrossRef, crossRefCollections, excludeFCSGames]);
 
-  const handleUpdate = async (id, field, value, gameWeek = week) => {
-    const gameRef = doc(
-      db,
-      "schedule",
-      "2025",
-      "weeks",
-      String(gameWeek),
-      "games",
-      id
-    );
-    await updateDoc(gameRef, { [field]: value });
+  const handleUpdate = async (id, field, value) => {
+    await supabase.from("games").update({ [field]: value }).eq("id", id);
     setGames((prev) =>
       prev.map((g) =>
-        g.id === id && g.week === gameWeek ? { ...g, [field]: value } : g
+        g.id === id ? { ...g, [field]: value } : g
       )
     );
   };
 
-  const handleDelete = async (id, gameWeek = week) => {
+  const handleDelete = async (id) => {
     if (!window.confirm("Delete this game?")) return;
-    const gameRef = doc(
-      db,
-      "schedule",
-      "2025",
-      "weeks",
-      String(gameWeek),
-      "games",
-      id
-    );
-    await deleteDoc(gameRef);
-    setGames((prev) => prev.filter((g) => !(g.id === id && g.week === gameWeek)));
+    await supabase.from("games").delete().eq("id", id);
+    setGames((prev) => prev.filter((g) => g.id !== id));
   };
 
   // Helper function to copy game path to clipboard
   const copyGamePath = (gameId, gameWeek) => {
-    const path = `schedule/2025/weeks/${gameWeek}/games/${gameId}`;
+    const path = `games/${gameId} (week ${gameWeek})`;
     navigator.clipboard.writeText(path);
     alert(`Copied to clipboard: ${path}`);
   };
 
-  // Helper function to open Firebase console
+  // Helper function to open Supabase console (placeholder)
   const openInFirebase = (gameId, gameWeek) => {
-    const projectId = "YOUR_PROJECT_ID"; // Replace with your actual project ID
-    const path = `schedule%2F2025%2Fweeks%2F${gameWeek}%2Fgames%2F${gameId}`;
-    const url = `https://console.firebase.google.com/project/${projectId}/firestore/data/~2F${path}`;
-    window.open(url, '_blank');
+    alert(`Game ID: ${gameId} (Week ${gameWeek})`);
   };
 
   // Enhanced filtering logic
@@ -304,28 +220,28 @@ function AdminSchedulePanel() {
         switch (searchType) {
           case "teams":
             return (
-              g.awayTeam?.toLowerCase().includes(searchLower) ||
-              g.homeTeam?.toLowerCase().includes(searchLower)
+              g.away_team?.toLowerCase().includes(searchLower) ||
+              g.home_team?.toLowerCase().includes(searchLower)
             );
           case "venue":
             return g.venue?.toLowerCase().includes(searchLower);
           case "matchup":
-            const matchup = `${g.awayTeam} @ ${g.homeTeam}`.toLowerCase();
-            const reverseMatchup = `${g.homeTeam} vs ${g.awayTeam}`.toLowerCase();
+            const matchup = `${g.away_team} @ ${g.home_team}`.toLowerCase();
+            const reverseMatchup = `${g.home_team} vs ${g.away_team}`.toLowerCase();
             return matchup.includes(searchLower) || reverseMatchup.includes(searchLower);
           case "id":
             return g.id?.toLowerCase().includes(searchLower);
           default: // "all"
             return (
-              g.awayTeam?.toLowerCase().includes(searchLower) ||
-              g.homeTeam?.toLowerCase().includes(searchLower) ||
+              g.away_team?.toLowerCase().includes(searchLower) ||
+              g.home_team?.toLowerCase().includes(searchLower) ||
               g.venue?.toLowerCase().includes(searchLower) ||
-              g.gameStatus?.toLowerCase().includes(searchLower) ||
+              g.game_status?.toLowerCase().includes(searchLower) ||
               g.date?.toLowerCase().includes(searchLower) ||
               String(g.week).includes(searchLower) ||
-              String(g.awayScore).includes(searchLower) ||
-              String(g.homeScore).includes(searchLower) ||
-              String(g.homeSpread).includes(searchLower) ||
+              String(g.away_score).includes(searchLower) ||
+              String(g.home_score).includes(searchLower) ||
+              String(g.home_spread).includes(searchLower) ||
               g.id?.toLowerCase().includes(searchLower)
             );
         }
@@ -334,7 +250,7 @@ function AdminSchedulePanel() {
 
     // Apply status filter
     if (statusFilter) {
-      filtered = filtered.filter((g) => g.gameStatus === statusFilter);
+      filtered = filtered.filter((g) => g.game_status === statusFilter);
     }
 
     // Note: FCS filtering now happens at data fetch level, not here
@@ -346,21 +262,21 @@ function AdminSchedulePanel() {
         case "week":
           return a.week - b.week;
         case "awayTeam":
-          return (a.awayTeam || "").localeCompare(b.awayTeam || "");
+          return (a.away_team || "").localeCompare(b.away_team || "");
         case "awayScore":
-          return (parseInt(a.awayScore) || 0) - (parseInt(b.awayScore) || 0);
+          return (parseInt(a.away_score) || 0) - (parseInt(b.away_score) || 0);
         case "homeTeam":
-          return (a.homeTeam || "").localeCompare(b.homeTeam || "");
+          return (a.home_team || "").localeCompare(b.home_team || "");
         case "homeScore":
-          return (parseInt(a.homeScore) || 0) - (parseInt(b.homeScore) || 0);
+          return (parseInt(a.home_score) || 0) - (parseInt(b.home_score) || 0);
         case "homeSpread":
-          return (parseFloat(a.homeSpread) || 0) - (parseFloat(b.homeSpread) || 0);
+          return (parseFloat(a.home_spread) || 0) - (parseFloat(b.home_spread) || 0);
         case "gameStatus":
-          return (a.gameStatus || "").localeCompare(b.gameStatus || "");
+          return (a.game_status || "").localeCompare(b.game_status || "");
         case "gameComplete":
-          return (a.gameComplete === b.gameComplete) ? 0 : a.gameComplete ? 1 : -1;
+          return (a.game_complete === b.game_complete) ? 0 : a.game_complete ? 1 : -1;
         case "date":
-          return new Date(a.date || 0) - new Date(b.date || 0);
+          return new Date(a.game_time || 0) - new Date(b.game_time || 0);
         default:
           return 0;
       }
@@ -410,10 +326,10 @@ function AdminSchedulePanel() {
       <h2>Admin Panel: Schedule</h2>
 
       {/* Controls Section */}
-      <div style={{ 
-        display: "flex", 
-        gap: "1rem", 
-        flexWrap: "wrap", 
+      <div style={{
+        display: "flex",
+        gap: "1rem",
+        flexWrap: "wrap",
         alignItems: "center",
         marginBottom: "1rem",
         backgroundColor: "#f8f9fa",
@@ -470,9 +386,9 @@ function AdminSchedulePanel() {
         </label>
 
         <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <input 
-            type="checkbox" 
-            checked={excludeFCSGames} 
+          <input
+            type="checkbox"
+            checked={excludeFCSGames}
             onChange={(e) => setExcludeFCSGames(e.target.checked)}
           />
           Exclude FCS vs FCS Games
@@ -480,44 +396,44 @@ function AdminSchedulePanel() {
       </div>
 
       {/* Cross-Reference Controls */}
-      <div style={{ 
-        backgroundColor: "#e3f2fd", 
-        padding: "1rem", 
-        borderRadius: "8px", 
-        marginBottom: "1rem" 
+      <div style={{
+        backgroundColor: "#e3f2fd",
+        padding: "1rem",
+        borderRadius: "8px",
+        marginBottom: "1rem"
       }}>
         <label style={{ display: "flex", alignItems: "center", marginBottom: "0.5rem" }}>
-          <input 
-            type="checkbox" 
-            checked={enableCrossRef} 
+          <input
+            type="checkbox"
+            checked={enableCrossRef}
             onChange={(e) => setEnableCrossRef(e.target.checked)}
             style={{ marginRight: "0.5rem" }}
           />
           Enable Cross-Reference Data (slower loading)
         </label>
-        
+
         {enableCrossRef && (
           <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
             <label>
-              <input 
-                type="checkbox" 
-                checked={crossRefCollections.standings} 
+              <input
+                type="checkbox"
+                checked={crossRefCollections.standings}
                 onChange={(e) => setCrossRefCollections(prev => ({...prev, standings: e.target.checked}))}
               />
               {" "}Standings
             </label>
             <label>
-              <input 
-                type="checkbox" 
-                checked={crossRefCollections.stats} 
+              <input
+                type="checkbox"
+                checked={crossRefCollections.stats}
                 onChange={(e) => setCrossRefCollections(prev => ({...prev, stats: e.target.checked}))}
               />
               {" "}Team Stats
             </label>
             <label>
-              <input 
-                type="checkbox" 
-                checked={crossRefCollections.injuries} 
+              <input
+                type="checkbox"
+                checked={crossRefCollections.injuries}
                 onChange={(e) => setCrossRefCollections(prev => ({...prev, injuries: e.target.checked}))}
               />
               {" "}Injuries
@@ -533,9 +449,9 @@ function AdminSchedulePanel() {
           placeholder={`Search ${searchType === "all" ? "across all fields" : searchType}...`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ 
-            width: "100%", 
-            padding: "0.75rem", 
+          style={{
+            width: "100%",
+            padding: "0.75rem",
             fontSize: "1rem",
             border: "2px solid #ddd",
             borderRadius: "4px"
@@ -544,11 +460,11 @@ function AdminSchedulePanel() {
       </div>
 
       {/* Quick Search Buttons */}
-      <div style={{ 
-        display: "flex", 
-        gap: "0.5rem", 
-        flexWrap: "wrap", 
-        marginBottom: "1rem" 
+      <div style={{
+        display: "flex",
+        gap: "0.5rem",
+        flexWrap: "wrap",
+        marginBottom: "1rem"
       }}>
         {quickSearches.map((qs, idx) => (
           <button
@@ -572,10 +488,10 @@ function AdminSchedulePanel() {
       </div>
 
       {/* Results Count */}
-      <p style={{ 
-        marginBottom: "1rem", 
-        fontSize: "0.9rem", 
-        color: "#666" 
+      <p style={{
+        marginBottom: "1rem",
+        fontSize: "0.9rem",
+        color: "#666"
       }}>
         Showing {filteredGames.length} of {games.length} games
         {search && ` • Search: "${search}"`}
@@ -587,9 +503,9 @@ function AdminSchedulePanel() {
         <p>Loading games{enableCrossRef ? " and cross-reference data" : ""}...</p>
       ) : (
         <div style={{ overflowX: "auto" }}>
-          <table style={{ 
-            width: "100%", 
-            borderCollapse: "collapse", 
+          <table style={{
+            width: "100%",
+            borderCollapse: "collapse",
             fontSize: "0.85rem",
             backgroundColor: "white",
             boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
@@ -622,22 +538,22 @@ function AdminSchedulePanel() {
             </thead>
             <tbody>
               {filteredGames.map((g) => {
-                const awayStandings = getCrossRefData(g.awayTeam, g.week, "standings");
-                const homeStandings = getCrossRefData(g.homeTeam, g.week, "standings");
-                const awayInjuries = getInjuryData(g.awayTeam);
-                const homeInjuries = getInjuryData(g.homeTeam);
-                
+                const awayStandings = getCrossRefData(g.away_team, g.week, "standings");
+                const homeStandings = getCrossRefData(g.home_team, g.week, "standings");
+                const awayInjuries = getInjuryData(g.away_team);
+                const homeInjuries = getInjuryData(g.home_team);
+
                 return (
-                  <tr 
-                    key={`${g.week}-${g.id}`} 
-                    style={{ 
+                  <tr
+                    key={`${g.week}-${g.id}`}
+                    style={{
                       borderBottom: "1px solid #eee",
-                      backgroundColor: g.gameComplete ? "#f8f9fa" : "white"
+                      backgroundColor: g.game_complete ? "#f8f9fa" : "white"
                     }}
                   >
                     <td style={{ padding: "0.5rem" }}>
-                      <div style={{ 
-                        fontFamily: "monospace", 
+                      <div style={{
+                        fontFamily: "monospace",
                         fontSize: "0.8rem",
                         backgroundColor: "#f8f9fa",
                         padding: "0.25rem",
@@ -657,34 +573,34 @@ function AdminSchedulePanel() {
                     <td style={{ padding: "0.5rem" }}>{g.week}</td>
                     <td style={{ padding: "0.5rem" }}>
                       <input
-                        value={g.awayTeam || ""}
-                        onChange={(e) => handleUpdate(g.id, "awayTeam", e.target.value, g.week)}
+                        value={g.away_team || ""}
+                        onChange={(e) => handleUpdate(g.id, "away_team", e.target.value)}
                         style={{ width: "100%", border: "1px solid #ddd", padding: "0.25rem", fontSize: "0.85rem" }}
                       />
                     </td>
                     <td style={{ padding: "0.5rem" }}>
                       <input
                         type="number"
-                        value={g.awayScore ?? ""}
+                        value={g.away_score ?? ""}
                         onChange={(e) =>
-                          handleUpdate(g.id, "awayScore", parseInt(e.target.value) || 0, g.week)
+                          handleUpdate(g.id, "away_score", parseInt(e.target.value) || 0)
                         }
                         style={{ width: "60px", border: "1px solid #ddd", padding: "0.25rem", fontSize: "0.85rem" }}
                       />
                     </td>
                     <td style={{ padding: "0.5rem" }}>
                       <input
-                        value={g.homeTeam || ""}
-                        onChange={(e) => handleUpdate(g.id, "homeTeam", e.target.value, g.week)}
+                        value={g.home_team || ""}
+                        onChange={(e) => handleUpdate(g.id, "home_team", e.target.value)}
                         style={{ width: "100%", border: "1px solid #ddd", padding: "0.25rem", fontSize: "0.85rem" }}
                       />
                     </td>
                     <td style={{ padding: "0.5rem" }}>
                       <input
                         type="number"
-                        value={g.homeScore ?? ""}
+                        value={g.home_score ?? ""}
                         onChange={(e) =>
-                          handleUpdate(g.id, "homeScore", parseInt(e.target.value) || 0, g.week)
+                          handleUpdate(g.id, "home_score", parseInt(e.target.value) || 0)
                         }
                         style={{ width: "60px", border: "1px solid #ddd", padding: "0.25rem", fontSize: "0.85rem" }}
                       />
@@ -693,15 +609,15 @@ function AdminSchedulePanel() {
                       <input
                         type="number"
                         step="0.5"
-                        value={g.homeSpread ?? ""}
-                        onChange={(e) => handleUpdate(g.id, "homeSpread", parseFloat(e.target.value), g.week)}
+                        value={g.home_spread ?? ""}
+                        onChange={(e) => handleUpdate(g.id, "home_spread", parseFloat(e.target.value))}
                         style={{ width: "70px", border: "1px solid #ddd", padding: "0.25rem", fontSize: "0.85rem" }}
                       />
                     </td>
                     <td style={{ padding: "0.5rem" }}>
                       <select
-                        value={g.gameStatus || "scheduled"}
-                        onChange={(e) => handleUpdate(g.id, "gameStatus", e.target.value, g.week)}
+                        value={g.game_status || "scheduled"}
+                        onChange={(e) => handleUpdate(g.id, "game_status", e.target.value)}
                         style={{ width: "100%", border: "1px solid #ddd", padding: "0.25rem", fontSize: "0.85rem" }}
                       >
                         <option value="scheduled">Scheduled</option>
@@ -712,33 +628,33 @@ function AdminSchedulePanel() {
                     <td style={{ padding: "0.5rem", textAlign: "center" }}>
                       <input
                         type="checkbox"
-                        checked={g.gameComplete || false}
-                        onChange={(e) => handleUpdate(g.id, "gameComplete", e.target.checked, g.week)}
+                        checked={g.game_complete || false}
+                        onChange={(e) => handleUpdate(g.id, "game_complete", e.target.checked)}
                       />
                     </td>
-                    
+
                     {/* Cross-reference columns */}
                     {enableCrossRef && crossRefCollections.standings && (
                       <>
                         <td style={{ padding: "0.5rem", fontSize: "0.8rem", backgroundColor: "#f3f8ff" }}>
-                          {awayStandings.wins !== undefined ? 
-                            `${awayStandings.wins}-${awayStandings.losses} (${(awayStandings.winPct * 100).toFixed(1)}%)` 
+                          {awayStandings.wins !== undefined ?
+                            `${awayStandings.wins}-${awayStandings.losses} (${(awayStandings.winPct * 100).toFixed(1)}%)`
                             : "N/A"
                           }
                         </td>
                         <td style={{ padding: "0.5rem", fontSize: "0.8rem", backgroundColor: "#f3f8ff" }}>
-                          {homeStandings.wins !== undefined ? 
-                            `${homeStandings.wins}-${homeStandings.losses} (${(homeStandings.winPct * 100).toFixed(1)}%)` 
+                          {homeStandings.wins !== undefined ?
+                            `${homeStandings.wins}-${homeStandings.losses} (${(homeStandings.winPct * 100).toFixed(1)}%)`
                             : "N/A"
                           }
                         </td>
                       </>
                     )}
-                    
+
                     {enableCrossRef && crossRefCollections.injuries && (
                       <>
                         <td style={{ padding: "0.5rem", fontSize: "0.8rem", backgroundColor: "#fffbf0" }}>
-                          {awayInjuries.length > 0 ? 
+                          {awayInjuries.length > 0 ?
                             <span title={awayInjuries.map(inj => `${inj.player}: ${inj.status}`).join('\n')}>
                               {awayInjuries.length} injured
                             </span>
@@ -746,7 +662,7 @@ function AdminSchedulePanel() {
                           }
                         </td>
                         <td style={{ padding: "0.5rem", fontSize: "0.8rem", backgroundColor: "#fffbf0" }}>
-                          {homeInjuries.length > 0 ? 
+                          {homeInjuries.length > 0 ?
                             <span title={homeInjuries.map(inj => `${inj.player}: ${inj.status}`).join('\n')}>
                               {homeInjuries.length} injured
                             </span>
@@ -755,31 +671,31 @@ function AdminSchedulePanel() {
                         </td>
                       </>
                     )}
-                    
+
                     <td style={{ padding: "0.5rem", textAlign: "center" }}>
                       <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center" }}>
                         <button
                           onClick={() => openInFirebase(g.id, g.week)}
-                          style={{ 
-                            background: "#4285f4", 
+                          style={{
+                            background: "#4285f4",
                             color: "white",
-                            border: "none", 
+                            border: "none",
                             cursor: "pointer",
                             fontSize: "0.75rem",
                             padding: "0.25rem 0.5rem",
                             borderRadius: "3px"
                           }}
-                          title="Open in Firebase Console"
+                          title="View game info"
                         >
                           🔗
                         </button>
                         <button
-                          onClick={() => handleDelete(g.id, g.week)}
-                          style={{ 
-                            color: "red", 
-                            fontWeight: "bold", 
-                            background: "none", 
-                            border: "none", 
+                          onClick={() => handleDelete(g.id)}
+                          style={{
+                            color: "red",
+                            fontWeight: "bold",
+                            background: "none",
+                            border: "none",
                             cursor: "pointer",
                             fontSize: "1.2rem"
                           }}
@@ -798,15 +714,15 @@ function AdminSchedulePanel() {
       )}
 
       {filteredGames.length === 0 && !loading && (
-        <div style={{ 
-          textAlign: "center", 
-          padding: "2rem", 
-          backgroundColor: "#f8f9fa", 
+        <div style={{
+          textAlign: "center",
+          padding: "2rem",
+          backgroundColor: "#f8f9fa",
           borderRadius: "8px",
           marginTop: "1rem"
         }}>
           <p>No games found matching your search criteria.</p>
-          <button 
+          <button
             onClick={() => {
               setSearch("");
               setSearchType("all");

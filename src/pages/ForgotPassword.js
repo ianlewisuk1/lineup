@@ -1,7 +1,6 @@
 import React, { useState } from "react";
-import { sendPasswordResetEmail } from "firebase/auth";
 import { useNavigate, Link } from "react-router-dom";
-import { auth } from "../firebase/firebase";
+import { supabase } from "../supabase/supabase";
 
 function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -14,7 +13,7 @@ function ForgotPassword() {
     setLoading(true);
 
     try {
-      await sendPasswordResetEmail(auth, email);
+      await supabase.auth.resetPasswordForEmail(email);
       setSuccess(true);
       
       // Redirect to login page after 3 seconds
