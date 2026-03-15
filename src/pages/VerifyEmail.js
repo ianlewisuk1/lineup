@@ -68,7 +68,7 @@ function VerifyEmail() {
             </span>
           </h1>
           <p className="text-lg text-white/80 max-w-md mx-auto">
-            We sent a 6-digit code to <span className="text-white font-semibold">{email}</span>
+            We sent a verification code to <span className="text-white font-semibold">{email}</span>
           </p>
         </div>
 
@@ -93,8 +93,8 @@ function VerifyEmail() {
                 <input
                   type="text"
                   inputMode="numeric"
-                  placeholder="000000"
-                  maxLength={6}
+                  placeholder="00000000"
+                  maxLength={8}
                   value={token}
                   onChange={(e) => setToken(e.target.value.replace(/\D/g, ""))}
                   required
@@ -104,7 +104,7 @@ function VerifyEmail() {
 
               <button
                 type="submit"
-                disabled={loading || token.length < 6}
+                disabled={loading || token.length < 8}
                 className="w-full py-4 px-8 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-lg font-bold transition-all duration-300 transform hover:scale-105 shadow-2xl hover:shadow-purple-500/40 text-white"
               >
                 {loading ? "Verifying..." : "Verify & Continue"}
