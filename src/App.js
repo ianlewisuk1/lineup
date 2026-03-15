@@ -112,6 +112,7 @@ function App() {
       <Route path="/home" element={<Home />} />
       <Route path="/create-league" element={<CreateLeague />} />
       <Route path="/join-league" element={<JoinLeague />} />
+      <Route path="/join/:code" element={<JoinLeague />} />
       <Route path="/how-to-play" element={<HowToPlay />} />
       <Route path="/admin" element={<AdminPanel />} />
       <Route path="/admin/league/:leagueId" element={<AdminLeagueDetail />} />

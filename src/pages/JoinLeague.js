@@ -1,12 +1,13 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
 import { Users, UserPlus, Trophy, AlertCircle } from "lucide-react";
 
 function JoinLeague() {
   const navigate = useNavigate();
 
-  const [leagueId, setLeagueId] = useState("");
+  const { code } = useParams();
+  const [inviteCode, setInviteCode] = useState(code || "");
   const [teamName, setTeamName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -34,12 +35,14 @@ function JoinLeague() {
         return;
       }
 
-      const { data: leagueData } = await supabase.from('leagues').select('id').eq('id', leagueId).single();
+      const { data: leagueData } = await supabase.from('leagues').select('id').eq('invite_code', inviteCode.trim().toUpperCase()).single();
       if (!leagueData) {
-        setError("League not found. Please check the League ID.");
+        setError("League not found. Please check your invite code.");
         setLoading(false);
         return;
       }
+
+      const leagueId = leagueData.id;
 
       // Guard against joining the same league twice
       const { data: existingMember } = await supabase.from('league_members').select('id').eq('league_id', leagueId).eq('user_id', user.id).single();
@@ -155,18 +158,19 @@ function JoinLeague() {
             {/* League ID Input */}
             <div>
               <label className="block text-sm font-medium text-white/80 mb-2">
-                League ID *
+                Invite Code *
               </label>
               <input
                 type="text"
-                placeholder="Enter the League ID you received"
-                value={leagueId}
-                onChange={(e) => setLeagueId(e.target.value)}
+                placeholder="Enter your 6-character invite code (e.g. WOLF24)"
+                maxLength={6}
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
                 required
                 className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
               />
               <p className="mt-1 text-xs text-white/60">
-                Ask the league commissioner for this ID
+                Ask your commissioner for the invite code
               </p>
             </div>
 
@@ -192,9 +196,9 @@ function JoinLeague() {
             {/* Submit Button */}
             <button 
               type="submit" 
-              disabled={loading || !leagueId.trim() || !teamName.trim()}
+              disabled={loading || !inviteCode.trim() || !teamName.trim()}
               className={`w-full py-4 px-8 rounded-xl text-lg font-bold transition-all duration-300 transform flex items-center justify-center space-x-3 ${
-                loading || !leagueId.trim() || !teamName.trim()
+                loading || !inviteCode.trim() || !teamName.trim()
                   ? 'bg-white/20 text-white/50 cursor-not-allowed' 
                   : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white hover:scale-105 shadow-2xl hover:shadow-green-500/40'
               }`}

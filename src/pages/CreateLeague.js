@@ -100,7 +100,7 @@ function CreateLeague() {
         }
       }
 
-      const { data: newLeague, error: leagueError } = await supabase.from('leagues').insert(leagueData).select('id').single();
+      const { data: newLeague, error: leagueError } = await supabase.from('leagues').insert(leagueData).select('id, invite_code').single();
       if (leagueError) throw leagueError;
 
       // Note: displayName removed, using user's first name from auth/user profile instead
@@ -117,7 +117,7 @@ function CreateLeague() {
       });
 
       navigate("/home", {
-        state: { message: "✅ League created successfully!", leagueId: newLeague.id }
+        state: { message: `✅ League created! Your invite code is: ${newLeague.invite_code}`, leagueId: newLeague.id }
       });
     } catch (err) {
       alert("Error: " + err.message);
