@@ -31,7 +31,7 @@ function LeagueMembers() {
 
       const { data: memberRows } = await supabase
         .from("league_members")
-        .select("user_id, team_name, points, joined_at")
+        .select("user_id, team_name, points, joined_at, team_avatar, custom_avatar")
         .eq("league_id", leagueId);
 
       if (!memberRows) return;
@@ -50,6 +50,9 @@ function LeagueMembers() {
           };
         })
       );
+
+      // Sort by join date
+      enriched.sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
 
       setMembers(enriched);
       setLoading(false);
@@ -154,15 +157,24 @@ function LeagueMembers() {
             <div className="space-y-3">
               {members.map((m, i) => (
                 <div key={m.user_id} className="flex items-center gap-4 bg-white/5 rounded-xl p-4 border border-white/10">
-                  <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center font-bold text-white text-sm flex-shrink-0">
-                    {i + 1}
+                  {/* Avatar */}
+                  <div className="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden">
+                    {m.team_avatar ? (
+                      <img src={m.team_avatar} alt="avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-r from-purple-500 to-blue-500 flex items-center justify-center font-bold text-white text-sm">
+                        {m.first_name?.[0]?.toUpperCase() || (i + 1)}
+                      </div>
+                    )}
                   </div>
+
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-white truncate">
                       {m.first_name} {m.last_name}
                     </div>
                     <div className="text-sm text-white/60 truncate">{m.team_name}</div>
                   </div>
+
                   {isDraftComplete && (
                     <div className="text-right flex-shrink-0">
                       <div className="text-white font-bold">{m.points ?? 0}</div>

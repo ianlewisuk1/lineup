@@ -1464,85 +1464,49 @@ if (!draftData) {
         )}
 
         {/* League Status */}
-        {!isFull ? (
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
-            <div className="text-center mb-6">
-              <div className="text-3xl mb-4">👥</div>
-              <h3 className="text-xl sm:text-2xl font-bold text-white mb-4">
-                Waiting for Players
-              </h3>
-              <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4 mb-6">
-                <p className="text-amber-200 font-semibold text-lg">
-                  🟡 Waiting for {missing} more manager{missing !== 1 ? 's' : ''} to join
-                </p>
-              </div>
-            </div>
-
-            <h4 className="text-lg font-bold text-white mb-4">
-              Current Members ({Object.keys(userMap).length}/{maxManagers})
-            </h4>
-
-            <div className="grid gap-3">
-              {Object.values(userMap).map((user, i) => (
-                <div key={i} className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold">
-                      {i + 1}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-white">
-                        {user.displayName}
-                      </div>
-                      <div className="text-sm text-white/70">
-                        {user.teamName}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
-            <div className="text-center">
-              <div className="text-4xl sm:text-5xl mb-4">✅</div>
-              <h3 className="text-xl sm:text-2xl font-bold text-white mb-4">
-                All Managers Ready!
-              </h3>
-              <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-4 mb-6">
-                <p className="text-green-200 font-semibold text-lg">
-                  League is full with {Object.keys(userMap).length} managers
-                </p>
-              </div>
-
-              {isLeagueAdmin && (
-                <div className="space-y-4">
-                  <p className="text-white/80 text-lg">
-                    Ready to start the draft?
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
+          <div className="text-center">
+            {!isFull ? (
+              <>
+                <div className="text-3xl mb-3">👥</div>
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-3">Waiting for Players</h3>
+                <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-4 mb-4">
+                  <p className="text-amber-200 font-semibold">
+                    🟡 {Object.keys(userMap).length}/{maxManagers} managers joined · waiting for {missing} more
                   </p>
-
-                  <button 
-                    onClick={draftCountdown > 0 ? handleStartDraftEarly : handleStartDraft}
-                    className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-lg font-bold transition-all duration-300 transform hover:scale-105 shadow-2xl hover:shadow-green-500/40"
-                  >
-                    {draftCountdown > 0 ? "🚀 Start Draft Early" : "🚀 Start Live Draft"}
-                  </button>
-                  {draftCountdown > 0 && (
-                    <p className="text-sm text-white/60 mt-2">
-                      Or wait for automatic start when countdown reaches zero
-                    </p>
-                  )}
                 </div>
-              )}
+              </>
+            ) : (
+              <>
+                <div className="text-4xl sm:text-5xl mb-4">✅</div>
+                <h3 className="text-xl sm:text-2xl font-bold text-white mb-4">All Managers Ready!</h3>
+                <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-4 mb-6">
+                  <p className="text-green-200 font-semibold text-lg">
+                    League is full with {Object.keys(userMap).length} managers
+                  </p>
+                </div>
+              </>
+            )}
 
-              {!isLeagueAdmin && isFull && draftCountdown === 0 && (
-                <p className="text-white/80 text-lg">
-                  All managers have joined. Waiting for commissioner to start the draft.
-                </p>
-              )}
-            </div>
+            {isLeagueAdmin && isFull && (
+              <div className="space-y-3">
+                <button
+                  onClick={draftCountdown > 0 ? handleStartDraftEarly : handleStartDraft}
+                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-lg font-bold transition-all duration-300 transform hover:scale-105 shadow-2xl hover:shadow-green-500/40"
+                >
+                  {draftCountdown > 0 ? "🚀 Start Draft Early" : "🚀 Start Live Draft"}
+                </button>
+                {draftCountdown > 0 && (
+                  <p className="text-sm text-white/60">Or wait for automatic start when countdown reaches zero</p>
+                )}
+              </div>
+            )}
+
+            {!isLeagueAdmin && isFull && draftCountdown === 0 && (
+              <p className="text-white/80 text-lg">Waiting for commissioner to start the draft.</p>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Info Card */}
         <div className="bg-blue-500/20 border border-blue-400/30 rounded-2xl p-6">
