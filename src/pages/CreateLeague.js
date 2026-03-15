@@ -41,7 +41,7 @@ function CreateLeague() {
   };
 
   const getMaxDraftDate = () => {
-    return "2025-08-20";
+    return "2026-09-01";
   };
 
   const handleCreateLeague = async (e) => {
