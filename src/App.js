@@ -29,6 +29,7 @@ import ConfirmAddTeam from "./pages/ConfirmAddTeam";
 import ConfirmSwapTeam from "./pages/ConfirmSwapTeam";
 import Scouting from "./pages/Scouting";
 import PreDraftOnly from "./components/PreDraftOnly";
+import PrivateRoute from "./components/PrivateRoute";
 import AdminPanel from "./pages/AdminPanel";
 import AdminLeagueDetail from "./pages/AdminLeagueDetail"; 
 import AdminTeamsPanel from "./pages/AdminTeamsPanel";
@@ -110,70 +111,80 @@ function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
-      <Route path="/home" element={<Home />} />
-      <Route path="/create-league" element={<CreateLeague />} />
-      <Route path="/join-league" element={<JoinLeague />} />
-      <Route path="/join/:code" element={<JoinLeague />} />
+      <Route path="/home" element={<PrivateRoute><Home /></PrivateRoute>} />
+      <Route path="/create-league" element={<PrivateRoute><CreateLeague /></PrivateRoute>} />
+      <Route path="/join-league" element={<PrivateRoute><JoinLeague /></PrivateRoute>} />
+      <Route path="/join/:code" element={<PrivateRoute><JoinLeague /></PrivateRoute>} />
       <Route path="/how-to-play" element={<HowToPlay />} />
       <Route path="/admin" element={<AdminPanel />} />
       <Route path="/admin/league/:leagueId" element={<AdminLeagueDetail />} />
       <Route path="/admin/teams" element={<AdminTeamsPanel />} />
       <Route path="/admin/schedule" element={<AdminSchedulePanel />} />
 
-      {/* Public League Pages */}
-      <Route path=":leagueId/draft-room" element={<DraftRoom />} />
-      <Route path=":leagueId/league-rules" element={<LeagueRules />} />
-      <Route path=":leagueId/members" element={<LeagueMembers />} />
+      {/* League Pages */}
+      <Route path=":leagueId/draft-room" element={<PrivateRoute><DraftRoom /></PrivateRoute>} />
+      <Route path=":leagueId/league-rules" element={<PrivateRoute><LeagueRules /></PrivateRoute>} />
+      <Route path=":leagueId/members" element={<PrivateRoute><LeagueMembers /></PrivateRoute>} />
       <Route
         path=":leagueId/scouting"
         element={
-          <PreDraftOnly>
-            <Scouting />
-          </PreDraftOnly>
+          <PrivateRoute>
+            <PreDraftOnly>
+              <Scouting />
+            </PreDraftOnly>
+          </PrivateRoute>
         }
       />
 
       {/* TeamPage - Available both pre and post draft */}
-      <Route path=":leagueId/team/:teamName" element={<TeamPage />} />
+      <Route path=":leagueId/team/:teamName" element={<PrivateRoute><TeamPage /></PrivateRoute>} />
 
       {/* Draft-Dependent League Pages */}
       <Route
         path=":leagueId/my-lineup"
         element={
-          <DraftGuard>
-            <MyLineup />
-          </DraftGuard>
+          <PrivateRoute>
+            <DraftGuard>
+              <MyLineup />
+            </DraftGuard>
+          </PrivateRoute>
         }
       />
       <Route
         path=":leagueId/free-agents"
         element={
-          <DraftGuard>
-            <FreeAgents />
-          </DraftGuard>
+          <PrivateRoute>
+            <DraftGuard>
+              <FreeAgents />
+            </DraftGuard>
+          </PrivateRoute>
         }
       />
       <Route
         path=":leagueId/my-league"
         element={
-          <DraftGuard>
-            <MyLeague />
-          </DraftGuard>
+          <PrivateRoute>
+            <DraftGuard>
+              <MyLeague />
+            </DraftGuard>
+          </PrivateRoute>
         }
       />
       <Route
         path=":leagueId/stats"
         element={
-          <DraftGuard>
-            <Stats />
-          </DraftGuard>
+          <PrivateRoute>
+            <DraftGuard>
+              <Stats />
+            </DraftGuard>
+          </PrivateRoute>
         }
       />
 
       {/* Confirmation Pages */}
-      <Route path="/cut/:leagueId/:teamName" element={<ConfirmCut />} />
-      <Route path="/confirm-add/:leagueId/:teamName" element={<ConfirmAddTeam />} />
-      <Route path="/confirm-swap/:leagueId/:addTeam/:dropTeam" element={<ConfirmSwapTeam />} />
+      <Route path="/cut/:leagueId/:teamName" element={<PrivateRoute><ConfirmCut /></PrivateRoute>} />
+      <Route path="/confirm-add/:leagueId/:teamName" element={<PrivateRoute><ConfirmAddTeam /></PrivateRoute>} />
+      <Route path="/confirm-swap/:leagueId/:addTeam/:dropTeam" element={<PrivateRoute><ConfirmSwapTeam /></PrivateRoute>} />
     </Routes>
   );
 }

@@ -23,7 +23,10 @@ function Login() {
       if (userData?.is_admin) {
         return navigate("/admin");
       }
-      navigate("/home");
+
+      const redirect = sessionStorage.getItem("authRedirect");
+      sessionStorage.removeItem("authRedirect");
+      navigate(redirect || "/home");
     } catch (err) {
       console.error("Login error:", err);
       setError("Invalid email or password.");

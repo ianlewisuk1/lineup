@@ -21,7 +21,6 @@ function JoinLeague() {
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("User not logged in");
 
       if (!teamName.trim()) {
         setError("Please enter a team name.");
@@ -44,11 +43,10 @@ function JoinLeague() {
 
       const leagueId = leagueData.id;
 
-      // Guard against joining the same league twice
+      // Guard against joining the same league twice — redirect them in instead
       const { data: existingMember } = await supabase.from('league_members').select('id').eq('league_id', leagueId).eq('user_id', user.id).single();
       if (existingMember) {
-        setError("You are already a member of this league.");
-        setLoading(false);
+        navigate(`/${leagueId}/draft-room`);
         return;
       }
 
