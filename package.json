@@ -19,8 +19,6 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
     "csv-parser": "^3.2.0",
-    "firebase-admin": "^13.4.0",
-    "firebase-tools": "^14.11.2",
     "lucide-react": "^0.525.0",
     "papaparse": "^5.5.3",
     "react": "^19.1.0",
@@ -34,7 +32,7 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "postinstall": "node scripts/create-firebase-stubs.js"
+    "postinstall": ""
   },
   "eslintConfig": {
     "extends": [
