@@ -31,6 +31,7 @@ function LeagueNavBar() {
           <Link to={`/${leagueId}/my-lineup`}>My Lineup</Link> {" | "}
           <Link to={`/${leagueId}/free-agents`}>Free Agents</Link> {" | "}
           <Link to={`/${leagueId}/stats`}>Stats</Link> {" | "}
+          <Link to={`/${leagueId}/members`}>Members</Link> {" | "}
           <Link to={`/${leagueId}/draft-room`}>Draft Room</Link> {" | "}
           <Link to={`/${leagueId}/league-rules`}>League Rules</Link> {" | "}
           <Link to={`/${leagueId}/my-league`}>My League</Link>
@@ -38,6 +39,7 @@ function LeagueNavBar() {
       ) : (
         <>
           <Link to={`/${leagueId}/draft-room`}>Draft Room</Link> {" | "}
+          <Link to={`/${leagueId}/members`}>Members</Link> {" | "}
           <Link to={`/${leagueId}/scouting`}>Scouting</Link> {" | "}
           <Link to={`/${leagueId}/league-rules`}>League Rules</Link>
         </>

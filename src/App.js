@@ -33,6 +33,7 @@ import AdminPanel from "./pages/AdminPanel";
 import AdminLeagueDetail from "./pages/AdminLeagueDetail"; 
 import AdminTeamsPanel from "./pages/AdminTeamsPanel";
 import AdminSchedulePanel from "./pages/AdminSchedulePanel";
+import LeagueMembers from "./pages/LeagueMembers";
 
 function AppWrapper() {
   return (
@@ -122,6 +123,7 @@ function App() {
       {/* Public League Pages */}
       <Route path=":leagueId/draft-room" element={<DraftRoom />} />
       <Route path=":leagueId/league-rules" element={<LeagueRules />} />
+      <Route path=":leagueId/members" element={<LeagueMembers />} />
       <Route
         path=":leagueId/scouting"
         element={
