@@ -20,6 +20,12 @@ function BottomNavBar({ leagueId, isDraftComplete = false }) {
       path: `/${leagueId}/draft-room`
     },
     {
+      key: 'members',
+      label: 'Members',
+      icon: '👥',
+      path: `/${leagueId}/members`
+    },
+    {
       key: 'league-rules',
       label: 'League Rules',
       icon: '📋',
@@ -76,7 +82,7 @@ function BottomNavBar({ leagueId, isDraftComplete = false }) {
       {/* Background with blur effect */}
       <div className="bg-slate-900/90 backdrop-blur-lg border-t border-white/20">
         <div className="max-w-md mx-auto px-2 py-2">
-          <div className={`grid gap-1 ${navItems.length === 3 ? 'grid-cols-3' : 'grid-cols-5'}`}>
+          <div className={`grid gap-1 grid-cols-${navItems.length}`}>
             {navItems.map((item) => {
               const isActive = isActiveTab(item.path);
               
@@ -93,8 +99,8 @@ function BottomNavBar({ leagueId, isDraftComplete = false }) {
                   `}
                 >
                   <span className="text-lg mb-1">{item.icon}</span>
-                  <span className={`text-xs font-medium leading-tight text-center ${
-                    navItems.length === 5 ? 'text-[10px]' : 'text-xs'
+                  <span className={`font-medium leading-tight text-center ${
+                    navItems.length >= 4 ? 'text-[10px]' : 'text-xs'
                   }`}>
                     {item.label}
                   </span>
