@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Navigate } from "react-router-dom";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { supabase } from "../supabase/supabase";
 
 function DraftGuard({ children }) {
   const { leagueId } = useParams();
@@ -11,25 +10,23 @@ function DraftGuard({ children }) {
   useEffect(() => {
     const checkDraftStatus = async () => {
       try {
-        const draftRef = doc(db, "leagues", leagueId, "meta", "draft");
-        const draftSnap = await getDoc(draftRef);
-        setDraftComplete(draftSnap.exists() && draftSnap.data().draftComplete === true);
+        const { data } = await supabase
+          .from("drafts")
+          .select("is_complete")
+          .eq("league_id", leagueId)
+          .single();
+        setDraftComplete(data?.is_complete === true);
       } catch (err) {
         console.error("Error checking draft status:", err);
       } finally {
         setLoading(false);
       }
     };
-
     checkDraftStatus();
   }, [leagueId]);
 
   if (loading) return <p>Checking draft status...</p>;
-
-  if (!draftComplete) {
-    return <Navigate to={`/${leagueId}/draft-room`} />;
-  }
-
+  if (!draftComplete) return <Navigate to={`/${leagueId}/draft-room`} />;
   return children;
 }
 

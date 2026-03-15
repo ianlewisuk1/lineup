@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { auth, db } from "../firebase/firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { supabase } from "../supabase/supabase";
 import LeagueNavBar from "../components/LeagueNavBar";
 
 function ConfirmCut() {
@@ -12,42 +11,43 @@ function ConfirmCut() {
 
   useEffect(() => {
     const fetchTeam = async () => {
-      const teamRef = doc(db, "teams", teamName);
-      const teamSnap = await getDoc(teamRef);
-      if (teamSnap.exists()) {
-        setTeamData(teamSnap.data());
-      }
+      const { data } = await supabase
+        .from("teams")
+        .select("school, conference, wins, losses")
+        .eq("slug", teamName)
+        .single();
+      if (data) setTeamData(data);
       setLoading(false);
     };
-
     fetchTeam();
   }, [teamName]);
 
   const handleConfirm = async () => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-    const memberRef = doc(db, "leagues", leagueId, "members", currentUser.uid);
-    const memberSnap = await getDoc(memberRef);
-    const data = memberSnap.data();
-    const lineup = data.lineup || {};
+    const { data: member } = await supabase
+      .from("league_members")
+      .select("starters, bench")
+      .eq("league_id", leagueId)
+      .eq("user_id", user.id)
+      .single();
 
-    const newRoster = (lineup.currentRoster || []).filter(t => t !== teamName);
-    const newStarters = (lineup.starters || []).filter(t => t !== teamName);
-    const newBench = (lineup.bench || []).filter(t => t !== teamName);
+    if (!member) return;
 
-    await updateDoc(memberRef, {
-      "lineup.currentRoster": newRoster,
-      "lineup.starters": newStarters,
-      "lineup.bench": newBench
-    });
+    await supabase
+      .from("league_members")
+      .update({
+        starters: (member.starters || []).filter(t => t !== teamName),
+        bench: (member.bench || []).filter(t => t !== teamName),
+      })
+      .eq("league_id", leagueId)
+      .eq("user_id", user.id);
 
     navigate(`/${leagueId}/my-lineup`);
   };
 
-  const handleCancel = () => {
-    navigate(`/${leagueId}/my-lineup`);
-  };
+  const handleCancel = () => navigate(`/${leagueId}/my-lineup`);
 
   if (loading) return <p>Loading team info...</p>;
 
@@ -60,18 +60,14 @@ function ConfirmCut() {
       {teamData && (
         <div style={{ padding: "1rem", border: "1px solid #ccc", marginBottom: "1rem" }}>
           <strong>{teamData.school}</strong> ({teamData.conference})<br />
-          Record: {teamData.currentSeason?.record}<br />
-          Next Opponent: {teamData.currentSeason?.nextOpponent} ({teamData.currentSeason?.nextOpponentSpread})<br />
-          Game Points: {teamData.currentSeason?.gamePoints ?? 0}
+          Record: {teamData.wins}-{teamData.losses}
         </div>
       )}
 
       <button onClick={handleConfirm} style={{ marginRight: "1rem", background: "#f44336", color: "white" }}>
         Yes, cut them
       </button>
-      <button onClick={handleCancel}>
-        Cancel
-      </button>
+      <button onClick={handleCancel}>Cancel</button>
     </div>
   );
 }
