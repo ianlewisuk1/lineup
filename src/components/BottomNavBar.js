@@ -82,7 +82,7 @@ function BottomNavBar({ leagueId, isDraftComplete = false }) {
       {/* Background with blur effect */}
       <div className="bg-slate-900/90 backdrop-blur-lg border-t border-white/20">
         <div className="max-w-md mx-auto px-2 py-2">
-          <div className={`grid gap-1 grid-cols-${navItems.length}`}>
+          <div className={`grid gap-1 ${navItems.length === 4 ? 'grid-cols-4' : navItems.length === 5 ? 'grid-cols-5' : 'grid-cols-3'}`}>
             {navItems.map((item) => {
               const isActive = isActiveTab(item.path);
               
