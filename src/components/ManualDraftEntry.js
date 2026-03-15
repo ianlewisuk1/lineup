@@ -112,7 +112,7 @@ function ManualDraftEntry({ leagueId, userMap, userFirstNames, draftData, onConf
     setConfirming(true);
 
     try {
-      // Call the parent function to update Firestore
+      // Call the parent function to update the database
       await onConfirmPick(selectedManager, selectedTeam, pickNumber);
       
       // Reset form

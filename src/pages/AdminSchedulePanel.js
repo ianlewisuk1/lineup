@@ -205,8 +205,7 @@ function AdminSchedulePanel() {
     alert(`Copied to clipboard: ${path}`);
   };
 
-  // Helper function to open Supabase console (placeholder)
-  const openInFirebase = (gameId, gameWeek) => {
+  const openInSupabase = (gameId, gameWeek) => {
     alert(`Game ID: ${gameId} (Week ${gameWeek})`);
   };
 
@@ -675,7 +674,7 @@ function AdminSchedulePanel() {
                     <td style={{ padding: "0.5rem", textAlign: "center" }}>
                       <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center" }}>
                         <button
-                          onClick={() => openInFirebase(g.id, g.week)}
+                          onClick={() => openInSupabase(g.id, g.week)}
                           style={{
                             background: "#4285f4",
                             color: "white",
