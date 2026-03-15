@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.js
 
@@ -40,8 +40,8 @@ scripts/serviceAccount.json
 /supabase/.branches
 /supabase/.temp
 
-# Backend
-/backend/node_modules
+# Firebase hosting cache (legacy, safe to remove)
+# .firebase/
 
 # Capacitor
 /ios/App/Pods
