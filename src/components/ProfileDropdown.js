@@ -51,13 +51,11 @@ const ProfileDropdown = () => {
 
   const handleLogout = async (e) => {
     e.stopPropagation();
-    if (window.confirm('Are you sure you want to log out?')) {
-      try {
-        await supabase.auth.signOut();
-        window.location.href = '/';
-      } catch (err) {
-        console.error('Logout error:', err);
-      }
+    try {
+      await supabase.auth.signOut();
+      window.location.href = '/';
+    } catch (err) {
+      console.error('Logout error:', err);
     }
   };
 
