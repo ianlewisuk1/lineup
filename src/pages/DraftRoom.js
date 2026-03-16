@@ -19,7 +19,7 @@ function DraftRoom() {
   const [leagueData, setLeagueData] = useState(null);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [timerInterval, setTimerInterval] = useState(null);
-  const [draftCountdown, setDraftCountdown] = useState(0);
+  const [draftCountdown, setDraftCountdown] = useState(null);
   const [countdownInterval, setCountdownInterval] = useState(null);
   const [serverTimeOffset, setServerTimeOffset] = useState(0);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
