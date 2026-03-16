@@ -146,21 +146,17 @@ async function main() {
 
   // Cache draft ID
   const { data: draftRow } = await adminClient
-    .from('drafts').select('id, draft_order').eq('league_id', LEAGUE_ID).single();
+    .from('drafts').select('id').eq('league_id', LEAGUE_ID).single();
   const DRAFT_ID = draftRow.id;
-  console.log(`\n[debug] Draft ID: ${DRAFT_ID}`);
-  console.log(`[debug] draft_order: ${JSON.stringify(draftRow.draft_order)}`);
-  console.log(`[debug] virtual user IDs: ${userClients.map((u) => `user${u.index}=${u.id}`).join(', ')}\n`);
 
   // Get all FBS teams ordered by game_points
   const { data: allTeams } = await adminClient
     .from('teams')
     .select('id, school')
-    .eq('classification', 'FBS')
+    .in('classification', ['fbs', 'FBS'])
     .order('game_points', { ascending: false });
 
   let pickNumber = 0;
-  const pickedTeams = new Set();
 
   while (true) {
     // Fetch current draft state
@@ -186,16 +182,16 @@ async function main() {
     if (!picker) {
       // Human user's turn — wait for them to pick in the browser
       console.log(`  Pick #${pickNumber + 1} — waiting for human to pick...`);
-      console.log(`    [debug] pickerId = ${pickerId}`);
-      console.log(`    [debug] virtual user IDs = ${userClients.map((u) => u.id).join(', ')}`);
-      console.log(`    [debug] draft_order = ${JSON.stringify(order)}`);
       await waitForPickAdvance(idx);
       pickNumber++;
       continue;
     }
 
-    // Pick best available team
-    const team = allTeams.find((t) => !pickedTeams.has(t.id));
+    // Pick best available team (query DB to account for auto-picks and human picks)
+    const { data: currentPicks } = await adminClient
+      .from('draft_picks').select('team_id').eq('draft_id', DRAFT_ID);
+    const pickedTeamIds = new Set((currentPicks ?? []).map((p) => p.team_id));
+    const team = allTeams.find((t) => !pickedTeamIds.has(t.id));
     if (!team) { console.error('No teams left!'); break; }
 
     pickNumber++;
@@ -209,8 +205,6 @@ async function main() {
 
     if (pickErr) { console.error('  make_pick error:', pickErr.message); break; }
     if (result?.error) { console.error('  make_pick rejected:', result.error); break; }
-
-    pickedTeams.add(team.id);
 
     if (result?.draft_complete) {
       console.log('\n✅ Draft complete!');

@@ -10,7 +10,7 @@
 ALTER TABLE drafts
   ADD COLUMN IF NOT EXISTS status        TEXT        DEFAULT 'pending',  -- 'pending'|'active'|'complete'
   ADD COLUMN IF NOT EXISTS pick_deadline TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS total_rounds  INT         DEFAULT 9;          -- teams per manager
+  ADD COLUMN IF NOT EXISTS total_rounds  INT         DEFAULT 7;          -- teams per manager (5 starters + 2 bench)
 
 -- Back-fill status from old boolean columns
 UPDATE drafts SET status = 'complete' WHERE draft_complete = TRUE;
@@ -217,8 +217,8 @@ BEGIN
     WHERE draft_id = p_draft_id AND user_id = v_member.user_id;
 
     UPDATE league_members SET
-      starters = v_picks[1:7],
-      bench    = v_picks[8:array_length(v_picks, 1)]
+      starters = v_picks[1:5],
+      bench    = v_picks[6:array_length(v_picks, 1)]
     WHERE league_id = v_league_id AND user_id = v_member.user_id;
   END LOOP;
 END;
