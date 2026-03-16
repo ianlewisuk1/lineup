@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabase/supabase";
+import { SEASON_YEAR } from "../utils/season";
 
 function AdminSchedulePanel() {
   const [week, setWeek] = useState("1");
@@ -100,10 +101,10 @@ function AdminSchedulePanel() {
     let allGames = [];
 
     if (week === "all") {
-      const { data: gamesData } = await supabase.from("games").select("*").eq("year", 2025);
+      const { data: gamesData } = await supabase.from("games").select("*").eq("year", SEASON_YEAR);
       allGames = (gamesData || []).map(g => ({ ...g, week: g.week }));
     } else {
-      const { data: gamesData } = await supabase.from("games").select("*").eq("year", 2025).eq("week", String(week));
+      const { data: gamesData } = await supabase.from("games").select("*").eq("year", SEASON_YEAR).eq("week", String(week));
       allGames = (gamesData || []).map(g => ({ ...g, week: parseInt(week) }));
     }
 

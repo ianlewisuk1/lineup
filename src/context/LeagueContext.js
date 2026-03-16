@@ -10,17 +10,22 @@ export function LeagueProvider({ children }) {
   const { currentUser } = useAuth();
   const [leagueData, setLeagueData] = useState(null);
   const [members, setMembers] = useState([]);
+  const [currentWeek, setCurrentWeek] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     if (!leagueId) return;
 
-    const [{ data: league }, { data: memberRows }] = await Promise.all([
+    const [{ data: league }, { data: memberRows }, { data: configRow }] = await Promise.all([
       supabase.from("leagues").select("*").eq("id", leagueId).single(),
       supabase.from("league_members")
         .select("user_id, team_name, points, joined_at, team_avatar, custom_avatar")
         .eq("league_id", leagueId),
+      supabase.from("config").select("value").eq("key", "season").single(),
     ]);
+
+    const week = configRow?.value?.currentWeek ?? 1;
+    setCurrentWeek(typeof week === "number" ? week : parseInt(String(week).match(/\d+/)?.[0] || "1", 10));
 
     if (league) setLeagueData(league);
 
@@ -74,7 +79,7 @@ export function LeagueProvider({ children }) {
   const currentUserId = currentUser?.id || null;
 
   return (
-    <LeagueContext.Provider value={{ leagueData, members, isAdmin, isDraftComplete, currentUserId, loading }}>
+    <LeagueContext.Provider value={{ leagueData, members, isAdmin, isDraftComplete, currentUserId, currentWeek, loading }}>
       {children}
     </LeagueContext.Provider>
   );

@@ -21,6 +21,7 @@ import {
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
 import ScoringSystemModal from '../components/ScoringSystemModal';
+import { SEASON_YEAR } from "../utils/season";
 
 function LeagueRules() {
   const { leagueId } = useParams();
@@ -734,7 +735,7 @@ function LeagueRules() {
         <div className="mt-8 bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 w-full">
           <div className="flex items-center space-x-4 mb-6">
             <Calendar size={32} className="text-purple-400 flex-shrink-0" />
-            <h2 className="text-2xl font-bold text-white min-w-0">2025 Season Timeline</h2>
+            <h2 className="text-2xl font-bold text-white min-w-0">{`${SEASON_YEAR} Season Timeline`}</h2>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 w-full">

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { supabase } from "../supabase/supabase";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Trophy, Users, ArrowRight, Plus, Wifi, WifiOff } from "lucide-react";
+import { SEASON_YEAR } from "../utils/season";
 import ProfileDropdown from "../components/ProfileDropdown";
 
 function Home() {
@@ -429,7 +430,7 @@ function Home() {
                         Season
                       </div>
                       <div className="text-lg font-bold text-white">
-                        2026
+                        {SEASON_YEAR}
                       </div>
                     </div>
                   </div>

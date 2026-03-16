@@ -4,6 +4,7 @@ import { supabase } from "../supabase/supabase";
 import { Plus, ArrowLeft, Calendar, MapPin, Trophy, Users, TrendingUp, ChevronDown } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
+import { SEASON_YEAR } from "../utils/season";
 
 function TeamPage() {
   const { leagueId, teamName } = useParams();
@@ -620,7 +621,7 @@ function TeamPage() {
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
             <h3 className="flex items-center gap-2 text-xl font-bold text-white mb-6">
               <TrendingUp size={20} />
-              2025 Season Stats
+              {SEASON_YEAR} Season Stats
             </h3>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -709,7 +710,7 @@ function TeamPage() {
           <div className="p-6 border-b border-white/10">
             <h3 className="flex items-center gap-2 text-xl font-bold text-white">
               <Calendar size={20} />
-              2025 Schedule ({schedule.length} games)
+              {SEASON_YEAR} Schedule ({schedule.length} games)
             </h3>
           </div>
 

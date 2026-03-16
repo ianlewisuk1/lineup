@@ -7,6 +7,7 @@ import LeagueNav from "../components/LeagueNav";
 import ScoringSystemModal from "../components/ScoringSystemModal";
 import RecentMovesWidget from '../components/RecentMovesWidget';
 import { useLeague } from "../context/LeagueContext";
+import { SEASON_YEAR } from "../utils/season";
 
 // Add new component for playoff bracket view
 const PlayoffBracket = ({ bracket, allTeams, TeamLogo, viewMode, selectedWeek, currentWeek, members }) => {  if (!bracket) return null;
@@ -1105,7 +1106,7 @@ function MyLeague() {
     const { data: gamesData } = await supabase
       .from('games')
       .select('*')
-      .eq('year', 2025)
+      .eq('year', SEASON_YEAR)
       .eq('week', weekNum.toString());
 
     const gamesByTeam = {};
@@ -1526,7 +1527,7 @@ function MyLeague() {
         
         if (currentWeekNum >= 12) {
           try {
-            const { data: playoffDoc } = await supabase.from("playoffs").select("*").eq("league_id", leagueId).eq("year", 2025).single();
+            const { data: playoffDoc } = await supabase.from("playoffs").select("*").eq("league_id", leagueId).eq("year", SEASON_YEAR).single();
             if (playoffDoc) {
               setPlayoffBracket(playoffDoc);
             }
@@ -2176,7 +2177,7 @@ function MyLeague() {
           const currentWeekNum = getCurrentWeekNumber();
           
           // Fetch schedule for 2025
-          const { data: gamesData } = await supabase.from("games").select("*").eq("year", 2025);
+          const { data: gamesData } = await supabase.from("games").select("*").eq("year", SEASON_YEAR);
 
           for (const game of (gamesData || [])) {
             const weekNum = game.week;

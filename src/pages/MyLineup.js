@@ -7,6 +7,7 @@ import ScoringSystemModal from "../components/ScoringSystemModal";
 import WeeklyLineupManager from "../components/WeeklyLineupManager";
 import { useLeague } from "../context/LeagueContext";
 import { Calendar, ChevronDown, ChevronUp } from "lucide-react";
+import { SEASON_YEAR } from "../utils/season";
 
 function MyLineup() {
   const { leagueId } = useParams();
@@ -342,7 +343,7 @@ function MyLineup() {
             const { data: gamesData } = await supabase
               .from('games')
               .select('*')
-              .eq('year', 2025)
+              .eq('year', SEASON_YEAR)
               .eq('week', week.toString());
 
             const weekGames = (gamesData || []).map(gameData => ({
