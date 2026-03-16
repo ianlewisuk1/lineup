@@ -147,8 +147,8 @@ function DraftRoom() {
       setCountdownInterval(interval);
       
       return () => clearInterval(interval);
-    } else {
-      // Clear countdown if not applicable
+    } else if (leagueData) {
+      // Clear countdown if not applicable (only once leagueData has loaded)
       if (countdownInterval) {
         clearInterval(countdownInterval);
         setCountdownInterval(null);
