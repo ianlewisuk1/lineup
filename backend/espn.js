@@ -77,8 +77,8 @@ async function ingestESPNScores() {
     .eq('key', 'season')
     .single();
 
-  const currentWeek = configRow?.value?.currentWeek;
-  if (!currentWeek || currentWeek === 'Offseason') {
+  const currentWeek = String(configRow?.value?.currentWeek ?? '');
+  if (!currentWeek || ['Preseason', 'Off-Season', 'Offseason'].includes(currentWeek)) {
     console.log('[ESPN] Off-season — skipping');
     return;
   }

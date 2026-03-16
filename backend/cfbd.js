@@ -31,13 +31,13 @@ async function ingestCFBDLines() {
     .eq('key', 'season')
     .single();
 
-  const currentWeek = configRow?.value?.currentWeek;
-  if (!currentWeek || currentWeek === 'Offseason') {
+  const currentWeek = String(configRow?.value?.currentWeek ?? '');
+  if (!currentWeek || ['Preseason', 'Off-Season', 'Offseason'].includes(currentWeek)) {
     console.log('[CFBD] Off-season — skipping');
     return;
   }
 
-  // Extract week number (e.g. "Week 3" → 3)
+  // Extract week number (e.g. "3" or "Week 3" → 3)
   const weekNum = parseInt(currentWeek.replace(/\D/g, ''), 10);
   if (isNaN(weekNum)) {
     console.log('[CFBD] Non-regular week — skipping lines ingestion');
