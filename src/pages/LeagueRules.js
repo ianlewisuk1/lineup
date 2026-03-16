@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
 import { useLeague } from "../context/LeagueContext";
 import {
@@ -16,10 +16,10 @@ import {
   Trash2,
   AlertTriangle,
   CheckCircle,
-  Lock,
-  ArrowLeft
+  Lock
 } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
+import LeagueNav from "../components/LeagueNav";
 import ScoringSystemModal from '../components/ScoringSystemModal';
 
 function LeagueRules() {
@@ -391,26 +391,7 @@ function LeagueRules() {
         <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
       </div>
 
-      {/* Navigation */}
-      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
-        <Link to="/home" className="flex items-center space-x-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
-            L
-          </div>
-          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-            Lineup
-          </span>
-        </Link>
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={() => navigate(`/${leagueId}/my-lineup`)}
-            className="flex items-center space-x-2 px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
-          >
-            <ArrowLeft size={16} />
-            <span>Back to League</span>
-          </button>
-        </div>
-      </nav>
+      <LeagueNav />
 
       {/* Main Content */}
       <div className="relative z-10 w-full max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 pb-40">

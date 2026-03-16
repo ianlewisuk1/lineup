@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
 import { Trophy, Users, Star, TrendingUp, Settings, ChevronDown, ChevronUp, Calendar, Crown, Zap } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
+import LeagueNav from "../components/LeagueNav";
 import ScoringSystemModal from "../components/ScoringSystemModal";
 import RecentMovesWidget from '../components/RecentMovesWidget';
 import { useLeague } from "../context/LeagueContext";
@@ -2717,16 +2718,6 @@ function MyLeague() {
     );
   };
 
-  const handleLogout = async () => {
-    if (window.confirm("Are you sure you want to log out?")) {
-      try {
-        await supabase.auth.signOut();
-        navigate("/");
-      } catch (err) {
-        console.error("Logout error:", err);
-      }
-    }
-  };
 
   // FIXED: Helper function to check if a member has live games using schedule data
   const getMemberLiveStatus = (member) => {
@@ -2816,25 +2807,7 @@ function MyLeague() {
 
       <BottomNavBar />
 
-      {/* Navigation */}
-      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
-        <Link to="/home" className="flex items-center space-x-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
-            L
-          </div>
-          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-            Lineup
-          </span>
-        </Link>
-        <div className="flex items-center space-x-4">
-          <button 
-            onClick={handleLogout}
-            className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
-          >
-            Logout
-          </button>
-        </div>
-      </nav>
+      <LeagueNav />
 
       {/* Main Content */}
       <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-32">

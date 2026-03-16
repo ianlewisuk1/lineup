@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
 import BottomNavBar from "../components/BottomNavBar";
+import LeagueNav from "../components/LeagueNav";
 import ScoringSystemModal from "../components/ScoringSystemModal";
 import WeeklyLineupManager from "../components/WeeklyLineupManager";
 import { useLeague } from "../context/LeagueContext";
@@ -839,16 +840,6 @@ function MyLineup() {
     }
   };
 
-  const handleLogout = async () => {
-    if (window.confirm("Are you sure you want to log out?")) {
-      try {
-        await supabase.auth.signOut();
-        navigate("/");
-      } catch (err) {
-        console.error("Logout error:", err);
-      }
-    }
-  };
 
   if (loading) {
     return (
@@ -876,25 +867,7 @@ function MyLineup() {
 
       <BottomNavBar />
 
-      {/* Navigation */}
-      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
-        <Link to="/home" className="flex items-center space-x-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
-            L
-          </div>
-          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-            Lineup
-          </span>
-        </Link>
-        <div className="flex items-center space-x-4">
-          <button 
-            onClick={handleLogout}
-            className="px-4 py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
-          >
-            Logout
-          </button>
-        </div>
-      </nav>
+      <LeagueNav />
 
       {/* Header */}
       <div className="relative z-10 text-center mb-8 px-4 sm:px-6">

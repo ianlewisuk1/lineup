@@ -408,7 +408,7 @@ function Home() {
                           {league.name || "Unnamed League"}
                         </h3>
                         <p className="text-xs text-white/60 truncate">
-                          ID: {league.id}
+                          {league.memberCount || 0} / {league.max_managers || "—"} managers
                         </p>
                       </div>
                     </div>
@@ -429,7 +429,7 @@ function Home() {
                         Season
                       </div>
                       <div className="text-lg font-bold text-white">
-                        2025
+                        2026
                       </div>
                     </div>
                   </div>

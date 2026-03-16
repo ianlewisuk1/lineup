@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
 import { Users, Copy, Check, Trash2, Share2 } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
+import LeagueNav from "../components/LeagueNav";
 import { useLeague } from "../context/LeagueContext";
 
 function LeagueMembers() {
@@ -54,13 +54,7 @@ function LeagueMembers() {
 
       <BottomNavBar />
 
-      {/* Nav */}
-      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
-        <Link to="/home" className="flex items-center space-x-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">L</div>
-          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">Lineup</span>
-        </Link>
-      </nav>
+      <LeagueNav />
 
       <div className="relative z-10 max-w-2xl mx-auto px-4 sm:px-6 py-4 pb-24">
         {/* Header */}
