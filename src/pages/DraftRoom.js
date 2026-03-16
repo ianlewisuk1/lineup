@@ -273,7 +273,7 @@ function DraftRoom() {
         const teamData = freshTeamData[bestTeam.id];
         const teamDisplayName = teamData?.school || bestTeam.id;
 
-        const fallbackName = userMap[currentUid]?.displayName || "Unknown";
+        const fallbackName = userFirstNames[currentUid] || "Unknown";
         const firstName = userFirstNames?.[currentUid];
         const displayName = firstName || fallbackName;
 
@@ -317,7 +317,7 @@ function DraftRoom() {
       const teamData = allTeams[bestTeam.id];
       const teamDisplayName = teamData?.school || bestTeam.id;
 
-      const fallbackName = userMap[currentUid]?.displayName || "Unknown";
+      const fallbackName = userFirstNames[currentUid] || "Unknown";
       const firstName = userFirstNames?.[currentUid];
       const displayName = firstName || fallbackName;
 
@@ -403,7 +403,7 @@ function DraftRoom() {
     }
 
     // ✅ Get proper display name using first name fallback
-    const fallbackName = userMap[pickingUserId]?.displayName || "Unknown";
+    const fallbackName = userFirstNames[pickingUserId] || "Unknown";
     const firstName = userFirstNames?.[pickingUserId];
     const displayName = firstName || fallbackName;
 
@@ -858,10 +858,10 @@ if (isManualDraft) {
                       </div>
                       <div>
                         <div className="font-semibold text-white">
-                          {user.displayName}
+                          {userFirstNames[user.user_id] || 'Unknown'}
                         </div>
                         <div className="text-sm text-white/70">
-                          {user.teamName}
+                          {user.team_name}
                         </div>
                       </div>
                     </div>
@@ -1446,8 +1446,7 @@ const currentUid = draftData && draftData.draft_order
   : null;
   
 const currentManager = currentUid ? {
-  displayName: userMap[currentUid]?.displayName,
-  firstName: userFirstNames[currentUid] // Only use firstName from user doc
+  firstName: userFirstNames[currentUid]
 } : null;
 
 return (
