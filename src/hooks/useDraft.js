@@ -154,6 +154,11 @@ export function useDraft(leagueId) {
       p_league_id: leagueId,
     });
     if (error) return { error: error.message };
+    // Manually refresh draft state in case real-time doesn't fire immediately
+    if (data?.success) {
+      const { data: updated } = await supabase.from('drafts').select('*').eq('league_id', leagueId).single();
+      if (updated) setDraft(updated);
+    }
     return data;
   }, [leagueId]);
 
