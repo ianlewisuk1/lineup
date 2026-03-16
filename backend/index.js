@@ -15,6 +15,7 @@ const cron = require('node-cron');
 const { ingestESPNScores } = require('./espn');
 const { ingestCFBDLines } = require('./cfbd');
 const { backfillRecentGames, updateTeamRecords } = require('./scoring');
+const { runAutoPickJobs } = require('./draft');
 const adminRouter = require('./admin');
 
 const app = express();
@@ -71,6 +72,15 @@ cron.schedule('0 8 * * *', async () => {
   }
 }, { timezone: 'America/New_York' });
 
+// Every 15 seconds — auto-pick for expired draft timers
+setInterval(async () => {
+  try {
+    await runAutoPickJobs();
+  } catch (err) {
+    console.error('[Draft auto-pick cron]', err.message);
+  }
+}, 15_000);
+
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
@@ -82,4 +92,5 @@ app.listen(PORT, () => {
   console.log('  */20 * * * *  CFBD lines ingestion');
   console.log('  0 6  * * *    Backfill recent games');
   console.log('  0 8  * * *    Update team records');
+  console.log('  every 15s     Draft auto-pick');
 });

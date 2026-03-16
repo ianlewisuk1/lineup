@@ -13,7 +13,7 @@ import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import CreateLeague from "./pages/CreateLeague";
 import JoinLeague from "./pages/JoinLeague";
-import DraftRoom from "./pages/DraftRoom";
+import DraftRoom from "./pages/DraftRoom.jsx";
 import Home from "./pages/Home";
 import Landing from "./pages/Landing";
 import MyLineup from "./pages/MyLineup";

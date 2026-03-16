@@ -1,0 +1,85 @@
+/**
+ * Draft auto-pick job.
+ *
+ * Runs every 15 seconds. Finds any active draft where pick_deadline
+ * has passed and the current picker hasn't made a pick, then
+ * auto-picks the highest-ranked available team for them.
+ */
+
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+async function runAutoPickJobs() {
+  // Find all active drafts where the deadline has passed
+  const { data: expiredDrafts, error } = await supabase
+    .from('drafts')
+    .select('id, league_id, draft_order, current_pick_index, total_rounds, pick_deadline')
+    .eq('status', 'active')
+    .lt('pick_deadline', new Date().toISOString());
+
+  if (error) {
+    console.error('[Draft auto-pick] Query error:', error.message);
+    return;
+  }
+
+  if (!expiredDrafts || expiredDrafts.length === 0) return;
+
+  for (const draft of expiredDrafts) {
+    try {
+      await autoPick(draft);
+    } catch (err) {
+      console.error(`[Draft auto-pick] Error for draft ${draft.id}:`, err.message);
+    }
+  }
+}
+
+async function autoPick(draft) {
+  const { id: draftId, league_id } = draft;
+
+  // Get already-picked team IDs for this draft
+  const { data: picks } = await supabase
+    .from('draft_picks')
+    .select('team_id')
+    .eq('draft_id', draftId);
+
+  const pickedIds = new Set((picks ?? []).map((p) => p.team_id));
+
+  // Get best available FBS team by game_points (highest rank)
+  const { data: teams } = await supabase
+    .from('teams')
+    .select('id, school, game_points')
+    .eq('classification', 'FBS')
+    .order('game_points', { ascending: false });
+
+  const bestTeam = (teams ?? []).find((t) => !pickedIds.has(t.id));
+
+  if (!bestTeam) {
+    console.warn(`[Draft auto-pick] No available team found for draft ${draftId}`);
+    return;
+  }
+
+  // Call the same make_pick RPC with auto_pick=true (service role bypasses turn check)
+  const { data: result, error } = await supabase.rpc('make_pick', {
+    p_draft_id:  draftId,
+    p_team_id:   bestTeam.id,
+    p_auto_pick: true,
+  });
+
+  if (error) {
+    console.error(`[Draft auto-pick] make_pick error for draft ${draftId}:`, error.message);
+    return;
+  }
+
+  if (result?.error) {
+    console.error(`[Draft auto-pick] make_pick rejected for draft ${draftId}:`, result.error);
+    return;
+  }
+
+  console.log(`[Draft auto-pick] Auto-picked ${bestTeam.school} for draft ${draftId} (pick #${result?.pick_number})`);
+}
+
+module.exports = { runAutoPickJobs };

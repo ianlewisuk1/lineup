@@ -13,7 +13,8 @@ function CreateLeague() {
   const [draftOrderType, setDraftOrderType] = useState("random");
   const [draftDate, setDraftDate] = useState("");
   const [draftTime, setDraftTime] = useState("");
-  const [timePerPick, setTimePerPick] = useState("2");
+  const [timePerPick, setTimePerPick] = useState("120"); // seconds
+  const [overlapWarning, setOverlapWarning] = useState("");
   const [loading, setLoading] = useState(false);
   const [currentWeek, setCurrentWeek] = useState("Preseason");
 
@@ -94,14 +95,22 @@ function CreateLeague() {
           return;
         }
 
-        if (!isNaN(draftDateTime)) {
-          leagueData.draft_date = draftDateTime;
+        // Overlap check
+        const { data: overlapCount } = await supabase.rpc('count_overlapping_drafts', {
+          p_draft_time: draftDateTime.toISOString(),
+        });
+        if (overlapCount >= 5) {
+          setOverlapWarning(`${overlapCount} other leagues are drafting within an hour of this time. Please choose a different slot.`);
+          setLoading(false);
+          return;
+        } else if (overlapCount > 0) {
+          setOverlapWarning(`Note: ${overlapCount} other league${overlapCount > 1 ? 's are' : ' is'} drafting around this time.`);
+        } else {
+          setOverlapWarning("");
         }
 
-        const parsedPickTime = Number(timePerPick);
-        if (!isNaN(parsedPickTime)) {
-          leagueData.time_per_pick = parsedPickTime;
-        }
+        leagueData.draft_date    = draftDateTime;
+        leagueData.time_per_pick = Number(timePerPick); // already in seconds
       }
 
       const { data: newLeague, error: leagueError } = await supabase.from('leagues').insert(leagueData).select('id, invite_code').single();
@@ -285,14 +294,38 @@ function CreateLeague() {
                   <label className="block text-sm font-medium text-white/80 mb-2">
                     Draft Time
                   </label>
-                  <input
-                    type="time"
+                  <select
                     value={draftTime}
-                    onChange={(e) => setDraftTime(e.target.value)}
+                    onChange={(e) => { setDraftTime(e.target.value); setOverlapWarning(""); }}
                     required
                     className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                  />
+                  >
+                    <option value="" className="text-black">Select a time…</option>
+                    {Array.from({ length: 96 }, (_, i) => {
+                      const h = Math.floor(i / 4);
+                      const m = (i % 4) * 15;
+                      const hh = String(h).padStart(2, '0');
+                      const mm = String(m).padStart(2, '0');
+                      const ampm = h < 12 ? 'AM' : 'PM';
+                      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+                      return (
+                        <option key={i} value={`${hh}:${mm}`} className="text-black">
+                          {h12}:{mm} {ampm}
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
+
+                {overlapWarning && (
+                  <div className={`p-4 rounded-xl text-sm ${
+                    overlapWarning.startsWith('Note')
+                      ? 'bg-amber-500/20 border border-amber-400/30 text-amber-200'
+                      : 'bg-red-500/20 border border-red-400/30 text-red-200'
+                  }`}>
+                    {overlapWarning}
+                  </div>
+                )}
 
                 <div className="p-4 bg-amber-500/20 border border-amber-400/30 rounded-xl">
                   <p className="text-sm text-amber-200">
@@ -310,10 +343,10 @@ function CreateLeague() {
                     required
                     className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
                   >
-                    <option value="1" className="text-black">1 minute</option>
-                    <option value="2" className="text-black">2 minutes</option>
-                    <option value="5" className="text-black">5 minutes</option>
-                    <option value="10" className="text-black">10 minutes</option>
+                    <option value="60" className="text-black">1 minute</option>
+                    <option value="120" className="text-black">2 minutes</option>
+                    <option value="300" className="text-black">5 minutes</option>
+                    <option value="600" className="text-black">10 minutes</option>
                   </select>
                 </div>
               </div>
