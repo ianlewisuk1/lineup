@@ -825,7 +825,7 @@ if (isManualDraft) {
           <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
         </div>
 
-        <BottomNavBar leagueId={leagueId} isDraftComplete={false} />
+        <BottomNavBar />
 
         {/* Navigation */}
         <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
@@ -973,7 +973,7 @@ if (draftData.type === "manual" || (draftData.in_progress !== undefined && draft
         <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
       </div>
 
-      <BottomNavBar leagueId={leagueId} isDraftComplete={draftData?.draft_complete || false} />
+      <BottomNavBar />
 
       {/* Navigation */}
       <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
@@ -1178,7 +1178,7 @@ if (draftData.type === "manual" || (draftData.in_progress !== undefined && draft
         <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
       </div>
 
-      <BottomNavBar leagueId={leagueId} isDraftComplete={false} />
+      <BottomNavBar />
 
       {/* Navigation */}
       <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
@@ -1375,7 +1375,7 @@ if (!draftData) {
         <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
       </div>
 
-      <BottomNavBar leagueId={leagueId} isDraftComplete={false} />
+      <BottomNavBar />
 
       {/* Navigation */}
       <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
@@ -1551,7 +1551,7 @@ return (
       <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
     </div>
 
-    <BottomNavBar leagueId={leagueId} isDraftComplete={draftData?.draft_complete || false} />
+    <BottomNavBar />
 
     {/* Navigation */}
     <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">

@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
+import { useLeague } from "../context/LeagueContext";
 import {
   Settings,
   Users,
@@ -24,15 +25,23 @@ import ScoringSystemModal from '../components/ScoringSystemModal';
 function LeagueRules() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
-  const [leagueData, setLeagueData] = useState(null);
+  const { leagueData, members: contextMembers, isAdmin, currentUserId } = useLeague();
   const [adminName, setAdminName] = useState("");
-  const [members, setMembers] = useState([]);
-  const [currentUserId, setCurrentUserId] = useState(null);
   const [formState, setFormState] = useState({});
   const [draftOrder, setDraftOrder] = useState([]);
   const [error, setError] = useState("");
   const [draftStarted, setDraftStarted] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Transform context members to the shape this page expects
+  const members = useMemo(() =>
+    contextMembers.map((m) => ({
+      uid: m.user_id,
+      name: `${m.first_name} ${m.last_name}`.trim() || m.team_name,
+      teamName: m.team_name,
+    })),
+    [contextMembers]
+  );
 
   // Custom modal states
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -64,105 +73,48 @@ function LeagueRules() {
     setModalMessage("");
   };
 
+  // Initialize form state from context leagueData
   useEffect(() => {
-    const fetchData = async () => {
+    if (!leagueData) return;
+    let formattedDraftDate = "";
+    if (leagueData.draft_date) {
+      const d = new Date(leagueData.draft_date);
+      const pad = (n) => String(n).padStart(2, '0');
+      formattedDraftDate = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    setFormState({
+      name: leagueData.name,
+      draftType: leagueData.draft_type,
+      draftOrderType: leagueData.draft_order_type || "random",
+      draftDate: formattedDraftDate,
+      timePerPick: leagueData.time_per_pick || 5,
+      maxManagers: leagueData.max_managers,
+    });
+  }, [leagueData]);
+
+  // Fetch page-specific data: draft status + admin name
+  useEffect(() => {
+    if (!leagueData?.id) return;
+    const fetchPageData = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) setCurrentUserId(user.id);
-
-        const { data: leagueRow, error: leagueError } = await supabase
-          .from('leagues')
-          .select('*')
-          .eq('id', leagueId)
-          .single();
-        if (leagueError) throw leagueError;
-        const data = leagueRow;
-        setLeagueData(data);
-
-        // Handle draftDate properly for datetime-local input
-        let formattedDraftDate = "";
-        if (data.draft_date) {
-          const draftDateTime = new Date(data.draft_date);
-          const year = draftDateTime.getFullYear();
-          const month = String(draftDateTime.getMonth() + 1).padStart(2, '0');
-          const day = String(draftDateTime.getDate()).padStart(2, '0');
-          const hours = String(draftDateTime.getHours()).padStart(2, '0');
-          const minutes = String(draftDateTime.getMinutes()).padStart(2, '0');
-          formattedDraftDate = `${year}-${month}-${day}T${hours}:${minutes}`;
+        const [{ data: draftRow }, adminResult] = await Promise.all([
+          supabase.from('drafts').select('id').eq('league_id', leagueId).single(),
+          leagueData.created_by
+            ? supabase.from('users').select('first_name, last_name').eq('id', leagueData.created_by).single()
+            : Promise.resolve({ data: null }),
+        ]);
+        setDraftStarted(!!(draftRow) || leagueData.draft_complete);
+        if (adminResult.data) {
+          setAdminName(`${adminResult.data.first_name || ""} ${adminResult.data.last_name || ""}`.trim());
         }
-
-        setFormState({
-          name: data.name,
-          draftType: data.draft_type,
-          draftOrderType: data.draft_order_type || "random",
-          draftDate: formattedDraftDate,
-          timePerPick: data.time_per_pick || 5,
-          maxManagers: data.max_managers
-        });
-
-        // Check if draft has started
-        const { data: draftRow } = await supabase
-          .from('drafts')
-          .select('id, draft_started, draft_complete')
-          .eq('league_id', leagueId)
-          .single();
-        setDraftStarted(!!(draftRow) || data.draft_complete);
-
-        if (data?.created_by) {
-          const { data: userData } = await supabase
-            .from('users')
-            .select('first_name, last_name')
-            .eq('id', data.created_by)
-            .single();
-          if (userData) {
-            setAdminName(`${userData.first_name || ""} ${userData.last_name || ""}`.trim());
-          }
-        }
-
-        const { data: memberRows, error: membersError } = await supabase
-          .from('league_members')
-          .select('*')
-          .eq('league_id', leagueId);
-        if (membersError) throw membersError;
-
-        const userIds = (memberRows || []).map((r) => r.user_id);
-        const { data: usersData } = await supabase
-          .from('users')
-          .select('id, first_name, last_name, email')
-          .in('id', userIds);
-        const userMap = Object.fromEntries((usersData || []).map((u) => [u.id, u]));
-
-        const memberList = (memberRows || []).map((memberRow) => {
-          const u = userMap[memberRow.user_id] || {};
-          return {
-            uid: memberRow.user_id,
-            name: `${u.first_name || ""} ${u.last_name || ""}`.trim(),
-            username: u.email || "Unknown",
-            teamName: memberRow.team_name || "Untitled Team",
-          };
-        });
-
-        setMembers(memberList);
-
-        // Initialize draft order
-        if (data.draft_order_type === "admin" && data.custom_draft_order) {
-          const orderedMembers = data.custom_draft_order.map(uid =>
-            memberList.find(m => m.uid === uid)
-          ).filter(Boolean);
-          setDraftOrder(orderedMembers);
-        } else if (data.draft_order_type === "admin") {
-          setDraftOrder([...memberList]);
-        }
-
         setLoading(false);
-      } catch (error) {
-        console.error("Error fetching league data:", error);
+      } catch (err) {
+        console.error("Error fetching league page data:", err);
         setLoading(false);
       }
     };
-
-    fetchData();
-  }, [leagueId]);
+    fetchPageData();
+  }, [leagueData?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle member changes and refresh draft order
   useEffect(() => {
@@ -200,7 +152,6 @@ function LeagueRules() {
     }
   }, [members, leagueData?.draft_order_type, leagueData?.custom_draft_order, draftStarted]);
 
-  const isAdmin = currentUserId && leagueData?.admin_id === currentUserId;
   const isLeagueFull = members.length === leagueData?.max_managers;
 
   const handleInputChange = (field, value) => {
@@ -1046,7 +997,7 @@ function LeagueRules() {
           </div>
         </div>
       )}
-      <BottomNavBar leagueId={leagueId} isDraftComplete={leagueData?.draft_complete || false} />
+      <BottomNavBar />
     </div>
   );
 }

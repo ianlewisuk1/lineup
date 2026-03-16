@@ -1,72 +1,17 @@
-import React, { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
 import { Users, Copy, Check, Trash2 } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
+import { useLeague } from "../context/LeagueContext";
 
 function LeagueMembers() {
-  const { leagueId } = useParams();
-  const [leagueData, setLeagueData] = useState(null);
-  const [members, setMembers] = useState([]);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const { leagueData, members, isAdmin, isDraftComplete } = useLeague();
   const [copied, setCopied] = useState(false);
-  const [isDraftComplete, setIsDraftComplete] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: league } = await supabase
-        .from("leagues")
-        .select("*")
-        .eq("id", leagueId)
-        .single();
-
-      if (!league) return;
-      setLeagueData(league);
-      setIsAdmin(user.id === league.admin_id);
-      setIsDraftComplete(league.draft_complete || false);
-
-      const { data: memberRows } = await supabase
-        .from("league_members")
-        .select("user_id, team_name, points, joined_at, team_avatar, custom_avatar")
-        .eq("league_id", leagueId);
-
-      if (!memberRows) return;
-
-      const userIds = memberRows.map((m) => m.user_id);
-      const { data: usersData } = await supabase
-        .from("users")
-        .select("id, first_name, last_name")
-        .in("id", userIds);
-      const userMap = Object.fromEntries((usersData || []).map((u) => [u.id, u]));
-
-      const enriched = memberRows.map((m) => ({
-        ...m,
-        first_name: userMap[m.user_id]?.first_name || "",
-        last_name: userMap[m.user_id]?.last_name || "",
-      }));
-
-      // Sort by join date
-      enriched.sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
-
-      setMembers(enriched);
-      setLoading(false);
-    };
-
-    load();
-
-    const channel = supabase
-      .channel(`members-${leagueId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "league_members", filter: `league_id=eq.${leagueId}` }, load)
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
-  }, [leagueId]);
-
+  const leagueId = leagueData?.id;
   const inviteUrl = `${window.location.origin}/join/${leagueData?.invite_code}`;
+  const spotsLeft = (leagueData?.max_managers || 0) - members.length;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(inviteUrl);
@@ -74,25 +19,15 @@ function LeagueMembers() {
     setTimeout(() => setCopied(false), 2500);
   };
 
-  const spotsLeft = (leagueData?.max_managers || 0) - members.length;
-
   const handleRemoveMember = async (userId, name) => {
     if (!window.confirm(`Remove ${name} from the league?`)) return;
-    const { error } = await supabase
+    await supabase
       .from("league_members")
       .delete()
       .eq("league_id", leagueId)
       .eq("user_id", userId);
-    if (!error) {
-      setMembers((prev) => prev.filter((m) => m.user_id !== userId));
-    }
+    // context real-time subscription will update members automatically
   };
-
-  if (loading) return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-      <div className="w-8 h-8 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
@@ -101,7 +36,7 @@ function LeagueMembers() {
         <div className="absolute bottom-20 right-10 w-96 h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000" />
       </div>
 
-      <BottomNavBar leagueId={leagueId} isDraftComplete={isDraftComplete} />
+      <BottomNavBar />
 
       {/* Nav */}
       <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
@@ -132,7 +67,6 @@ function LeagueMembers() {
             <h2 className="text-lg font-bold text-white mb-1">Invite Players</h2>
             <p className="text-white/60 text-sm mb-4">Share this link or code with your managers</p>
 
-            {/* Invite link */}
             <div className="flex items-center gap-2 mb-3">
               <div className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white/80 text-sm truncate">
                 {inviteUrl}
@@ -146,7 +80,6 @@ function LeagueMembers() {
               </button>
             </div>
 
-            {/* Invite code */}
             <div className="flex items-center gap-3 bg-purple-500/20 border border-purple-400/30 rounded-xl px-4 py-3">
               <span className="text-white/60 text-sm">Invite code:</span>
               <span className="text-white font-black text-xl tracking-widest">{leagueData?.invite_code}</span>

@@ -30,6 +30,7 @@ import ConfirmSwapTeam from "./pages/ConfirmSwapTeam";
 import Scouting from "./pages/Scouting";
 import PreDraftOnly from "./components/PreDraftOnly";
 import PrivateRoute from "./components/PrivateRoute";
+import LeagueLayout from "./components/LeagueLayout";
 import AdminPanel from "./pages/AdminPanel";
 import AdminLeagueDetail from "./pages/AdminLeagueDetail"; 
 import AdminTeamsPanel from "./pages/AdminTeamsPanel";
@@ -121,65 +122,18 @@ function App() {
       <Route path="/admin/teams" element={<AdminTeamsPanel />} />
       <Route path="/admin/schedule" element={<AdminSchedulePanel />} />
 
-      {/* League Pages */}
-      <Route path=":leagueId/draft-room" element={<PrivateRoute><DraftRoom /></PrivateRoute>} />
-      <Route path=":leagueId/league-rules" element={<PrivateRoute><LeagueRules /></PrivateRoute>} />
-      <Route path=":leagueId/members" element={<PrivateRoute><LeagueMembers /></PrivateRoute>} />
-      <Route
-        path=":leagueId/scouting"
-        element={
-          <PrivateRoute>
-            <PreDraftOnly>
-              <Scouting />
-            </PreDraftOnly>
-          </PrivateRoute>
-        }
-      />
-
-      {/* TeamPage - Available both pre and post draft */}
-      <Route path=":leagueId/team/:teamName" element={<PrivateRoute><TeamPage /></PrivateRoute>} />
-
-      {/* Draft-Dependent League Pages */}
-      <Route
-        path=":leagueId/my-lineup"
-        element={
-          <PrivateRoute>
-            <DraftGuard>
-              <MyLineup />
-            </DraftGuard>
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path=":leagueId/free-agents"
-        element={
-          <PrivateRoute>
-            <DraftGuard>
-              <FreeAgents />
-            </DraftGuard>
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path=":leagueId/my-league"
-        element={
-          <PrivateRoute>
-            <DraftGuard>
-              <MyLeague />
-            </DraftGuard>
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path=":leagueId/stats"
-        element={
-          <PrivateRoute>
-            <DraftGuard>
-              <Stats />
-            </DraftGuard>
-          </PrivateRoute>
-        }
-      />
+      {/* League Pages — all share LeagueProvider via LeagueLayout */}
+      <Route path=":leagueId" element={<PrivateRoute><LeagueLayout /></PrivateRoute>}>
+        <Route path="draft-room" element={<DraftRoom />} />
+        <Route path="league-rules" element={<LeagueRules />} />
+        <Route path="members" element={<LeagueMembers />} />
+        <Route path="scouting" element={<PreDraftOnly><Scouting /></PreDraftOnly>} />
+        <Route path="team/:teamName" element={<TeamPage />} />
+        <Route path="my-lineup" element={<DraftGuard><MyLineup /></DraftGuard>} />
+        <Route path="free-agents" element={<DraftGuard><FreeAgents /></DraftGuard>} />
+        <Route path="my-league" element={<DraftGuard><MyLeague /></DraftGuard>} />
+        <Route path="stats" element={<DraftGuard><Stats /></DraftGuard>} />
+      </Route>
 
       {/* Confirmation Pages */}
       <Route path="/cut/:leagueId/:teamName" element={<PrivateRoute><ConfirmCut /></PrivateRoute>} />
