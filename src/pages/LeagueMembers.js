@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
-import { Users, Copy, Check } from "lucide-react";
+import { Users, Copy, Check, Trash2 } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 
 function LeagueMembers() {
@@ -77,6 +77,18 @@ function LeagueMembers() {
   };
 
   const spotsLeft = (leagueData?.max_managers || 0) - members.length;
+
+  const handleRemoveMember = async (userId, name) => {
+    if (!window.confirm(`Remove ${name} from the league?`)) return;
+    const { error } = await supabase
+      .from("league_members")
+      .delete()
+      .eq("league_id", leagueId)
+      .eq("user_id", userId);
+    if (!error) {
+      setMembers((prev) => prev.filter((m) => m.user_id !== userId));
+    }
+  };
 
   if (loading) return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
@@ -180,6 +192,16 @@ function LeagueMembers() {
                       <div className="text-white font-bold">{m.points ?? 0}</div>
                       <div className="text-xs text-white/50">pts</div>
                     </div>
+                  )}
+
+                  {isAdmin && !isDraftComplete && (
+                    <button
+                      onClick={() => handleRemoveMember(m.user_id, `${m.first_name} ${m.last_name}`.trim())}
+                      className="ml-2 p-2 bg-red-500/20 border border-red-400/30 text-red-300 rounded-lg hover:bg-red-500/30 transition-all duration-200 flex-shrink-0"
+                      title="Remove manager"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   )}
                 </div>
               ))}

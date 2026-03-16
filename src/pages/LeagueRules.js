@@ -799,46 +799,6 @@ function LeagueRules() {
             </div>
           )}
 
-          {/* League Members */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 w-full">
-            <div className="flex items-center space-x-4 mb-6">
-              <Users size={32} className="text-green-400 flex-shrink-0" />
-              <h2 className="text-2xl font-bold text-white min-w-0">
-                League Members ({members.length}/{leagueData.max_managers})
-              </h2>
-            </div>
-
-            {members.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-white/60 text-lg">No members in this league yet.</p>
-              </div>
-            ) : (
-              <div className="space-y-3 w-full">
-                {members.map((member, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl w-full">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-white font-semibold truncate">
-                        {member.name || "Unknown"}
-                      </div>
-                      <div className="text-white/60 text-sm truncate">
-                        {member.teamName} • @{member.username}
-                      </div>
-                    </div>
-
-                    {isAdmin && (
-                      <button
-                        onClick={() => handleRemoveManager(member.uid, member.name || member.username)}
-                        disabled={draftStarted}
-                        className="px-4 py-2 bg-red-500/20 border border-red-400/30 text-red-300 font-medium rounded-lg hover:bg-red-500/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-                      >
-                        {draftStarted ? "Locked" : "Remove"}
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Season Timeline */}
