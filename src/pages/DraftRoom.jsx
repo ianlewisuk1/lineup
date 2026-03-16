@@ -33,7 +33,7 @@ export default function DraftRoom() {
   const { leagueId } = useParams();
   const { leagueData, isAdmin } = useLeague();
   const {
-    draft, picks, members, availableTeams, pickedTeamIds,
+    draft, picks, members, teams, availableTeams, pickedTeamIds,
     currentPickerUid, isMyTurn, pickDeadline,
     totalPicks, nManagers, rosterByUser, memberMap,
     currentUserId, loading, error,
