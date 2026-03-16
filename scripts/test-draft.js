@@ -136,20 +136,18 @@ async function main() {
     }
   }
 
-  // 5. Start the draft (as admin via service role)
-  console.log('\n🚀 Starting draft...');
-  const { data: startResult, error: startErr } = await adminClient.rpc('start_draft', {
-    p_league_id: LEAGUE_ID,
-  });
-
-  if (startErr) { console.error('start_draft error:', startErr.message); process.exit(1); }
-  if (startResult?.error) { console.error('start_draft rejected:', startResult.error); process.exit(1); }
-
-  console.log('  Draft started!');
-  console.log('  Order:', startResult.draft_order?.join(', '));
+  // 5. Wait for admin to start the draft in the browser
+  console.log('\n⏳ Waiting for you to start the draft in the browser...');
+  await waitForDraftActive();
+  console.log('  Draft is active!');
 
   // 6. Simulate picks
   console.log('\n🎯 Simulating picks...\n');
+
+  // Cache draft ID
+  const { data: draftRow } = await adminClient
+    .from('drafts').select('id').eq('league_id', LEAGUE_ID).single();
+  const DRAFT_ID = draftRow.id;
 
   // Get all FBS teams ordered by game_points
   const { data: allTeams } = await adminClient
@@ -196,7 +194,7 @@ async function main() {
     console.log(`  Pick #${pickNumber} (R${roundNum}) — user${picker.index} → ${team.school}`);
 
     const { data: result, error: pickErr } = await picker.client.rpc('make_pick', {
-      p_draft_id: (await adminClient.from('drafts').select('id').eq('league_id', LEAGUE_ID).single()).data.id,
+      p_draft_id: DRAFT_ID,
       p_team_id:  team.id,
     });
 
@@ -239,6 +237,18 @@ async function main() {
   }
 
   console.log('\n🏁 Done.\n');
+}
+
+async function waitForDraftActive() {
+  while (true) {
+    const { data } = await adminClient
+      .from('drafts')
+      .select('status')
+      .eq('league_id', LEAGUE_ID)
+      .single();
+    if (data?.status === 'active') return;
+    await sleep(2000);
+  }
 }
 
 function sleep(ms) {
