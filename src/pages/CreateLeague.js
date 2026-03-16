@@ -63,6 +63,8 @@ function CreateLeague() {
         return;
       }
 
+      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
       const leagueData = {
         name: leagueName,
         created_by: user.id,
@@ -73,6 +75,7 @@ function CreateLeague() {
         draft_order_type: draftOrderType,
         scoring_type: "cumulative",
         current_week: currentWeek,
+        invite_code: inviteCode,
       };
 
       if (draftType === "live") {
