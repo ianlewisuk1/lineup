@@ -77,29 +77,35 @@ function LeagueMembers() {
             <h2 className="text-lg font-bold text-white mb-1">Invite Players</h2>
             <p className="text-white/60 text-sm mb-4">Share this link or code with your managers</p>
 
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white/80 text-sm truncate">
-                {inviteUrl}
-              </div>
+            {/* Invite code — prominent */}
+            <div className="text-center bg-purple-500/20 border border-purple-400/30 rounded-xl px-4 py-4 mb-3">
+              <p className="text-white/60 text-xs uppercase tracking-widest mb-1">Invite Code</p>
+              <p className="text-white font-black text-3xl tracking-[0.3em]">
+                {leagueData?.invite_code || '—'}
+              </p>
+            </div>
+
+            {/* Full-width URL */}
+            <div className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white/70 text-sm mb-3 break-all">
+              {inviteUrl}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-2">
               <button
                 onClick={handleCopy}
-                className="flex items-center gap-2 px-4 py-3 bg-white/10 border border-white/20 hover:bg-white/20 rounded-xl font-semibold text-sm transition-all duration-200 whitespace-nowrap"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white/10 border border-white/20 hover:bg-white/20 rounded-xl font-semibold text-sm transition-all duration-200"
               >
                 {copied ? <Check size={16} /> : <Copy size={16} />}
-                {copied ? "Copied!" : "Copy"}
+                {copied ? "Copied!" : "Copy Link"}
               </button>
               <button
                 onClick={handleShare}
-                className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 rounded-xl font-semibold text-sm transition-all duration-200 whitespace-nowrap"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 rounded-xl font-semibold text-sm transition-all duration-200"
               >
                 <Share2 size={16} />
                 Share
               </button>
-            </div>
-
-            <div className="flex items-center gap-3 bg-purple-500/20 border border-purple-400/30 rounded-xl px-4 py-3">
-              <span className="text-white/60 text-sm">Invite code:</span>
-              <span className="text-white font-black text-xl tracking-widest">{leagueData?.invite_code}</span>
             </div>
           </div>
         )}
