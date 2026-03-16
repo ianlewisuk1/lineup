@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
-import { Users, Copy, Check, Trash2 } from "lucide-react";
+import { Users, Copy, Check, Trash2, Share2 } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 import { useLeague } from "../context/LeagueContext";
 
@@ -17,6 +17,22 @@ function LeagueMembers() {
     navigator.clipboard.writeText(inviteUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
+  };
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Join ${leagueData?.name} on Lineup`,
+          text: `Use invite code ${leagueData?.invite_code} to join my Lineup league!`,
+          url: inviteUrl,
+        });
+      } catch {
+        // user cancelled — do nothing
+      }
+    } else {
+      handleCopy();
+    }
   };
 
   const handleRemoveMember = async (userId, name) => {
@@ -73,10 +89,17 @@ function LeagueMembers() {
               </div>
               <button
                 onClick={handleCopy}
-                className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 rounded-xl font-semibold text-sm transition-all duration-200 whitespace-nowrap"
+                className="flex items-center gap-2 px-4 py-3 bg-white/10 border border-white/20 hover:bg-white/20 rounded-xl font-semibold text-sm transition-all duration-200 whitespace-nowrap"
               >
                 {copied ? <Check size={16} /> : <Copy size={16} />}
-                {copied ? "Copied!" : "Copy Link"}
+                {copied ? "Copied!" : "Copy"}
+              </button>
+              <button
+                onClick={handleShare}
+                className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 rounded-xl font-semibold text-sm transition-all duration-200 whitespace-nowrap"
+              >
+                <Share2 size={16} />
+                Share
               </button>
             </div>
 
