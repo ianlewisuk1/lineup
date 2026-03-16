@@ -181,8 +181,11 @@ async function main() {
 
     const picker = userClients.find((u) => u.id === pickerId);
     if (!picker) {
-      // Admin or user not in our test set — auto-pick via service role
-      break;
+      // Human user's turn — wait for them to pick in the browser
+      console.log(`  Pick #${pickNumber + 1} — waiting for human to pick...`);
+      await waitForPickAdvance(idx);
+      pickNumber++;
+      continue;
     }
 
     // Pick best available team
@@ -237,6 +240,18 @@ async function main() {
   }
 
   console.log('\n🏁 Done.\n');
+}
+
+async function waitForPickAdvance(currentIndex) {
+  while (true) {
+    const { data } = await adminClient
+      .from('drafts')
+      .select('current_pick_index, status')
+      .eq('league_id', LEAGUE_ID)
+      .single();
+    if (!data || data.status === 'complete' || data.current_pick_index > currentIndex) return;
+    await sleep(1000);
+  }
 }
 
 async function waitForDraftActive() {
