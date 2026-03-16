@@ -3,8 +3,39 @@ import { useParams } from 'react-router-dom';
 import { Clock, Users, Trophy, ChevronRight, Check } from 'lucide-react';
 import { useDraft } from '../hooks/useDraft';
 import { useLeague } from '../context/LeagueContext';
+import { supabase } from '../supabase/supabase';
 import BottomNavBar from '../components/BottomNavBar';
 import LeagueNav from '../components/LeagueNav';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Presence — tracks who is currently in the draft room
+// ─────────────────────────────────────────────────────────────────────────────
+function usePresence(leagueId, currentUserId) {
+  const [onlineIds, setOnlineIds] = useState(new Set());
+
+  useEffect(() => {
+    if (!leagueId || !currentUserId) return;
+
+    const channel = supabase.channel(`presence:draft:${leagueId}`, {
+      config: { presence: { key: currentUserId } },
+    });
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        setOnlineIds(new Set(Object.keys(state)));
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({ user_id: currentUserId, online_at: new Date().toISOString() });
+        }
+      });
+
+    return () => { supabase.removeChannel(channel); };
+  }, [leagueId, currentUserId]);
+
+  return onlineIds;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Countdown — derived entirely from pick_deadline, no syncing needed
@@ -46,6 +77,8 @@ export default function DraftRoom() {
   const [starting, setStarting]     = useState(false);
   const [lastPickId, setLastPickId] = useState(null);
   const pickBoardRef = useRef(null);
+
+  const onlineIds = usePresence(leagueId, currentUserId);
 
   const secondsLeft = useCountdown(pickDeadline);
 
@@ -124,18 +157,22 @@ export default function DraftRoom() {
             </div>
             <div className="space-y-3">
               {members.map((m, i) => {
-                const info = memberMap[m.user_id];
+                const info     = memberMap[m.user_id];
+                const isOnline = onlineIds.has(m.user_id);
                 return (
                   <div key={m.user_id} className="flex items-center gap-3 bg-white/5 rounded-xl p-3 border border-white/10">
-                    <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center font-bold text-sm">
+                    <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
                       {i + 1}
                     </div>
-                    <div>
-                      <div className="font-semibold">{info?.name ?? '—'}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold flex items-center gap-2">
+                        {info?.name ?? '—'}
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isOnline ? 'bg-green-400' : 'bg-white/20'}`} title={isOnline ? 'In draft room' : 'Not in draft room'} />
+                      </div>
                       <div className="text-sm text-white/60">{info?.teamName}</div>
                     </div>
                     {m.user_id === currentUserId && (
-                      <span className="ml-auto text-xs text-purple-300 font-semibold">You</span>
+                      <span className="text-xs text-purple-300 font-semibold">You</span>
                     )}
                   </div>
                 );
@@ -207,16 +244,14 @@ export default function DraftRoom() {
 
             {/* Draft order strip */}
             <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
-              {draft.draft_order.map((uid, i) => {
-                const info    = memberMap[uid];
-                const isCurr  = i === currentPickIndex % (nManagers || 1) && Math.floor(currentPickIndex / (nManagers || 1)) % 2 === 0
-                  ? currentPickIndex === i + Math.floor(currentPickIndex / nManagers) * nManagers
-                  : false;
-                const active  = uid === currentPickerUid;
+              {draft.draft_order.map((uid) => {
+                const info     = memberMap[uid];
+                const active   = uid === currentPickerUid;
+                const isOnline = onlineIds.has(uid);
                 return (
                   <div
                     key={uid}
-                    className={`flex-shrink-0 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
                       active
                         ? 'bg-purple-500 text-white'
                         : uid === currentUserId
@@ -224,6 +259,7 @@ export default function DraftRoom() {
                         : 'bg-white/5 text-white/50'
                     }`}
                   >
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isOnline ? 'bg-green-400' : 'bg-white/20'}`} />
                     {info?.firstName || info?.teamName || '?'}
                   </div>
                 );
