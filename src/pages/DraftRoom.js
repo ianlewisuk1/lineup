@@ -5,18 +5,17 @@ import DraftBoard from "../components/DraftBoard";
 import ManualDraftEntry from "../components/ManualDraftEntry";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import BottomNavBar from "../components/BottomNavBar";
+import { useLeague } from "../context/LeagueContext";
 
 function DraftRoom() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
+  const { leagueData, isAdmin: isLeagueAdmin, currentUserId: userId, members: contextMembers } = useLeague();
+  const maxManagers = leagueData?.max_managers || 8;
   const [draftData, setDraftData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState(null);
   const [teamPick, setTeamPick] = useState("");
   const [userMap, setUserMap] = useState({});
-  const [isLeagueAdmin, setIsLeagueAdmin] = useState(false);
-  const [maxManagers, setMaxManagers] = useState(null);
-  const [leagueData, setLeagueData] = useState(null);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [timerInterval, setTimerInterval] = useState(null);
   const [draftCountdown, setDraftCountdown] = useState(null);
@@ -31,35 +30,13 @@ function DraftRoom() {
 
     const fetchDraft = async () => {
       try {
-        const { data: leagueDoc } = await supabase.from("leagues").select("*").eq("id", leagueId).single();
-        setLeagueData(leagueDoc);
-
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-        setUserId(user.id);
-
+        // Fetch full member roster data (starters/bench) — league info comes from context
         const { data: membersSnap } = await supabase.from("league_members").select("*").eq("league_id", leagueId);
         const userMapData = {};
-        const userFirstNamesData = {};
-
         (membersSnap || []).forEach((memberDoc) => {
           userMapData[memberDoc.user_id] = memberDoc;
         });
-
-        const memberUserIds = (membersSnap || []).map((m) => m.user_id);
-        const { data: usersData } = await supabase.from("users").select("id, first_name").in("id", memberUserIds);
-        (usersData || []).forEach((u) => {
-          userFirstNamesData[u.id] = u.first_name || 'Unknown';
-        });
-
         setUserMap(userMapData);
-        setUserFirstNames(userFirstNamesData);
-
-        console.log("✅ setUserMap:", userMapData);
-        console.log("✅ setUserFirstNames:", userFirstNamesData);
-
-        setIsLeagueAdmin(user.id === leagueDoc?.admin_id);
-        setMaxManagers(leagueDoc?.max_managers || 8);
 
         const { data: teamsData } = await supabase.from("teams").select("*");
         const teamDataMap = {};
@@ -112,6 +89,13 @@ function DraftRoom() {
   const getSyncedTime = () => {
     return Date.now() + serverTimeOffset;
   };
+
+  // Derive userFirstNames from context members (no separate users query needed)
+  useEffect(() => {
+    const data = {};
+    contextMembers.forEach(m => { data[m.user_id] = m.first_name || 'Unknown'; });
+    setUserFirstNames(data);
+  }, [contextMembers]);
 
   // Pre-draft countdown timer effect
   useEffect(() => {

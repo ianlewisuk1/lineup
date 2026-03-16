@@ -3,6 +3,7 @@ import { supabase } from "../supabase/supabase";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Plus, Search, Filter, ChevronDown } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
+import { useLeague } from "../context/LeagueContext";
 
 // Compact Sort Button Component
 const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
@@ -26,6 +27,7 @@ const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
 function FreeAgents() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
+  const { currentUserId } = useLeague();
   const [teamsByConference, setTeamsByConference] = useState({});
   const [conferenceList, setConferenceList] = useState([]);
   const [activeConference, setActiveConference] = useState("National");
@@ -39,7 +41,6 @@ function FreeAgents() {
   const [teamToAdd, setTeamToAdd] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: "school", direction: "asc" });
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentUser, setCurrentUser] = useState(null);
 
   // ADDED: Free agency lock state
   const [faLocked, setFaLocked] = useState(false);
@@ -128,9 +129,8 @@ function FreeAgents() {
       // Fetch config data first
       await fetchConfigData();
 
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      setCurrentUser(user);
+      const user = { id: currentUserId };
+      if (!currentUserId) return;
 
       const { data: teamsData } = await supabase.from('teams').select('*');
       const { data: memberRows } = await supabase
@@ -236,7 +236,7 @@ function FreeAgents() {
       return;
     }
 
-    if (!currentUser) return;
+    if (!currentUserId) return;
 
     if (userTeams.length < 7) {
       setTeamToAdd(team);
@@ -263,13 +263,13 @@ function FreeAgents() {
     }
 
     try {
-      if (!currentUser) return;
+      if (!currentUserId) return;
 
       const { data: memberRow } = await supabase
         .from('league_members')
         .select('*')
         .eq('league_id', leagueId)
-        .eq('user_id', currentUser.id)
+        .eq('user_id', currentUserId)
         .single();
 
       const starters = [...(memberRow?.starters || [])];
@@ -305,7 +305,7 @@ function FreeAgents() {
           free_agent_moves: currentMoves + 1
         })
         .eq('league_id', leagueId)
-        .eq('user_id', currentUser.id);
+        .eq('user_id', currentUserId);
       if (updateError) throw updateError;
 
       // Get current week from config
@@ -331,7 +331,7 @@ function FreeAgents() {
         const { data: userData } = await supabase
           .from('users')
           .select('first_name')
-          .eq('id', currentUser.id)
+          .eq('id', currentUserId)
           .single();
         if (userData) {
           managerName = userData.first_name || "Unknown Manager";
@@ -343,7 +343,7 @@ function FreeAgents() {
       // Log the move
       await supabase.from('move_history').insert({
         league_id: leagueId,
-        user_id: currentUser.id,
+        user_id: currentUserId,
         team_name: memberRow?.team_name || "",
         picked_up: teamToAdd.school,
         dropped: null,
@@ -390,13 +390,13 @@ function FreeAgents() {
     }
 
     try {
-      if (!currentUser) return;
+      if (!currentUserId) return;
 
       const { data: memberRow } = await supabase
         .from('league_members')
         .select('*')
         .eq('league_id', leagueId)
-        .eq('user_id', currentUser.id)
+        .eq('user_id', currentUserId)
         .single();
 
       const starters = [...(memberRow?.starters || [])];
@@ -429,7 +429,7 @@ function FreeAgents() {
           free_agent_moves: currentMoves + 1
         })
         .eq('league_id', leagueId)
-        .eq('user_id', currentUser.id);
+        .eq('user_id', currentUserId);
       if (updateError) throw updateError;
 
       // Get current week from config
@@ -464,7 +464,7 @@ function FreeAgents() {
         const { data: userData } = await supabase
           .from('users')
           .select('first_name')
-          .eq('id', currentUser.id)
+          .eq('id', currentUserId)
           .single();
         if (userData) {
           managerName = userData.first_name || "Unknown Manager";
@@ -476,7 +476,7 @@ function FreeAgents() {
       // Log the move
       await supabase.from('move_history').insert({
         league_id: leagueId,
-        user_id: currentUser.id,
+        user_id: currentUserId,
         team_name: memberRow?.team_name || "",
         picked_up: pendingAddTeam,
         dropped: droppedTeamName,

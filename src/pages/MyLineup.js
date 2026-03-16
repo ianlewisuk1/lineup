@@ -4,11 +4,13 @@ import { supabase } from "../supabase/supabase";
 import BottomNavBar from "../components/BottomNavBar";
 import ScoringSystemModal from "../components/ScoringSystemModal";
 import WeeklyLineupManager from "../components/WeeklyLineupManager";
+import { useLeague } from "../context/LeagueContext";
 import { Calendar, ChevronDown, ChevronUp } from "lucide-react";
 
 function MyLineup() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
+  const { currentUserId, members: ctxMembers } = useLeague();
   const [loading, setLoading] = useState(true);
   const [teamName, setTeamName] = useState("");
   const [smackTalk, setSmackTalk] = useState("");
@@ -665,8 +667,8 @@ function MyLineup() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      if (!currentUser) return;
+      const currentUser = { id: currentUserId };
+      if (!currentUserId) return;
 
       const loadLiveRanking = async () => {
         try {
@@ -677,13 +679,8 @@ function MyLineup() {
           const currentWeekVal = configData?.value?.currentWeek || 1;
           const previousWeek = Math.max(1, (typeof currentWeekVal === 'number' ? currentWeekVal : parseInt(String(currentWeekVal).match(/\d+/)?.[0] || '1')) - 1);
 
-          // Get all league members for current week live ranking
-          const { data: allMembersData } = await supabase
-            .from('league_members')
-            .select('user_id, points, team_name')
-            .eq('league_id', leagueId);
-
-          const allMembers = (allMembersData || []).map(m => ({
+          // Use context members for ranking (no extra fetch needed)
+          const allMembers = ctxMembers.map(m => ({
             userId: m.user_id,
             points: m.points || 0,
             teamName: m.team_name || "Unnamed Team"
@@ -693,7 +690,7 @@ function MyLineup() {
           allMembers.sort((a, b) => b.points - a.points);
 
           // Find current user's live rank
-          const currentUserRankIndex = allMembers.findIndex(member => member.userId === currentUser.id);
+          const currentUserRankIndex = allMembers.findIndex(member => member.userId === currentUserId);
           const liveRank = currentUserRankIndex !== -1 ? currentUserRankIndex + 1 : null;
           setCurrentWeekRank(liveRank);
 

@@ -5,6 +5,7 @@ import { Trophy, Users, Star, TrendingUp, Settings, ChevronDown, ChevronUp, Cale
 import BottomNavBar from "../components/BottomNavBar";
 import ScoringSystemModal from "../components/ScoringSystemModal";
 import RecentMovesWidget from '../components/RecentMovesWidget';
+import { useLeague } from "../context/LeagueContext";
 
 // Add new component for playoff bracket view
 const PlayoffBracket = ({ bracket, allTeams, TeamLogo, viewMode, selectedWeek, currentWeek, members }) => {  if (!bracket) return null;
@@ -1073,6 +1074,7 @@ const isTeamOnBye = (name, scheduleData) => {
 function MyLeague() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
+  const { leagueData: ctxLeagueData } = useLeague();
   const [members, setMembers] = useState([]);
   const [allTeams, setAllTeams] = useState({});
   const [leagueName, setLeagueName] = useState("");
@@ -1323,11 +1325,10 @@ function MyLeague() {
       try {
         console.log("Using leagueId:", leagueId);
 
-        // Fetch league info for name
-        const { data: leagueData } = await supabase.from('leagues').select('*').eq('id', leagueId).single();
-        if (leagueData) {
-          setLeagueName(leagueData.name || "League");
-          setMaxManagers(leagueData.max_managers || 8);
+        // League info from context
+        if (ctxLeagueData) {
+          setLeagueName(ctxLeagueData.name || "League");
+          setMaxManagers(ctxLeagueData.max_managers || 8);
         }
 
         // Fetch current week from global config
