@@ -107,10 +107,14 @@ function DraftRoom() {
         clearInterval(countdownInterval);
       }
 
+      // Set immediately so there's no 1-second blank before first tick
+      const initialTime = draftStartTime - getSyncedTime();
+      setDraftCountdown(initialTime > 0 ? Math.ceil(initialTime / 1000) : 0);
+
       const interval = setInterval(() => {
-        const now = getSyncedTime(); // Use synced time instead of Date.now()
+        const now = getSyncedTime();
         const timeUntilDraft = draftStartTime - now;
-        
+
         if (timeUntilDraft <= 0) {
           setDraftCountdown(0);
           clearInterval(interval);
@@ -118,13 +122,13 @@ function DraftRoom() {
           const currentCount = Object.keys(userMap).length;
           const missing = maxManagers ? maxManagers - currentCount : 0;
           const isFull = missing === 0;
-          
+
           if (isLeagueAdmin && isFull) {
             console.log("🚀 Draft time reached! Auto-starting...");
             handleStartDraft();
           }
         } else {
-          setDraftCountdown(Math.ceil(timeUntilDraft / 1000)); // seconds
+          setDraftCountdown(Math.ceil(timeUntilDraft / 1000));
         }
       }, 1000);
 
