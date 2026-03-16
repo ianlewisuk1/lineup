@@ -15,15 +15,7 @@ function Scouting() {
   const [conferenceFilter, setConferenceFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Helper function to normalize team names for comparison
-  const normalizeName = (name) =>
-    name
-      ?.toLowerCase()
-      .replace(/\s+/g, "-")
-      .replace(/&/g, "-")
-      .replace(/[^a-z0-9\-]/g, "");
-
-  useEffect(() => {
+useEffect(() => {
     const fetchData = async () => {
       try {
         // Fetch teams data
@@ -43,51 +35,15 @@ function Scouting() {
         });
         setAllTeams(teamsMap);
 
-        // Fetch draft data from drafts table
+        // Fetch drafted team IDs from draft_picks
         const draftedTeamsSet = new Set();
         if (leagueId) {
-          try {
-            const { data: draftData, error: draftError } = await supabase
-              .from('drafts')
-              .select('*')
-              .eq('league_id', leagueId)
-              .single();
-
-            if (!draftError && draftData) {
-              console.log("Draft data found:", draftData);
-
-              // Handle both live drafts and manual drafts
-              let teamsToProcess = {};
-
-              if (draftData.selected_teams) {
-                // Live draft format: { selectedTeams: { userId: [team1, team2, ...] } }
-                teamsToProcess = draftData.selected_teams;
-                console.log("Processing live draft teams");
-              } else if (draftData.teams) {
-                // Manual draft format: { teams: { userId: [team1, team2, ...] } }
-                teamsToProcess = draftData.teams;
-                console.log("Processing manual draft teams");
-              }
-
-              // Collect all drafted teams from all users
-              Object.values(teamsToProcess).forEach(userTeams => {
-                if (Array.isArray(userTeams)) {
-                  userTeams.forEach(teamName => {
-                    const normalized = normalizeName(teamName);
-                    draftedTeamsSet.add(normalized);
-                    console.log("Added drafted team:", normalized);
-                  });
-                }
-              });
-            } else {
-              console.log("No draft document found for league:", leagueId);
-            }
-          } catch (draftError) {
-            console.error("Error fetching draft data:", draftError);
-          }
+          const { data: picks } = await supabase
+            .from('draft_picks')
+            .select('team_id')
+            .eq('league_id', leagueId);
+          (picks ?? []).forEach((p) => draftedTeamsSet.add(p.team_id));
         }
-
-        console.log("Total drafted teams:", draftedTeamsSet.size, Array.from(draftedTeamsSet));
         setDraftedTeams(draftedTeamsSet);
 
         // Filter for FBS teams and mark as drafted
@@ -95,9 +51,7 @@ function Scouting() {
           .filter((team) => (team.classification || "").toLowerCase() === "fbs")
           .map(team => ({
             ...team,
-            isDrafted:
-              draftedTeamsSet.has(normalizeName(team.id)) ||
-              draftedTeamsSet.has(normalizeName(team.school))
+            isDrafted: draftedTeamsSet.has(team.id)
           }));
 
         console.log("Teams with draft status:", fbsTeams.filter(t => t.isDrafted).length, "drafted out of", fbsTeams.length);
