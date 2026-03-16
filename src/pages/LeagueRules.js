@@ -476,8 +476,8 @@ function LeagueRules() {
               League Settings
             </span>
           </h1>
-          <p className="text-lg sm:text-xl text-white/80 max-w-2xl mx-auto break-all">
-            League ID: {leagueId}
+          <p className="text-lg sm:text-xl text-white/80 max-w-2xl mx-auto">
+            {leagueData?.name}
           </p>
         </div>
 
