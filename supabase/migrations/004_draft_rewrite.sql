@@ -59,6 +59,14 @@ CREATE POLICY "drafts_creator_insert" ON drafts FOR INSERT
     )
   );
 
+-- Allow league admin to update draft (e.g. set draft_order before start)
+CREATE POLICY "drafts_admin_update" ON drafts FOR UPDATE
+  USING (
+    auth.uid() IN (
+      SELECT admin_id FROM leagues WHERE id = league_id
+    )
+  );
+
 
 -- ------------------------------------------------------------
 -- 3. Helper: resolve who picks at a given pick_index (snake)
@@ -166,11 +174,10 @@ BEGIN
   v_next_index  := v_draft.current_pick_index + 1;
   v_next_picker := draft_picker_at(v_draft.draft_order, v_next_index);
 
-  -- Get time_per_pick from leagues table (seconds)
-  SELECT COALESCE(time_per_pick, 120) * INTERVAL '1 second'
+  -- Get time_per_pick from leagues table (seconds) and compute deadline
+  SELECT now() + COALESCE(time_per_pick, 120) * INTERVAL '1 second'
   INTO v_new_deadline
   FROM leagues WHERE id = v_draft.league_id;
-  v_new_deadline := now() + v_new_deadline;
 
   UPDATE drafts SET
     current_pick_index = v_next_index,

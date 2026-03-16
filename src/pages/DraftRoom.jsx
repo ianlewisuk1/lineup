@@ -116,6 +116,8 @@ export default function DraftRoom() {
   const onlineIds = usePresence(leagueId, currentUserId);
 
   const secondsLeft = useCountdown(pickDeadline);
+  const draftStartsAt = leagueData?.draft_date ? new Date(leagueData.draft_date) : null;
+  const secondsUntilDraft = useCountdown(draftStartsAt);
 
   const currentPickIndex = draft?.current_pick_index ?? 0;
 
@@ -185,6 +187,18 @@ export default function DraftRoom() {
             <p className="text-white/60">
               {allJoined ? 'All managers are in — ready to start!' : `Waiting for ${waiting} more manager${waiting !== 1 ? 's' : ''} to join`}
             </p>
+            {secondsUntilDraft !== null && secondsUntilDraft > 0 && (
+              <div className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-white/10 border border-white/20 rounded-xl">
+                <Clock size={16} className="text-purple-400" />
+                <span className="text-sm text-white/60 mr-1">Draft starts in</span>
+                <span className="font-mono font-bold text-lg">
+                  {secondsUntilDraft >= 3600
+                    ? `${Math.floor(secondsUntilDraft / 3600)}h ${Math.floor((secondsUntilDraft % 3600) / 60)}m`
+                    : `${String(Math.floor(secondsUntilDraft / 60)).padStart(2, '0')}:${String(secondsUntilDraft % 60).padStart(2, '0')}`
+                  }
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Draft order */}

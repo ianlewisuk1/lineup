@@ -99,12 +99,14 @@ function LeagueRules() {
     const fetchPageData = async () => {
       try {
         const [{ data: draftRow }, adminResult] = await Promise.all([
-          supabase.from('drafts').select('id').eq('league_id', leagueId).single(),
+          supabase.from('drafts').select('id, status').eq('league_id', leagueId).single(),
           leagueData.created_by
             ? supabase.from('users').select('first_name, last_name').eq('id', leagueData.created_by).single()
             : Promise.resolve({ data: null }),
         ]);
-        setDraftStarted(!!(draftRow) || leagueData.draft_complete);
+        setDraftStarted(
+          draftRow?.status === 'active' || draftRow?.status === 'complete' || leagueData.draft_complete
+        );
         if (adminResult.data) {
           setAdminName(`${adminResult.data.first_name || ""} ${adminResult.data.last_name || ""}`.trim());
         }
