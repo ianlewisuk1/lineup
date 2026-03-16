@@ -201,6 +201,28 @@ export default function DraftRoom() {
             )}
           </div>
 
+          {/* Start draft */}
+          {isAdmin && allJoined && (
+            <div className="mb-6">
+              <button
+                onClick={handleStartDraft}
+                disabled={starting}
+                className="w-full py-4 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 rounded-xl font-bold text-lg transition-all duration-300 disabled:opacity-50"
+              >
+                {starting ? 'Starting…' : 'Start Draft'}
+              </button>
+              {secondsUntilDraft !== null && secondsUntilDraft > 0 && (
+                <p className="text-center text-white/40 text-xs mt-2">
+                  Draft is scheduled to start in{' '}
+                  {secondsUntilDraft >= 3600
+                    ? `${Math.floor(secondsUntilDraft / 3600)}h ${Math.floor((secondsUntilDraft % 3600) / 60)}m`
+                    : `${Math.floor(secondsUntilDraft / 60)}m`
+                  } — pressing this button will begin it now.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Draft order */}
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
             <div className="flex items-center justify-between mb-4">
@@ -283,16 +305,6 @@ export default function DraftRoom() {
             <div className="bg-red-500/20 border border-red-400/30 rounded-xl px-4 py-3 text-red-300 text-sm mb-4">
               {actionError}
             </div>
-          )}
-
-          {isAdmin && allJoined && (
-            <button
-              onClick={handleStartDraft}
-              disabled={starting}
-              className="w-full py-4 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 rounded-xl font-bold text-lg transition-all duration-300 disabled:opacity-50"
-            >
-              {starting ? 'Starting…' : 'Start Draft'}
-            </button>
           )}
         </div>
         <BottomNavBar />
