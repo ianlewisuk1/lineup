@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../supabase/supabase";
 import { useNavigate, Link } from "react-router-dom";
+import ProfileDropdown from "../components/ProfileDropdown";
 
 function CreateLeague() {
   const navigate = useNavigate();
@@ -147,12 +148,7 @@ function CreateLeague() {
             Lineup
           </span>
         </Link>
-        <Link 
-          to="/home"
-          className="px-4 py-2 sm:px-6 sm:py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
-        >
-          ← Back to Home
-        </Link>
+        <ProfileDropdown />
       </nav>
 
       {/* Main Content */}

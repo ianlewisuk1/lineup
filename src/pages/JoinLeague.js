@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
 import { Users, UserPlus, Trophy, AlertCircle } from "lucide-react";
+import ProfileDropdown from "../components/ProfileDropdown";
 
 function JoinLeague() {
   const navigate = useNavigate();
@@ -92,12 +93,7 @@ function JoinLeague() {
             Lineup
           </span>
         </Link>
-        <Link 
-          to="/home"
-          className="px-4 py-2 sm:px-6 sm:py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
-        >
-          ← Back to Home
-        </Link>
+        <ProfileDropdown />
       </nav>
 
       {/* Main Content */}
