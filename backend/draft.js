@@ -47,7 +47,7 @@ async function autoPick(draft) {
   const { data: teams } = await supabase
     .from('teams')
     .select('id, school, game_points')
-    .eq('classification', 'FBS')
+    .in('classification', ['fbs', 'FBS'])
     .order('game_points', { ascending: false });
 
   const bestTeam = (teams ?? []).find((t) => !pickedIds.has(t.id));
