@@ -51,6 +51,14 @@ CREATE POLICY "dp_member_read" ON draft_picks FOR SELECT
 CREATE POLICY "dp_service_insert" ON draft_picks FOR INSERT
   WITH CHECK (true);
 
+-- Allow league creator to insert the initial drafts row
+CREATE POLICY "drafts_creator_insert" ON drafts FOR INSERT
+  WITH CHECK (
+    auth.uid() IN (
+      SELECT created_by FROM leagues WHERE id = league_id
+    )
+  );
+
 
 -- ------------------------------------------------------------
 -- 3. Helper: resolve who picks at a given pick_index (snake)

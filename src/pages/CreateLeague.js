@@ -116,6 +116,9 @@ function CreateLeague() {
       const { data: newLeague, error: leagueError } = await supabase.from('leagues').insert(leagueData).select('id, invite_code').single();
       if (leagueError) throw leagueError;
 
+      // Create draft row so the draft room is ready immediately
+      await supabase.from('drafts').insert({ league_id: newLeague.id });
+
       // Note: displayName removed, using user's first name from auth/user profile instead
       await supabase.from('league_members').insert({
         league_id: newLeague.id,
