@@ -132,16 +132,19 @@ function Home() {
         .select('*')
         .in('id', leagueIds);
 
-      // Fetch member counts for each league
-      const leaguesWithCounts = await Promise.all(
-        (leaguesData || []).map(async (league) => {
-          const { count } = await supabase
-            .from('league_members')
-            .select('*', { count: 'exact', head: true })
-            .eq('league_id', league.id);
-          return { ...league, memberCount: count || 0 };
-        })
-      );
+      // Fetch member counts for all leagues in one query
+      const { data: allMemberRows } = await supabase
+        .from('league_members')
+        .select('league_id')
+        .in('league_id', (leaguesData || []).map((l) => l.id));
+      const countByLeague = {};
+      (allMemberRows || []).forEach((m) => {
+        countByLeague[m.league_id] = (countByLeague[m.league_id] || 0) + 1;
+      });
+      const leaguesWithCounts = (leaguesData || []).map((league) => ({
+        ...league,
+        memberCount: countByLeague[league.id] || 0,
+      }));
 
       setLeagueList(leaguesWithCounts.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
 

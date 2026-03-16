@@ -42,15 +42,15 @@ function DraftRoom() {
         const userMapData = {};
         const userFirstNamesData = {};
 
-        const userFetches = (membersSnap || []).map(async (memberDoc) => {
+        (membersSnap || []).forEach((memberDoc) => {
           userMapData[memberDoc.user_id] = memberDoc;
-          const { data: userData } = await supabase.from("users").select("*").eq("id", memberDoc.user_id).single();
-          if (userData) {
-            userFirstNamesData[memberDoc.user_id] = userData.first_name || 'Unknown';
-          }
         });
 
-        await Promise.all(userFetches);
+        const memberUserIds = (membersSnap || []).map((m) => m.user_id);
+        const { data: usersData } = await supabase.from("users").select("id, first_name").in("id", memberUserIds);
+        (usersData || []).forEach((u) => {
+          userFirstNamesData[u.id] = u.first_name || 'Unknown';
+        });
 
         setUserMap(userMapData);
         setUserFirstNames(userFirstNamesData);

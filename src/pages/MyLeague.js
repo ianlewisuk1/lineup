@@ -1423,18 +1423,12 @@ function MyLeague() {
         };
         const currentWeekNum = getCurrentWeekNumber();
 
-        const membersData = await Promise.all(
-          (membersSnapshot || []).map(async (memberData) => {
-            // Fetch user data for first name
-            let firstName = "Unknown";
-            try {
-              if (memberData.user_id) {
-                const { data: userData } = await supabase.from('users').select('first_name').eq('id', memberData.user_id).single();
-                firstName = userData?.first_name || "Unknown";
-              }
-            } catch (userError) {
-              console.warn("Could not fetch user data:", userError);
-            }
+        const memberUserIds = (membersSnapshot || []).map((m) => m.user_id).filter(Boolean);
+        const { data: usersData } = await supabase.from('users').select('id, first_name').in('id', memberUserIds);
+        const userFirstNameMap = Object.fromEntries((usersData || []).map((u) => [u.id, u.first_name || "Unknown"]));
+
+        const membersData = (membersSnapshot || []).map((memberData) => {
+            const firstName = userFirstNameMap[memberData.user_id] || "Unknown";
 
             // Read captain from member document
             const captain = memberData.captain || null;
@@ -1462,8 +1456,7 @@ function MyLeague() {
               teamName: memberData.team_name || "Unnamed Team",
               ...memberData
             };
-          })
-        );
+        });
 
         setMembers(membersData);
 

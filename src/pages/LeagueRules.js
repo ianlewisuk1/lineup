@@ -125,23 +125,22 @@ function LeagueRules() {
           .eq('league_id', leagueId);
         if (membersError) throw membersError;
 
-        const memberList = await Promise.all(
-          (memberRows || []).map(async (memberRow) => {
-            const userId = memberRow.user_id;
-            const { data: userData } = await supabase
-              .from('users')
-              .select('first_name, last_name, email')
-              .eq('id', userId)
-              .single();
+        const userIds = (memberRows || []).map((r) => r.user_id);
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, first_name, last_name, email')
+          .in('id', userIds);
+        const userMap = Object.fromEntries((usersData || []).map((u) => [u.id, u]));
 
-            return {
-              uid: userId,
-              name: `${userData?.first_name || ""} ${userData?.last_name || ""}`.trim(),
-              username: userData?.email || "Unknown",
-              teamName: memberRow.team_name || "Untitled Team",
-            };
-          })
-        );
+        const memberList = (memberRows || []).map((memberRow) => {
+          const u = userMap[memberRow.user_id] || {};
+          return {
+            uid: memberRow.user_id,
+            name: `${u.first_name || ""} ${u.last_name || ""}`.trim(),
+            username: u.email || "Unknown",
+            teamName: memberRow.team_name || "Untitled Team",
+          };
+        });
 
         setMembers(memberList);
 

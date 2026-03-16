@@ -36,20 +36,18 @@ function LeagueMembers() {
 
       if (!memberRows) return;
 
-      const enriched = await Promise.all(
-        memberRows.map(async (m) => {
-          const { data: userData } = await supabase
-            .from("users")
-            .select("first_name, last_name")
-            .eq("id", m.user_id)
-            .single();
-          return {
-            ...m,
-            first_name: userData?.first_name || "",
-            last_name: userData?.last_name || "",
-          };
-        })
-      );
+      const userIds = memberRows.map((m) => m.user_id);
+      const { data: usersData } = await supabase
+        .from("users")
+        .select("id, first_name, last_name")
+        .in("id", userIds);
+      const userMap = Object.fromEntries((usersData || []).map((u) => [u.id, u]));
+
+      const enriched = memberRows.map((m) => ({
+        ...m,
+        first_name: userMap[m.user_id]?.first_name || "",
+        last_name: userMap[m.user_id]?.last_name || "",
+      }));
 
       // Sort by join date
       enriched.sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
