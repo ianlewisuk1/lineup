@@ -517,7 +517,7 @@ export default function DraftRoom() {
         </div>
 
         <button
-          onClick={() => navigate(`/league/${leagueId}/my-lineup`)}
+          onClick={() => navigate(`/${leagueId}/my-lineup`)}
           className="w-full py-3 mb-8 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 rounded-xl font-bold text-lg transition-all duration-300"
         >
           Go to My Lineup
