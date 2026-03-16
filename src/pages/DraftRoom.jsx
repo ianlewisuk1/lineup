@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Clock, Users, Trophy, ChevronRight, Check, Shuffle, ChevronUp, ChevronDown } from 'lucide-react';
 import { useDraft } from '../hooks/useDraft';
 import { useLeague } from '../context/LeagueContext';
@@ -63,6 +63,7 @@ function useCountdown(deadline) {
 export default function DraftRoom() {
   const { leagueId } = useParams();
   const { leagueData, isAdmin } = useLeague();
+  const navigate = useNavigate();
   const {
     draft, picks, members, teams, availableTeams, pickedTeamIds,
     currentPickerUid, isMyTurn, pickDeadline,
@@ -514,6 +515,13 @@ export default function DraftRoom() {
           <h1 className="text-3xl font-black mb-2">Draft Complete!</h1>
           <p className="text-white/60">All {totalPicks} picks have been made</p>
         </div>
+
+        <button
+          onClick={() => navigate(`/league/${leagueId}/lineup`)}
+          className="w-full py-3 mb-8 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 rounded-xl font-bold text-lg transition-all duration-300"
+        >
+          Go to My Lineup
+        </button>
 
         {/* Final rosters */}
         <div className="space-y-4">
