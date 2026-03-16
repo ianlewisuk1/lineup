@@ -40,7 +40,7 @@ export function useDraft(leagueId) {
             .select('user_id, team_name, users(first_name, last_name)')
             .eq('league_id', leagueId),
           supabase.from('teams').select('id, school, mascot, logos, conference, game_points, sos_rank')
-            .eq('classification', 'FBS').order('game_points', { ascending: false }),
+            .eq('classification', 'fbs').order('game_points', { ascending: false }),
         ]);
 
         if (draftErr) throw draftErr;
