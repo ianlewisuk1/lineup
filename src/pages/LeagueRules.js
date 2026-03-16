@@ -200,8 +200,6 @@ function LeagueRules() {
         .eq('user_id', uid);
       if (deleteError) throw deleteError;
 
-      const updatedMembersList = members.filter((m) => m.uid !== uid);
-      setMembers(updatedMembersList);
       setDraftOrder((prev) => prev.filter((m) => m.uid !== uid));
 
       showSuccess("Manager Removed", `${memberName} has been successfully removed from the league.`);
