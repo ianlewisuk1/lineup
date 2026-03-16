@@ -255,7 +255,8 @@ BEGIN
   v_n := array_length(v_members, 1);
 
   -- If draft_order already set by admin, keep it; otherwise randomise
-  IF v_draft.draft_order IS NULL OR array_length(v_draft.draft_order, 1) != v_n THEN
+  -- COALESCE handles both NULL and empty array '{}' (array_length returns NULL for both)
+  IF COALESCE(array_length(v_draft.draft_order, 1), 0) != v_n THEN
     -- Fisher-Yates shuffle via random ordering
     SELECT array_agg(uid::TEXT ORDER BY random())
     INTO v_order

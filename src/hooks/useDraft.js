@@ -162,6 +162,16 @@ export function useDraft(leagueId) {
     return data;
   }, [leagueId]);
 
+  const saveDraftOrder = useCallback(async (order) => {
+    if (!draft?.id) return { error: 'No draft' };
+    const { error } = await supabase
+      .from('drafts')
+      .update({ draft_order: order })
+      .eq('id', draft.id);
+    if (error) return { error: error.message };
+    return { success: true };
+  }, [draft?.id]);
+
   return {
     // Raw state
     draft,
@@ -186,6 +196,7 @@ export function useDraft(leagueId) {
     // Actions
     makePick,
     startDraft,
+    saveDraftOrder,
   };
 }
 

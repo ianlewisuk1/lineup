@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { Clock, Users, Trophy, ChevronRight, Check } from 'lucide-react';
+import { Clock, Users, Trophy, ChevronRight, Check, Shuffle, ChevronUp, ChevronDown } from 'lucide-react';
 import { useDraft } from '../hooks/useDraft';
 import { useLeague } from '../context/LeagueContext';
 import { supabase } from '../supabase/supabase';
@@ -68,7 +68,7 @@ export default function DraftRoom() {
     currentPickerUid, isMyTurn, pickDeadline,
     totalPicks, nManagers, rosterByUser, memberMap,
     currentUserId, loading, error,
-    makePick, startDraft,
+    makePick, startDraft, saveDraftOrder,
   } = useDraft(leagueId);
 
   const [search, setSearch]         = useState('');
@@ -76,7 +76,42 @@ export default function DraftRoom() {
   const [picking, setPicking]       = useState(false);
   const [starting, setStarting]     = useState(false);
   const [lastPickId, setLastPickId] = useState(null);
+  const [orderSaving, setOrderSaving] = useState(false);
+  // Local draft order for lobby — initialised from DB or member join order
+  const [lobbyOrder, setLobbyOrder] = useState([]);
   const pickBoardRef = useRef(null);
+
+  // Sync lobbyOrder when members/draft loads
+  useEffect(() => {
+    if (members.length === 0) return;
+    const dbOrder = draft?.draft_order ?? [];
+    if (dbOrder.length === members.length) {
+      setLobbyOrder(dbOrder);
+    } else {
+      setLobbyOrder(members.map((m) => m.user_id));
+    }
+  }, [members.length, draft?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const persistOrder = useCallback(async (order) => {
+    setOrderSaving(true);
+    await saveDraftOrder(order);
+    setOrderSaving(false);
+  }, [saveDraftOrder]);
+
+  const handleShuffle = () => {
+    const shuffled = [...lobbyOrder].sort(() => Math.random() - 0.5);
+    setLobbyOrder(shuffled);
+    persistOrder(shuffled);
+  };
+
+  const handleMove = (index, dir) => {
+    const newOrder = [...lobbyOrder];
+    const swap = index + dir;
+    if (swap < 0 || swap >= newOrder.length) return;
+    [newOrder[index], newOrder[swap]] = [newOrder[swap], newOrder[index]];
+    setLobbyOrder(newOrder);
+    persistOrder(newOrder);
+  };
 
   const onlineIds = usePresence(leagueId, currentUserId);
 
@@ -137,6 +172,9 @@ export default function DraftRoom() {
   // PRE-DRAFT lobby
   // ─────────────────────────────────────────────────────────────────────────
   if (status === 'pending') {
+    const allJoined = members.length === leagueData?.max_managers;
+    const waiting   = (leagueData?.max_managers ?? 0) - members.length;
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white pb-24">
         <LeagueNav />
@@ -144,40 +182,87 @@ export default function DraftRoom() {
         <div className="max-w-2xl mx-auto px-4 py-8">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-black mb-2">Draft Room</h1>
-            <p className="text-white/60">Waiting for all managers to join</p>
+            <p className="text-white/60">
+              {allJoined ? 'All managers are in — ready to start!' : `Waiting for ${waiting} more manager${waiting !== 1 ? 's' : ''} to join`}
+            </p>
           </div>
 
-          {/* Member count */}
+          {/* Draft order */}
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Users size={18} className="text-purple-400" />
-              <h2 className="text-lg font-bold">
-                Managers ({members.length}/{leagueData?.max_managers})
-              </h2>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Users size={18} className="text-purple-400" />
+                <h2 className="text-lg font-bold">
+                  Draft Order ({members.length}/{leagueData?.max_managers})
+                </h2>
+                {orderSaving && <span className="text-xs text-white/40">Saving…</span>}
+              </div>
+              {isAdmin && (
+                <button
+                  onClick={handleShuffle}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-semibold transition-colors"
+                >
+                  <Shuffle size={14} />
+                  Shuffle
+                </button>
+              )}
             </div>
-            <div className="space-y-3">
-              {members.map((m, i) => {
-                const info     = memberMap[m.user_id];
-                const isOnline = onlineIds.has(m.user_id);
+
+            <div className="space-y-2">
+              {lobbyOrder.map((uid, i) => {
+                const info     = memberMap[uid];
+                const isOnline = onlineIds.has(uid);
                 return (
-                  <div key={m.user_id} className="flex items-center gap-3 bg-white/5 rounded-xl p-3 border border-white/10">
+                  <div key={uid} className="flex items-center gap-3 bg-white/5 rounded-xl p-3 border border-white/10">
+                    {/* Pick position */}
                     <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
                       {i + 1}
                     </div>
+
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold flex items-center gap-2">
                         {info?.name ?? '—'}
-                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isOnline ? 'bg-green-400' : 'bg-white/20'}`} title={isOnline ? 'In draft room' : 'Not in draft room'} />
+                        <span
+                          className={`w-2 h-2 rounded-full flex-shrink-0 ${isOnline ? 'bg-green-400' : 'bg-white/20'}`}
+                          title={isOnline ? 'In draft room' : 'Not in draft room'}
+                        />
                       </div>
                       <div className="text-sm text-white/60">{info?.teamName}</div>
                     </div>
-                    {m.user_id === currentUserId && (
-                      <span className="text-xs text-purple-300 font-semibold">You</span>
+
+                    {uid === currentUserId && (
+                      <span className="text-xs text-purple-300 font-semibold mr-1">You</span>
+                    )}
+
+                    {/* Admin reorder arrows */}
+                    {isAdmin && (
+                      <div className="flex flex-col gap-0.5">
+                        <button
+                          onClick={() => handleMove(i, -1)}
+                          disabled={i === 0}
+                          className="p-0.5 hover:bg-white/20 rounded disabled:opacity-20 transition-colors"
+                        >
+                          <ChevronUp size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleMove(i, 1)}
+                          disabled={i === lobbyOrder.length - 1}
+                          className="p-0.5 hover:bg-white/20 rounded disabled:opacity-20 transition-colors"
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 );
               })}
             </div>
+
+            {isAdmin && (
+              <p className="text-xs text-white/40 mt-3 text-center">
+                Round 1 picks in this order · Round 2 reverses (snake draft)
+              </p>
+            )}
           </div>
 
           {actionError && (
@@ -186,7 +271,7 @@ export default function DraftRoom() {
             </div>
           )}
 
-          {isAdmin && members.length === leagueData?.max_managers && (
+          {isAdmin && allJoined && (
             <button
               onClick={handleStartDraft}
               disabled={starting}
@@ -194,12 +279,6 @@ export default function DraftRoom() {
             >
               {starting ? 'Starting…' : 'Start Draft'}
             </button>
-          )}
-
-          {isAdmin && members.length < (leagueData?.max_managers ?? 0) && (
-            <p className="text-center text-white/50 text-sm">
-              Waiting for {(leagueData?.max_managers ?? 0) - members.length} more manager{(leagueData?.max_managers ?? 0) - members.length !== 1 ? 's' : ''} to join
-            </p>
           )}
         </div>
         <BottomNavBar />

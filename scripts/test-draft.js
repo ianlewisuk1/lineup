@@ -146,8 +146,11 @@ async function main() {
 
   // Cache draft ID
   const { data: draftRow } = await adminClient
-    .from('drafts').select('id').eq('league_id', LEAGUE_ID).single();
+    .from('drafts').select('id, draft_order').eq('league_id', LEAGUE_ID).single();
   const DRAFT_ID = draftRow.id;
+  console.log(`\n[debug] Draft ID: ${DRAFT_ID}`);
+  console.log(`[debug] draft_order: ${JSON.stringify(draftRow.draft_order)}`);
+  console.log(`[debug] virtual user IDs: ${userClients.map((u) => `user${u.index}=${u.id}`).join(', ')}\n`);
 
   // Get all FBS teams ordered by game_points
   const { data: allTeams } = await adminClient
@@ -183,6 +186,9 @@ async function main() {
     if (!picker) {
       // Human user's turn — wait for them to pick in the browser
       console.log(`  Pick #${pickNumber + 1} — waiting for human to pick...`);
+      console.log(`    [debug] pickerId = ${pickerId}`);
+      console.log(`    [debug] virtual user IDs = ${userClients.map((u) => u.id).join(', ')}`);
+      console.log(`    [debug] draft_order = ${JSON.stringify(order)}`);
       await waitForPickAdvance(idx);
       pickNumber++;
       continue;
