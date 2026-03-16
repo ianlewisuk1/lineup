@@ -16,4 +16,4 @@ root.render(
 );
 
 reportWebVitals();
-serviceWorkerRegistration.register();
+serviceWorkerRegistration.unregister();
