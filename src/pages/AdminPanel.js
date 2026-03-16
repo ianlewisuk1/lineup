@@ -4,6 +4,65 @@ import { supabase } from "../supabase/supabase";
 import AdminUserPanel from "../components/AdminUserPanel";
 import AdminLeaguePanel from "../components/AdminLeaguePanel";
 
+const WEEK_OPTIONS = [
+  "Preseason",
+  ...Array.from({ length: 15 }, (_, i) => String(i + 1)),
+  "Bowl Season",
+  "Playoffs",
+  "Off-Season",
+];
+
+function SeasonControls() {
+  const [currentWeek, setCurrentWeek] = useState("Preseason");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    supabase.from("config").select("value").eq("key", "season").single()
+      .then(({ data }) => {
+        if (data?.value?.currentWeek) setCurrentWeek(String(data.value.currentWeek));
+      });
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaved(false);
+    const { error } = await supabase.from("config").upsert({
+      key: "season",
+      value: { currentWeek, year: 2026 },
+    });
+    setSaving(false);
+    if (!error) setSaved(true);
+  };
+
+  return (
+    <div style={{ marginBottom: "2rem", padding: "1rem", border: "1px solid #ddd", borderRadius: "8px" }}>
+      <h3>Season Controls</h3>
+      <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginTop: "0.5rem" }}>
+        <label htmlFor="week-select"><strong>Current Week:</strong></label>
+        <select
+          id="week-select"
+          value={currentWeek}
+          onChange={(e) => { setCurrentWeek(e.target.value); setSaved(false); }}
+          style={{ padding: "0.4rem 0.8rem", fontSize: "1rem" }}
+        >
+          {WEEK_OPTIONS.map((w) => (
+            <option key={w} value={w}>{w}</option>
+          ))}
+        </select>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{ padding: "0.4rem 1rem", cursor: "pointer" }}
+        >
+          {saving ? "Saving..." : "Save"}
+        </button>
+        {saved && <span style={{ color: "green" }}>Saved!</span>}
+      </div>
+    </div>
+  );
+}
+
 function AdminPanel() {
  const [loading, setLoading] = useState(true);
  const navigate = useNavigate();
@@ -54,6 +113,7 @@ function AdminPanel() {
          </Link>
        </div>
 
+       <SeasonControls />
        <AdminUserPanel />
        <AdminLeaguePanel />
      </div>
