@@ -77,4 +77,37 @@ async function autoPick(draft) {
   console.log(`[Draft auto-pick] Auto-picked ${bestTeam.school} for draft ${draftId} (pick #${result?.pick_number})`);
 }
 
-module.exports = { runAutoPickJobs };
+async function runAutoStartJobs() {
+  // Find leagues whose draft_date has passed and draft is still pending
+  const { data: leagues, error } = await supabase
+    .from('leagues')
+    .select('id')
+    .lte('draft_date', new Date().toISOString())
+    .not('draft_date', 'is', null);
+
+  if (error || !leagues?.length) return;
+
+  for (const league of leagues) {
+    const { data: draft } = await supabase
+      .from('drafts')
+      .select('id, status')
+      .eq('league_id', league.id)
+      .single();
+
+    if (!draft || draft.status !== 'pending') continue;
+
+    const { data: result, error: startError } = await supabase.rpc('start_draft', {
+      p_league_id: league.id,
+    });
+
+    if (startError) {
+      console.error(`[Draft auto-start] Error for league ${league.id}:`, startError.message);
+    } else if (result?.error) {
+      console.error(`[Draft auto-start] Rejected for league ${league.id}:`, result.error);
+    } else {
+      console.log(`[Draft auto-start] Started draft for league ${league.id}`);
+    }
+  }
+}
+
+module.exports = { runAutoPickJobs, runAutoStartJobs };

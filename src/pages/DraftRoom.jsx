@@ -65,18 +65,18 @@ export default function DraftRoom() {
   const { leagueData, isAdmin } = useLeague();
   const navigate = useNavigate();
   const {
-    draft, picks, members, teams, availableTeams, pickedTeamIds,
+    draft, picks, members, teams, availableTeams,
     currentPickerUid, isMyTurn, pickDeadline,
     totalPicks, nManagers, rosterByUser, memberMap,
     currentUserId, loading, error,
     makePick, startDraft, saveDraftOrder,
   } = useDraft(leagueId);
 
-  const [search, setSearch]         = useState('');
+  const [search, setSearch]           = useState('');
   const [actionError, setActionError] = useState('');
-  const [picking, setPicking]       = useState(false);
-  const [starting, setStarting]     = useState(false);
-  const [lastPickId, setLastPickId] = useState(null);
+  const [picking, setPicking]         = useState(false);
+  const [starting, setStarting]       = useState(false);
+  const [lastPickId, setLastPickId]   = useState(null);
   const [orderSaving, setOrderSaving] = useState(false);
   // Local draft order for lobby — initialised from DB or member join order
   const [lobbyOrder, setLobbyOrder] = useState([]);
@@ -147,6 +147,7 @@ export default function DraftRoom() {
   const handleStartDraft = async () => {
     setStarting(true);
     setActionError('');
+    if (lobbyOrder.length > 0) await saveDraftOrder(lobbyOrder);
     const result = await startDraft();
     setStarting(false);
     if (result?.error) setActionError(result.error);
@@ -517,7 +518,7 @@ export default function DraftRoom() {
         </div>
 
         <button
-          onClick={() => navigate(`/${leagueId}/my-lineup`)}
+          onClick={() => navigate(`/league/${leagueId}/my-lineup`)}
           className="w-full py-3 mb-8 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 rounded-xl font-bold text-lg transition-all duration-300"
         >
           Go to My Lineup

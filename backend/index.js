@@ -15,7 +15,7 @@ const cron = require('node-cron');
 const { ingestESPNScores } = require('./espn');
 const { ingestCFBDLines } = require('./cfbd');
 const { backfillRecentGames, updateTeamRecords } = require('./scoring');
-const { runAutoPickJobs } = require('./draft');
+const { runAutoPickJobs, runAutoStartJobs } = require('./draft');
 const adminRouter = require('./admin');
 
 const app = express();
@@ -72,14 +72,23 @@ cron.schedule('0 8 * * *', async () => {
   }
 }, { timezone: 'America/New_York' });
 
-// Every 15 seconds — auto-pick for expired draft timers
+// Every 5 seconds — auto-pick for expired draft timers
 setInterval(async () => {
   try {
     await runAutoPickJobs();
   } catch (err) {
     console.error('[Draft auto-pick cron]', err.message);
   }
-}, 15_000);
+}, 5_000);
+
+// Every 30 seconds — auto-start drafts whose scheduled time has passed
+setInterval(async () => {
+  try {
+    await runAutoStartJobs();
+  } catch (err) {
+    console.error('[Draft auto-start cron]', err.message);
+  }
+}, 30_000);
 
 // ---------------------------------------------------------------------------
 // Start
