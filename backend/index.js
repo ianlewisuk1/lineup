@@ -81,14 +81,14 @@ setInterval(async () => {
   }
 }, 5_000);
 
-// Every 30 seconds — auto-start drafts whose scheduled time has passed
+// Every 5 seconds — auto-start drafts whose scheduled time has passed
 setInterval(async () => {
   try {
     await runAutoStartJobs();
   } catch (err) {
     console.error('[Draft auto-start cron]', err.message);
   }
-}, 30_000);
+}, 5_000);
 
 // ---------------------------------------------------------------------------
 // Start
