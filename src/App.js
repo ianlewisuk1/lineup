@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import lineupLogo from "./lineup-logo.svg";
 import {
   BrowserRouter as Router,
   Routes,
@@ -45,9 +46,22 @@ function AppWrapper() {
   );
 }
 
+function SplashScreen() {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      backgroundColor: '#ffffff',
+    }}>
+      <img src={lineupLogo} alt="Lineup" style={{ width: 200 }} />
+    </div>
+  );
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [displayName, setDisplayName] = useState("");
+  const [authLoading, setAuthLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -69,6 +83,7 @@ function App() {
       } else {
         setDisplayName("");
       }
+      setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -92,6 +107,8 @@ function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  if (authLoading) return <SplashScreen />;
 
   const handleLogout = async () => {
     const confirmed = window.confirm("Are you sure you want to log out?");
