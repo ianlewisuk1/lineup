@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useLeague } from '../context/LeagueContext';
+import { User, Trophy, BarChart2, UserPlus, Zap, Search, Users, FileText } from 'lucide-react';
 
 function BottomNavBar() {
   const { leagueId } = useParams();
@@ -10,53 +11,61 @@ function BottomNavBar() {
 
   if (loading) return null;
 
-  // Pre/During Draft Navigation
   const preDraftNav = [
-    { key: 'scouting',     label: 'Scouting',    icon: '🔍', path: `/${leagueId}/scouting` },
-    { key: 'draft-room',   label: 'Draft Room',  icon: '🏈', path: `/${leagueId}/draft-room` },
-    { key: 'members',      label: 'Members',     icon: '👥', path: `/${leagueId}/members` },
-    { key: 'league-rules', label: 'League Rules', icon: '📋', path: `/${leagueId}/league-rules` },
+    { key: 'scouting',     label: 'Scouting',    icon: Search,   path: `/${leagueId}/scouting` },
+    { key: 'draft-room',   label: 'Draft Room',  icon: Zap,      path: `/${leagueId}/draft-room` },
+    { key: 'members',      label: 'Members',     icon: Users,    path: `/${leagueId}/members` },
+    { key: 'league-rules', label: 'Rules',       icon: FileText, path: `/${leagueId}/league-rules` },
   ];
 
-  // Post Draft Navigation
   const postDraftNav = [
-    { key: 'my-lineup',  label: 'My Lineup',  icon: '👤', path: `/${leagueId}/my-lineup` },
-    { key: 'my-league',  label: 'My League',  icon: '🏆', path: `/${leagueId}/my-league` },
-    { key: 'stats',      label: 'Stats',      icon: '📊', path: `/${leagueId}/stats` },
-    { key: 'free-agents', label: 'Free Agents', icon: '🆓', path: `/${leagueId}/free-agents` },
-    { key: 'draft-room', label: 'Draft Room', icon: '🏈', path: `/${leagueId}/draft-room` },
+    { key: 'my-lineup',   label: 'My Lineup',   icon: User,     path: `/${leagueId}/my-lineup` },
+    { key: 'my-league',   label: 'My League',   icon: Trophy,   path: `/${leagueId}/my-league` },
+    { key: 'stats',       label: 'Stats',       icon: BarChart2,path: `/${leagueId}/stats` },
+    { key: 'free-agents', label: 'Free Agents', icon: UserPlus, path: `/${leagueId}/free-agents` },
+    { key: 'draft-room',  label: 'Draft',       icon: Zap,      path: `/${leagueId}/draft-room` },
   ];
 
   const navItems = isDraftComplete ? postDraftNav : preDraftNav;
+  const cols = navItems.length;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50">
-      <div className="bg-slate-900/90 backdrop-blur-lg border-t border-white/20">
-        <div className="max-w-md mx-auto px-2 py-2">
-          <div className={`grid gap-1 ${navItems.length === 4 ? 'grid-cols-4' : navItems.length === 5 ? 'grid-cols-5' : 'grid-cols-3'}`}>
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              return (
-                <button
-                  key={item.key}
-                  onClick={() => navigate(item.path)}
-                  className={`
-                    flex flex-col items-center justify-center py-3 px-2 rounded-lg transition-all duration-300 transform
-                    ${isActive
-                      ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white scale-105 shadow-lg'
-                      : 'text-white/70 hover:text-white hover:bg-white/10'
-                    }
-                  `}
-                >
-                  <span className="text-lg mb-1">{item.icon}</span>
-                  <span className={`font-medium leading-tight text-center ${navItems.length >= 4 ? 'text-[10px]' : 'text-xs'}`}>
-                    {item.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+    <div style={{
+      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
+      backgroundColor: '#ffffff',
+      borderTop: '1px solid #F3F4F6',
+      paddingBottom: 'env(safe-area-inset-bottom)',
+    }}>
+      <div style={{
+        maxWidth: 480, margin: '0 auto',
+        display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`,
+        padding: '4px 8px',
+      }}>
+        {navItems.map(({ key, label, icon: Icon, path }) => {
+          const isActive = location.pathname === path;
+          return (
+            <button
+              key={key}
+              onClick={() => navigate(path)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                padding: '10px 4px', border: 'none', background: 'none', cursor: 'pointer',
+                borderRadius: 12, transition: 'background 0.15s',
+                color: isActive ? '#0072BC' : '#9CA3AF',
+              }}
+            >
+              <Icon size={22} strokeWidth={isActive ? 2.5 : 1.8} />
+              <span style={{
+                fontSize: cols >= 5 ? 9 : 10,
+                fontWeight: isActive ? 700 : 500,
+                marginTop: 4,
+                letterSpacing: 0.1,
+              }}>
+                {label}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
