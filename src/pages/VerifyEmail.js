@@ -1,6 +1,21 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
+import logoWordmark from "../assets/logo-wordmark-transparent.png";
+
+const inputStyle = {
+  width: '100%',
+  padding: '14px 16px',
+  borderRadius: 12,
+  border: '1.5px solid #E5E7EB',
+  fontSize: 24,
+  color: '#111827',
+  outline: 'none',
+  boxSizing: 'border-box',
+  backgroundColor: '#F9FAFB',
+  textAlign: 'center',
+  letterSpacing: '0.3em',
+};
 
 function VerifyEmail() {
   const navigate = useNavigate();
@@ -17,12 +32,7 @@ function VerifyEmail() {
     setLoading(true);
     setError("");
 
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: "signup",
-    });
-
+    const { error: verifyError } = await supabase.auth.verifyOtp({ email, token, type: "signup" });
     setLoading(false);
 
     if (verifyError) {
@@ -34,95 +44,80 @@ function VerifyEmail() {
 
   const handleResend = async () => {
     setResent(false);
-    const { error: resendError } = await supabase.auth.resend({
-      type: "signup",
-      email,
-    });
+    const { error: resendError } = await supabase.auth.resend({ type: "signup", email });
     if (!resendError) setResent(true);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
-      </div>
+    <div style={{ minHeight: '100vh', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column' }}>
 
-      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
-        <Link to="/" className="flex items-center space-x-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
-            L
-          </div>
-          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-            Lineup
-          </span>
-        </Link>
+      {/* Nav */}
+      <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #F3F4F6' }}>
+        <Link to="/"><img src={logoWordmark} alt="Lineup" style={{ width: 'clamp(100px, 25vw, 160px)' }} /></Link>
       </nav>
 
-      <div className="relative z-10 flex flex-col items-center justify-center px-4 sm:px-6 py-8 sm:py-12">
-        <div className="text-center mb-8">
-          <div className="mb-4 text-4xl sm:text-5xl">📬</div>
-          <h1 className="text-3xl sm:text-4xl font-black mb-4">
-            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              Check your email
-            </span>
-          </h1>
-          <p className="text-lg text-white/80 max-w-md mx-auto">
-            We sent a verification code to <span className="text-white font-semibold">{email}</span>
+      {/* Content */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px' }}>
+        <div style={{ width: '100%', maxWidth: 400 }}>
+
+          <h1 style={{ fontSize: 26, fontWeight: 900, color: '#111827', marginBottom: 8 }}>Check your email</h1>
+          <p style={{ fontSize: 15, color: '#6B7280', marginBottom: 32 }}>
+            We sent a verification code to <strong style={{ color: '#111827' }}>{email}</strong>
           </p>
-        </div>
 
-        <div className="w-full max-w-md">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20">
-            {error && (
-              <div className="mb-6 p-4 bg-red-500/20 border border-red-400/30 rounded-xl">
-                <p className="text-sm text-red-200 text-center">{error}</p>
-              </div>
-            )}
-            {resent && (
-              <div className="mb-6 p-4 bg-green-500/20 border border-green-400/30 rounded-xl">
-                <p className="text-sm text-green-200 text-center">Code resent — check your inbox.</p>
-              </div>
-            )}
-
-            <form onSubmit={handleVerify} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Verification Code
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="00000000"
-                  maxLength={8}
-                  value={token}
-                  onChange={(e) => setToken(e.target.value.replace(/\D/g, ""))}
-                  required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white text-center text-2xl tracking-widest placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || token.length < 8}
-                className="w-full py-4 px-8 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-lg font-bold transition-all duration-300 transform hover:scale-105 shadow-2xl hover:shadow-purple-500/40 text-white"
-              >
-                {loading ? "Verifying..." : "Verify & Continue"}
-              </button>
-            </form>
-
-            <div className="mt-6 text-center">
-              <p className="text-white/60 text-sm">
-                Didn't get it?{" "}
-                <button
-                  onClick={handleResend}
-                  className="text-purple-400 hover:text-purple-300 font-medium transition-colors duration-300"
-                >
-                  Resend code
-                </button>
-              </p>
+          {error && (
+            <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: 24 }}>
+              <p style={{ fontSize: 14, color: '#DC2626', margin: 0 }}>{error}</p>
             </div>
-          </div>
+          )}
+
+          {resent && (
+            <div style={{ backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '12px 16px', marginBottom: 24 }}>
+              <p style={{ fontSize: 14, color: '#065F46', margin: 0 }}>Code resent — check your inbox.</p>
+            </div>
+          )}
+
+          <form onSubmit={handleVerify} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                Verification code
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="••••••••"
+                maxLength={8}
+                value={token}
+                onChange={e => setToken(e.target.value.replace(/\D/g, ""))}
+                required
+                style={inputStyle}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || token.length < 8}
+              style={{
+                padding: '14px 0', borderRadius: 50, border: 'none',
+                cursor: (loading || token.length < 8) ? 'not-allowed' : 'pointer',
+                backgroundColor: (loading || token.length < 8) ? '#93C5FD' : '#0072BC',
+                color: '#fff', fontWeight: 700, fontSize: 16, marginTop: 8,
+              }}
+            >
+              {loading ? "Verifying..." : "Verify & continue"}
+            </button>
+          </form>
+
+          <p style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', marginTop: 24 }}>
+            Didn't get it?{' '}
+            <button
+              onClick={handleResend}
+              style={{ background: 'none', border: 'none', color: '#0072BC', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: 0 }}
+            >
+              Resend code
+            </button>
+          </p>
+
         </div>
       </div>
     </div>

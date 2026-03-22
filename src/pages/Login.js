@@ -1,6 +1,27 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
+import logoWordmark from "../assets/logo-wordmark-transparent.png";
+
+const inputStyle = {
+  width: '100%',
+  padding: '12px 16px',
+  borderRadius: 12,
+  border: '1.5px solid #E5E7EB',
+  fontSize: 15,
+  color: '#111827',
+  outline: 'none',
+  boxSizing: 'border-box',
+  backgroundColor: '#F9FAFB',
+};
+
+const labelStyle = {
+  display: 'block',
+  fontSize: 13,
+  fontWeight: 600,
+  color: '#374151',
+  marginBottom: 6,
+};
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -13,22 +34,17 @@ function Login() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    
     try {
       const { data: { user }, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
 
       const { data: userData } = await supabase.from("users").select("is_admin").eq("id", user.id).single();
-
-      if (userData?.is_admin) {
-        return navigate("/admin");
-      }
+      if (userData?.is_admin) return navigate("/admin");
 
       const redirect = sessionStorage.getItem("authRedirect");
       sessionStorage.removeItem("authRedirect");
       navigate(redirect || "/home");
     } catch (err) {
-      console.error("Login error:", err);
       setError("Invalid email or password.");
     } finally {
       setLoading(false);
@@ -36,126 +52,57 @@ function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
-      </div>
+    <div style={{ minHeight: '100vh', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column' }}>
 
-      {/* Navigation */}
-      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
-        <Link to="/" className="flex items-center space-x-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
-            L
-          </div>
-          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-            Lineup
-          </span>
-        </Link>
-        <Link 
-          to="/signup"
-          className="px-4 py-2 sm:px-6 sm:py-3 text-sm sm:text-base bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 rounded-full font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-purple-500/25"
-        >
-          Sign Up Free
+      {/* Nav */}
+      <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #F3F4F6' }}>
+        <Link to="/"><img src={logoWordmark} alt="Lineup" style={{ width: 'clamp(100px, 25vw, 160px)' }} /></Link>
+        <Link to="/signup" style={{ fontSize: 14, fontWeight: 600, color: '#0072BC', textDecoration: 'none' }}>
+          Sign up free
         </Link>
       </nav>
 
-      {/* Main Content */}
-      <div className="relative z-10 flex flex-col items-center justify-center px-4 sm:px-6 py-8 sm:py-12">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="mb-4">
-            <span className="inline-block text-4xl sm:text-5xl mb-2">👋</span>
-          </div>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4 leading-tight">
-            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              Welcome Back
-            </span>
-          </h1>
-          <p className="text-lg sm:text-xl text-white/80 max-w-md mx-auto">
-            Log in to continue managing your lineup
-          </p>
-        </div>
+      {/* Form */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px' }}>
+        <div style={{ width: '100%', maxWidth: 400 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 900, color: '#111827', marginBottom: 8 }}>Welcome back</h1>
+          <p style={{ fontSize: 15, color: '#6B7280', marginBottom: 32 }}>Log in to manage your lineup.</p>
 
-        {/* Login Form */}
-        <div className="w-full max-w-md">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20">
-            <h2 className="text-2xl font-bold text-center mb-6 text-white">
-              Login to Lineup
-            </h2>
-
-            {error && (
-              <div className="mb-6 p-4 bg-red-500/20 border border-red-400/30 rounded-xl">
-                <p className="text-sm text-red-200 text-center">{error}</p>
-              </div>
-            )}
-
-            <form onSubmit={handleLogin} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  placeholder="your@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                />
-              </div>
-
-              <button 
-                type="submit"
-                disabled={loading}
-                className={`w-full py-4 px-8 rounded-xl text-lg font-bold transition-all duration-300 transform ${
-                  loading 
-                    ? 'bg-white/20 text-white/50 cursor-not-allowed' 
-                    : 'bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white hover:scale-105 shadow-2xl hover:shadow-purple-500/40'
-                }`}
-              >
-                {loading ? "Logging in..." : "Login"}
-              </button>
-            </form>
-
-            <div className="mt-6 text-center space-y-3">
-              <Link 
-                to="/forgot-password" 
-                className="block text-purple-400 hover:text-purple-300 font-medium transition-colors duration-300 text-sm"
-              >
-                Forgot your password?
-              </Link>
-              
-              <div className="border-t border-white/20 pt-4">
-                <p className="text-white/60">
-                  Need an account?{" "}
-                  <Link to="/signup" className="text-purple-400 hover:text-purple-300 font-semibold transition-colors duration-300">
-                    Sign Up Free
-                  </Link>
-                </p>
-              </div>
+          {error && (
+            <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: 24 }}>
+              <p style={{ fontSize: 14, color: '#DC2626', margin: 0 }}>{error}</p>
             </div>
-          </div>
+          )}
 
-          {/* Additional Info */}
-          <div className="mt-6 text-center">
-            <p className="text-xs text-white/60">
-              Secure login powered by Supabase
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={labelStyle}>Email</label>
+              <input type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} required style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Password</label>
+              <input type="password" placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} required style={inputStyle} />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                padding: '14px 0', borderRadius: 50, border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
+                backgroundColor: loading ? '#93C5FD' : '#0072BC', color: '#fff', fontWeight: 700, fontSize: 16, marginTop: 8,
+              }}
+            >
+              {loading ? "Logging in..." : "Log in"}
+            </button>
+          </form>
+
+          <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+            <Link to="/forgot-password" style={{ fontSize: 14, color: '#0072BC', textDecoration: 'none', fontWeight: 500 }}>
+              Forgot your password?
+            </Link>
+            <p style={{ fontSize: 14, color: '#6B7280', margin: 0 }}>
+              No account?{' '}
+              <Link to="/signup" style={{ color: '#0072BC', fontWeight: 600, textDecoration: 'none' }}>Sign up free</Link>
             </p>
           </div>
         </div>

@@ -1,10 +1,30 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
+import logoWordmark from "../assets/logo-wordmark-transparent.png";
+
+const inputStyle = {
+  width: '100%',
+  padding: '12px 16px',
+  borderRadius: 12,
+  border: '1.5px solid #E5E7EB',
+  fontSize: 15,
+  color: '#111827',
+  outline: 'none',
+  boxSizing: 'border-box',
+  backgroundColor: '#F9FAFB',
+};
+
+const labelStyle = {
+  display: 'block',
+  fontSize: 13,
+  fontWeight: 600,
+  color: '#374151',
+  marginBottom: 6,
+};
 
 function SignUp() {
   const navigate = useNavigate();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -23,27 +43,14 @@ function SignUp() {
 
   const handleSignUp = async (e) => {
     e.preventDefault();
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match!");
-      return;
-    }
-
-    if (!is18OrOlder(dob)) {
-      setError("You must be at least 18 years old to sign up.");
-      return;
-    }
-
+    if (password !== confirmPassword) { setError("Passwords do not match."); return; }
+    if (!is18OrOlder(dob)) { setError("You must be at least 18 years old to sign up."); return; }
     try {
       const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { first_name: firstName, last_name: lastName, dob },
-        },
+        email, password,
+        options: { data: { first_name: firstName, last_name: lastName, dob } },
       });
       if (signUpError) throw signUpError;
-
       navigate("/verify-email", { state: { email } });
     } catch (err) {
       setError(err.message);
@@ -51,172 +58,80 @@ function SignUp() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
-      </div>
+    <div style={{ minHeight: '100vh', backgroundColor: '#ffffff', display: 'flex', flexDirection: 'column' }}>
 
-      {/* Navigation */}
-      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
-        <Link to="/" className="flex items-center space-x-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
-            L
-          </div>
-          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-            Lineup
-          </span>
-        </Link>
-        <Link 
-          to="/login"
-          className="px-4 py-2 sm:px-6 sm:py-2 text-sm sm:text-base text-white/80 hover:text-white transition-colors duration-300 font-medium"
-        >
-          Already have an account?
+      {/* Nav */}
+      <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #F3F4F6' }}>
+        <Link to="/"><img src={logoWordmark} alt="Lineup" style={{ width: 'clamp(100px, 25vw, 160px)' }} /></Link>
+        <Link to="/login" style={{ fontSize: 14, fontWeight: 600, color: '#0072BC', textDecoration: 'none' }}>
+          Log in
         </Link>
       </nav>
 
-      {/* Main Content */}
-      <div className="relative z-10 flex flex-col items-center justify-center px-4 sm:px-6 py-8 sm:py-12">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="mb-4">
-            <span className="inline-block text-4xl sm:text-5xl mb-2">🚀</span>
-          </div>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4 leading-tight">
-            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              Join Lineup
-            </span>
-          </h1>
-          <p className="text-lg sm:text-xl text-white/80 max-w-md mx-auto">
-            Create your account and start drafting college teams today
-          </p>
-        </div>
+      {/* Form */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px' }}>
+        <div style={{ width: '100%', maxWidth: 400 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 900, color: '#111827', marginBottom: 8 }}>Create your account</h1>
+          <p style={{ fontSize: 15, color: '#6B7280', marginBottom: 32 }}>Free to play. No experience needed.</p>
 
-        {/* Sign Up Form */}
-        <div className="w-full max-w-md">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20">
-            <h2 className="text-2xl font-bold text-center mb-6 text-white">
-              Create Account
-            </h2>
-
-            {error && (
-              <div className="mb-6 p-4 bg-red-500/20 border border-red-400/30 rounded-xl">
-                <p className="text-sm text-red-200 text-center">{error}</p>
-              </div>
-            )}
-
-            <form onSubmit={handleSignUp} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-white/80 mb-2">
-                    First Name
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="First Name"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    required
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-white/80 mb-2">
-                    Last Name
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Last Name"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    required
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Date of Birth
-                </label>
-                <input
-                  type="date"
-                  value={dob}
-                  onChange={(e) => setDob(e.target.value)}
-                  required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                />
-                <p className="mt-1 text-xs text-white/60">You must be 18 or older to sign up</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  placeholder="your@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  placeholder="Create a password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Confirm Password
-                </label>
-                <input
-                  type="password"
-                  placeholder="Confirm your password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                />
-              </div>
-
-              <button 
-                type="submit"
-                className="w-full py-4 px-8 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 rounded-xl text-lg font-bold transition-all duration-300 transform hover:scale-105 shadow-2xl hover:shadow-purple-500/40 text-white"
-              >
-                Create Account
-              </button>
-            </form>
-
-            <div className="mt-6 text-center">
-              <p className="text-white/60">
-                Already have an account?{" "}
-                <Link to="/login" className="text-purple-400 hover:text-purple-300 font-medium transition-colors duration-300">
-                  Sign in here
-                </Link>
-              </p>
+          {error && (
+            <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: 24 }}>
+              <p style={{ fontSize: 14, color: '#DC2626', margin: 0 }}>{error}</p>
             </div>
-          </div>
+          )}
 
-          {/* Additional Info */}
-          <div className="mt-6 text-center">
-            <p className="text-xs text-white/60 max-w-sm mx-auto">
-              By creating an account, you agree to our terms of service and privacy policy. 
-              Lineup is a skill-based fantasy game for users 18+.
-            </p>
-          </div>
+          <form onSubmit={handleSignUp} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={labelStyle}>First name</label>
+                <input type="text" placeholder="First" value={firstName} onChange={e => setFirstName(e.target.value)} required style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Last name</label>
+                <input type="text" placeholder="Last" value={lastName} onChange={e => setLastName(e.target.value)} required style={inputStyle} />
+              </div>
+            </div>
+
+            <div>
+              <label style={labelStyle}>Date of birth</label>
+              <input type="date" value={dob} onChange={e => setDob(e.target.value)} required style={inputStyle} />
+              <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>Must be 18 or older</p>
+            </div>
+
+            <div>
+              <label style={labelStyle}>Email</label>
+              <input type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} required style={inputStyle} />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Password</label>
+              <input type="password" placeholder="Create a password" value={password} onChange={e => setPassword(e.target.value)} required style={inputStyle} />
+            </div>
+
+            <div>
+              <label style={labelStyle}>Confirm password</label>
+              <input type="password" placeholder="Confirm your password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required style={inputStyle} />
+            </div>
+
+            <button
+              type="submit"
+              style={{
+                padding: '14px 0', borderRadius: 50, border: 'none', cursor: 'pointer',
+                backgroundColor: '#0072BC', color: '#fff', fontWeight: 700, fontSize: 16, marginTop: 8,
+              }}
+            >
+              Create account
+            </button>
+          </form>
+
+          <p style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center', marginTop: 20 }}>
+            By signing up you agree to our terms of service. Lineup is a skill-based fantasy game for users 18+.
+          </p>
+
+          <p style={{ fontSize: 14, color: '#6B7280', textAlign: 'center', marginTop: 16 }}>
+            Already have an account?{' '}
+            <Link to="/login" style={{ color: '#0072BC', fontWeight: 600, textDecoration: 'none' }}>Log in</Link>
+          </p>
         </div>
       </div>
     </div>
