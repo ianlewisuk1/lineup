@@ -48,20 +48,25 @@ export function AuthProvider({ children }) {
   // Fetches all session-level data in parallel once we have a user ID.
   // Runs at boot and on sign-in. All three queries fire simultaneously.
   const loadSessionData = async (userId) => {
-    const [
-      { data: userRow },
-      { data: configRow },
-      { data: teamsData },
-    ] = await Promise.all([
-      supabase.from("users").select("*").eq("id", userId).single(),
-      supabase.from("config").select("value").eq("key", "season").single(),
-      supabase.from("teams").select("*"),
-    ]);
+    try {
+      const [
+        { data: userRow },
+        { data: configRow },
+        { data: teamsData },
+      ] = await Promise.all([
+        supabase.from("users").select("*").eq("id", userId).single(),
+        supabase.from("config").select("value").eq("key", "season").single(),
+        supabase.from("teams").select("*"),
+      ]);
 
-    if (userRow) setUserData(userRow);
-    if (configRow) setSeasonConfig(configRow.value);
-    setTeams(buildTeamsMap(teamsData));
-    setLoading(false);
+      if (userRow) setUserData(userRow);
+      if (configRow) setSeasonConfig(configRow.value);
+      setTeams(buildTeamsMap(teamsData));
+    } catch (err) {
+      console.error("Failed to load session data:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {

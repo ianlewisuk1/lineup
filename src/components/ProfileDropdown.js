@@ -25,10 +25,10 @@ const ProfileDropdown = () => {
   useLayoutEffect(() => {
     if (!isOpen) return;
     updatePos();
-    window.addEventListener('scroll', updatePos, true);
+    window.addEventListener('scroll', updatePos, { capture: true });
     window.addEventListener('resize', updatePos);
     return () => {
-      window.removeEventListener('scroll', updatePos, true);
+      window.removeEventListener('scroll', updatePos, { capture: true });
       window.removeEventListener('resize', updatePos);
     };
   }, [isOpen]);
@@ -80,7 +80,7 @@ const ProfileDropdown = () => {
       {/* Portal — backdrop + menu rendered at body level to avoid clipping */}
       {isOpen && createPortal(
         <>
-          <div className="fixed inset-0 z-[9998]" onClick={() => setIsOpen(false)} />
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setIsOpen(false)} />
           <div
             role="menu"
             onClick={(e) => e.stopPropagation()}

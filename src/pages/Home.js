@@ -11,7 +11,7 @@ import logoWordmark from "../assets/logo-wordmark-transparent.png";
 
 function Home() {
   // --- Session data from AuthContext (no extra DB queries needed) ---
-  const { userData } = useAuth();
+  const { userData, currentUser } = useAuth();
   const isAdmin = userData?.is_admin || false;
   const userName = userData?.first_name || "";
 
@@ -46,12 +46,11 @@ function Home() {
   // Fetches the leagues this user belongs to, plus member counts for each card.
   useEffect(() => {
     const loadLeagues = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
+      if (!currentUser) { setLoading(false); return; }
 
       // DB query 1: get league IDs this user belongs to
       const { data: memberRows } = await supabase
-        .from('league_members').select('league_id').eq('user_id', user.id);
+        .from('league_members').select('league_id').eq('user_id', currentUser.id);
 
       const leagueIds = (memberRows || []).map(r => r.league_id);
       if (leagueIds.length === 0) { setLeagueList([]); setLoading(false); return; }
@@ -74,8 +73,6 @@ function Home() {
   }, []);
 
   // --- Early returns ---
-
-  if (isAdmin) return null;
 
   // Spinner shown while league list is loading
   if (loading) {

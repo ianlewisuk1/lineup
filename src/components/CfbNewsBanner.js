@@ -16,14 +16,19 @@ function CfbNewsBanner() {
         // Check cache first — validate shape to avoid stale data after code changes
         const cached = sessionStorage.getItem(CACHE_KEY);
         if (cached) {
-          const { timestamp, data } = JSON.parse(cached);
-          const isValid = Date.now() - timestamp < CACHE_TTL
-            && Array.isArray(data)
-            && data.length > 0
-            && data[0].image !== undefined; // ensure cache has current shape
-          if (isValid) {
-            setArticles(data);
-            return;
+          try {
+            const { timestamp, data } = JSON.parse(cached);
+            const isValid = Date.now() - timestamp < CACHE_TTL
+              && Array.isArray(data)
+              && data.length > 0
+              && data[0].image !== undefined; // ensure cache has current shape
+            if (isValid) {
+              setArticles(data);
+              return;
+            }
+          } catch {
+            // Corrupted cache — discard and fetch fresh
+            sessionStorage.removeItem(CACHE_KEY);
           }
         }
 
