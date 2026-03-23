@@ -1,27 +1,12 @@
-import { useEffect, useState } from "react";
-import { supabase } from "../supabase/supabase";
+import { useAuth } from "../context/AuthContext";
 
 /**
- * Fetches the season config row once and returns the parsed value object.
- * Replaces the repeated supabase.from('config').select('value').eq('key','season') pattern.
+ * Returns the season config fetched at session start in AuthContext.
+ * No DB query — reads from session-level cache.
  *
- * Returns { config, loading } where config is the value object (e.g. { currentWeek, faLocked, ... })
+ * Returns { config, loading } where config is { currentWeek, faLocked, ... }
  */
 export function useSeasonConfig() {
-  const [config, setConfig] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    supabase
-      .from("config")
-      .select("value")
-      .eq("key", "season")
-      .single()
-      .then(({ data, error }) => {
-        if (!error && data) setConfig(data.value);
-        setLoading(false);
-      });
-  }, []);
-
-  return { config, loading };
+  const { seasonConfig, loading } = useAuth();
+  return { config: seasonConfig, loading };
 }

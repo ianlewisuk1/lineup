@@ -3,8 +3,7 @@ import lineupLogo from "./assets/logo-full-name.png";
 import {
   BrowserRouter as Router,
   Routes,
-  Route,
-  useNavigate
+  Route
 } from "react-router-dom";
 import { supabase } from "./supabase/supabase";
 
@@ -46,6 +45,7 @@ function AppWrapper() {
   );
 }
 
+// main loading screen logo, forced on first load, used when other pages load
 function SplashScreen() {
   return (
     <div style={{
@@ -70,71 +70,26 @@ function SplashScreen() {
 }
 
 function App() {
-  const [user, setUser] = useState(null);
-  const [displayName, setDisplayName] = useState("");
   const [authLoading, setAuthLoading] = useState(true);
-  const navigate = useNavigate();
 
   useEffect(() => {
+    // Force a 1.5s minimum splash screen on cold start.
+    // User data, teams, and config are loaded in AuthContext in parallel during this wait.
     const minDelay = new Promise(resolve => setTimeout(resolve, 1500));
 
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      if (currentUser) {
-        const { data: userData } = await supabase
-          .from("users")
-          .select("first_name, last_name")
-          .eq("id", currentUser.id)
-          .single();
-        setDisplayName(
-          userData?.first_name
-            ? `${userData.first_name} ${userData.last_name || ""}`
-            : currentUser.email
-        );
-      } else {
-        setDisplayName("");
-      }
+    supabase.auth.getSession().then(async () => {
       await minDelay;
       setAuthLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      if (currentUser) {
-        const { data: userData } = await supabase
-          .from("users")
-          .select("first_name, last_name")
-          .eq("id", currentUser.id)
-          .single();
-        setDisplayName(
-          userData?.first_name
-            ? `${userData.first_name} ${userData.last_name || ""}`
-            : currentUser.email
-        );
-      } else {
-        setDisplayName("");
-      }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      // Auth state changes are handled by AuthContext
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
   if (authLoading) return <SplashScreen />;
-
-  const handleLogout = async () => {
-    const confirmed = window.confirm("Are you sure you want to log out?");
-    if (!confirmed) return;
-
-    try {
-      await supabase.auth.signOut();
-      navigate("/");
-    } catch (err) {
-      console.error("Logout error:", err);
-    }
-  };
 
   return (
     <Routes>

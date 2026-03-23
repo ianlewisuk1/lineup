@@ -2,43 +2,34 @@ import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../supabase/supabase';
 import { ChevronDown, User, LogOut } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import EditProfileModal from './EditProfileModal';
 
 const ProfileDropdown = () => {
+  const { userData } = useAuth();
+  const userName = userData?.first_name || '';
+
   const [isOpen, setIsOpen] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [userName, setUserName] = useState('');
   const btnRef = useRef(null);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const [pos, setPos] = useState({ top: 0, left: 0 });
 
-  // Resolve name
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      const meta = user.user_metadata || {};
-      if (meta.full_name) setUserName(meta.full_name.split(' ')[0]);
-      else if (meta.first_name) setUserName(meta.first_name);
-      else if (user.email) setUserName(user.email.split('@')[0]);
-    });
-  }, []);
-
-  // Recompute menu position when opening or on viewport changes
+  // Recompute menu position when opening or on viewport/scroll changes
   const updatePos = () => {
     const btn = btnRef.current;
     if (!btn) return;
     const r = btn.getBoundingClientRect();
-    setPos({ top: r.bottom + 8, left: r.right - 176 /* w-44 */, width: r.width });
+    setPos({ top: r.bottom + 8, left: r.right - 176 });
   };
 
   useLayoutEffect(() => {
     if (!isOpen) return;
     updatePos();
-    const onScrollOrResize = () => updatePos();
-    window.addEventListener('scroll', onScrollOrResize, true);
-    window.addEventListener('resize', onScrollOrResize);
+    window.addEventListener('scroll', updatePos, true);
+    window.addEventListener('resize', updatePos);
     return () => {
-      window.removeEventListener('scroll', onScrollOrResize, true);
-      window.removeEventListener('resize', onScrollOrResize);
+      window.removeEventListener('scroll', updatePos, true);
+      window.removeEventListener('resize', updatePos);
     };
   }, [isOpen]);
 
@@ -63,72 +54,76 @@ const ProfileDropdown = () => {
 
   return (
     <>
-      <div className="relative">
+      <div style={{ position: 'relative' }}>
         <button
           ref={btnRef}
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsOpen((o) => !o);
+          onClick={(e) => { e.stopPropagation(); setIsOpen(o => !o); }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '6px 10px', borderRadius: 8, cursor: 'pointer',
+            backgroundColor: '#F9FAFB', border: '1.5px solid #E5E7EB',
+            transition: 'border-color 0.15s',
           }}
-          className="flex items-center space-x-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-all duration-200 border border-white/20"
           aria-haspopup="menu"
           aria-expanded={isOpen}
         >
-          <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-            {getInitial()}
+          {/* Avatar */}
+          <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg, #0072BC, #3B82F6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{getInitial()}</span>
           </div>
-          <span className="hidden sm:block text-white font-medium">{userName}</span>
-          <ChevronDown size={16} className={`text-white/80 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{userName}</span>
+          <ChevronDown size={14} color="#6B7280" style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
         </button>
       </div>
 
-      {/* Portal: backdrop + menu live at <body> level */}
-      {isOpen &&
-        createPortal(
-          <>
-            {/* Backdrop to catch outside clicks */}
-            <div
-              className="fixed inset-0 z-[9998]"
-              onClick={() => setIsOpen(false)}
-            />
-
-            {/* Menu */}
-            <div
-              className="fixed z-[9999] w-44 bg-slate-800/95 backdrop-blur-lg rounded-lg border border-white/20 shadow-2xl py-1"
-              style={{ top: pos.top, left: pos.left }}
-              role="menu"
-              onClick={(e) => e.stopPropagation()}
+      {/* Portal — backdrop + menu rendered at body level to avoid clipping */}
+      {isOpen && createPortal(
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setIsOpen(false)} />
+          <div
+            role="menu"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed', zIndex: 9999,
+              top: pos.top, left: pos.left,
+              width: 176,
+              backgroundColor: '#ffffff',
+              border: '1.5px solid #E5E7EB',
+              borderRadius: 10,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+              padding: '4px 0',
+            }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(e) => { e.stopPropagation(); setShowEditModal(true); setIsOpen(false); }}
+              style={{ width: '100%', padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 8, border: 'none', backgroundColor: 'transparent', cursor: 'pointer', textAlign: 'left' }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F9FAFB'}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
             >
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowEditModal(true);
-                  setIsOpen(false);
-                }}
-                className="w-full px-3 py-2 text-left flex items-center space-x-2 hover:bg-white/10 transition-colors duration-200 text-white text-sm"
-                role="menuitem"
-              >
-                <User size={14} className="text-white/60" />
-                <span className="font-medium">Edit Profile</span>
-              </button>
+              <User size={14} color="#6B7280" />
+              <span style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>Edit Profile</span>
+            </button>
 
-              <hr className="border-white/20 my-1" />
+            <div style={{ height: 1, backgroundColor: '#F3F4F6', margin: '2px 0' }} />
 
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="w-full px-3 py-2 text-left flex items-center space-x-2 hover:bg-red-500/20 transition-colors duration-200 text-red-400 text-sm"
-                role="menuitem"
-              >
-                <LogOut size={14} />
-                <span className="font-medium">Logout</span>
-              </button>
-            </div>
-          </>,
-          document.body
-        )}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={handleLogout}
+              style={{ width: '100%', padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 8, border: 'none', backgroundColor: 'transparent', cursor: 'pointer', textAlign: 'left' }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#FEF2F2'}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+            >
+              <LogOut size={14} color="#DC2626" />
+              <span style={{ fontSize: 13, fontWeight: 500, color: '#DC2626' }}>Logout</span>
+            </button>
+          </div>
+        </>,
+        document.body
+      )}
 
       {showEditModal && <EditProfileModal onClose={() => setShowEditModal(false)} />}
     </>

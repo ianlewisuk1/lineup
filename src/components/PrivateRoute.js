@@ -6,10 +6,12 @@ function PrivateRoute({ children }) {
   const location = useLocation();
 
   if (!currentUser) {
+    // if no current user, store the intended URL to session storage
     sessionStorage.setItem("authRedirect", location.pathname + location.search);
+    // hard redirect to /login
     return <Navigate to="/login" replace />;
   }
-
+  // if there IS a user, render the child component. 
   return children;
 }
 
