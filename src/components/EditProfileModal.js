@@ -1,470 +1,361 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../supabase/supabase';
 import { X } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
-// Image resizing helper function
-// Image resizing helper function
+// Resizes an image file to max 200×200 at 0.8 quality before uploading
 const resizeImage = (file, maxWidth = 200, maxHeight = 200, quality = 0.8) => {
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
 
     const timeout = setTimeout(() => {
+      URL.revokeObjectURL(objectUrl);
       reject(new Error('Image processing timeout'));
     }, 10000);
-
-    const objectUrl = URL.createObjectURL(file);
-    img.src = objectUrl;
 
     img.onload = () => {
       clearTimeout(timeout);
       try {
         let { width, height } = img;
-
         if (width > height) {
-          if (width > maxWidth) {
-            height = (height * maxWidth) / width;
-            width = maxWidth;
-          }
+          if (width > maxWidth) { height = (height * maxWidth) / width; width = maxWidth; }
         } else {
-          if (height > maxHeight) {
-            width = (width * maxHeight) / height;
-            height = maxHeight;
-          }
+          if (height > maxHeight) { width = (width * maxHeight) / height; height = maxHeight; }
         }
-
         canvas.width = width;
         canvas.height = height;
         ctx.drawImage(img, 0, 0, width, height);
-
         canvas.toBlob(
-          (blob) => {
-            URL.revokeObjectURL(objectUrl); // cleanup
-            if (blob) resolve(blob);
-            else reject(new Error('Failed to create blob'));
-          },
-          'image/jpeg',
-          quality
+          (blob) => { URL.revokeObjectURL(objectUrl); blob ? resolve(blob) : reject(new Error('Failed to create blob')); },
+          'image/jpeg', quality
         );
-      } catch (err) {
-        URL.revokeObjectURL(objectUrl); // cleanup on error
-        reject(err);
-      }
+      } catch (err) { URL.revokeObjectURL(objectUrl); reject(err); }
     };
-
-    img.onerror = () => {
-      clearTimeout(timeout);
-      URL.revokeObjectURL(objectUrl); // cleanup
-      reject(new Error('Failed to load image'));
-    };
+    img.onerror = () => { clearTimeout(timeout); URL.revokeObjectURL(objectUrl); reject(new Error('Failed to load image')); };
+    img.src = objectUrl;
   });
 };
 
+// Uploads a Blob to Supabase Storage under avatars/{uid}/avatar.{ext} and returns the public URL
+const uploadAvatar = async (blob, uid) => {
+  const contentType = blob.type || 'image/jpeg';
+  const ext = contentType.split('/')[1] === 'jpeg' ? 'jpg' : (contentType.split('/')[1] || 'jpg');
+  const path = `avatars/${uid}/avatar.${ext}`;
+  const { error } = await supabase.storage.from('avatars').upload(path, blob, { contentType, upsert: true });
+  if (error) throw error;
+  return supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+};
 
 const EditProfileModal = ({ onClose }) => {
- const [loading, setLoading] = useState(true);
- const [saving, setSaving] = useState(false);
- const [uploading, setUploading] = useState(false);
+  const { currentUser, userData, updateUserData } = useAuth();
 
- // Global profile data
- const [firstName, setFirstName] = useState('');
- const [lastName, setLastName] = useState('');
- const [email, setEmail] = useState('');
+  // Pre-populate from AuthContext — no DB query needed for user fields
+  const [firstName, setFirstName] = useState(userData?.first_name || '');
+  const [lastName, setLastName]   = useState(userData?.last_name  || '');
+  const [email, setEmail]         = useState(userData?.email || currentUser?.email || '');
 
- // League-specific data
- const [userLeagues, setUserLeagues] = useState([]);
- const [selectedLeague, setSelectedLeague] = useState('');
- const [teamName, setTeamName] = useState('');
- const [teamAvatar, setTeamAvatar] = useState('');
+  // League-specific state — loaded once on mount
+  const [leagueData, setLeagueData]       = useState([]); // [{ leagueId, leagueName, teamName, teamAvatar }]
+  const [selectedLeagueIdx, setSelectedLeagueIdx] = useState(0);
+  const [teamName, setTeamName]           = useState('');
+  const [teamAvatar, setTeamAvatar]       = useState('');
 
- // Uploads a Blob/File OR a data URL string to Supabase Storage and returns the public URL
-async function uploadAvatar(fileOrDataUrl) {
-  const { data: { user } } = await supabase.auth.getUser();
-  const uid = user?.id;
-  console.log('uploadAvatar uid:', uid);
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError]       = useState(null);
 
-  if (!uid) throw new Error("Not signed in");
+  // Track original values to diff on save
+  const origUser   = useRef({ firstName: userData?.first_name || '', lastName: userData?.last_name || '', email: userData?.email || currentUser?.email || '' });
+  const origLeague = useRef({});
 
-  let blob = fileOrDataUrl;
-  let ext = 'png';
-  let contentType = 'image/png';
+  // Lock background scroll while modal is open
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
-  if (fileOrDataUrl instanceof Blob) {
-    contentType = fileOrDataUrl.type || 'image/png';
-    const maybe = contentType.split('/')[1];
-    ext = (maybe === 'jpeg') ? 'jpg' : (maybe || 'png');
-  } else if (typeof fileOrDataUrl === 'string' && fileOrDataUrl.startsWith('data:')) {
-    // Convert data URL to Blob
-    const res = await fetch(fileOrDataUrl);
-    blob = await res.blob();
-    contentType = blob.type || 'image/png';
-    const maybe = contentType.split('/')[1];
-    ext = (maybe === 'jpeg') ? 'jpg' : (maybe || 'png');
-  } else {
-    throw new Error('uploadAvatar: expected Blob/File or data URL string');
-  }
+  // Close on Escape
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose?.();
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
-  const path = `avatars/${uid}/avatar.${ext}`;
-  const { error: uploadError } = await supabase.storage
-    .from('avatars')
-    .upload(path, blob, { contentType, upsert: true });
+  // Single query on open — fetch all leagues + team data for this user
+  useEffect(() => {
+    if (!currentUser) { setLoading(false); return; }
+    const load = async () => {
+      try {
+        const { data: rows, error: err } = await supabase
+          .from('league_members')
+          .select('league_id, team_name, team_avatar, leagues(id, name)')
+          .eq('user_id', currentUser.id);
+        if (err) throw err;
 
-  if (uploadError) throw uploadError;
+        const leagues = (rows || [])
+          .map(r => r.leagues ? {
+            leagueId:   r.leagues.id,
+            leagueName: r.leagues.name || 'Unnamed League',
+            teamName:   r.team_name   || '',
+            teamAvatar: r.team_avatar || '',
+          } : null)
+          .filter(Boolean);
 
-  const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-  return data.publicUrl;
-}
-
- const avatarOptions = [
-   'avatar1.png', 'avatar2.png', 'avatar3.png', 'avatar4.png',
-   'avatar5.png', 'avatar6.png', 'avatar7.png', 'avatar8.png'
- ];
-
- // Lock background scroll while modal is open
- useEffect(() => {
-   const prev = document.body.style.overflow;
-   document.body.style.overflow = 'hidden';
-   return () => {
-     document.body.style.overflow = prev;
-   };
- }, []);
-
- // Close on Escape
- useEffect(() => {
-   const onKey = (e) => e.key === 'Escape' && onClose?.();
-   document.addEventListener('keydown', onKey);
-   return () => document.removeEventListener('keydown', onKey);
- }, [onClose]);
-
- useEffect(() => {
-   const loadUserData = async () => {
-     const { data: { user: currentUser } } = await supabase.auth.getUser();
-     if (!currentUser) { setLoading(false); return; }
-     try {
-       const { data: userData, error: userError } = await supabase
-         .from('users').select('*').eq('id', currentUser.id).single();
-       if (userError) throw userError;
-       if (userData) {
-         setFirstName(userData.first_name || '');
-         setLastName(userData.last_name || '');
-         setEmail(userData.email || currentUser.email || '');
-         const { data: memberRows, error: memberError } = await supabase
-           .from('league_members').select('league_id, leagues(id, name)').eq('user_id', currentUser.id);
-         if (memberError) throw memberError;
-         const leagues = (memberRows || [])
-           .map(row => row.leagues ? { id: row.leagues.id, name: row.leagues.name || 'Unnamed League' } : null)
-           .filter(Boolean);
-         setUserLeagues(leagues);
-         if (leagues.length > 0) setSelectedLeague(leagues[0].id);
-       }
-     } catch (err) {
-       console.error('Error loading user data:', err);
-     } finally {
-       setLoading(false);
-     }
-   };
-   loadUserData();
- }, []);
-
- useEffect(() => {
-   if (!selectedLeague) return;
-   const loadLeagueData = async () => {
-     const { data: { user: currentUser } } = await supabase.auth.getUser();
-     if (!currentUser) return;
-     try {
-       const { data: member, error: memberError } = await supabase
-         .from('league_members').select('team_name, team_avatar')
-         .eq('league_id', selectedLeague).eq('user_id', currentUser.id).single();
-       if (memberError && memberError.code !== 'PGRST116') throw memberError;
-       if (member) {
-         setTeamName(member.team_name || '');
-         setTeamAvatar(member.team_avatar || '');
-       } else {
-         setTeamName(''); setTeamAvatar('');
-       }
-     } catch (err) {
-       console.error('Error loading league data:', err);
-     }
-   };
-   loadLeagueData();
- }, [selectedLeague]);
-
- // Updated image upload handler with resizing
-  const handleImageUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
-      return;
-    }
-    if (file.size > 10_000_000) {
-      alert('Image is too large. Please choose a smaller image (under 10MB).');
-      return;
-    }
-
-    const { data: { user: currentUser } } = await supabase.auth.getUser();
-    if (!currentUser || !selectedLeague) return;
-
-    setUploading(true);
-    try {
-      console.log('Starting image resize...');
-      const resizedFile = await resizeImage(file, 200, 200, 0.8); // Blob/File
-      console.log('Image resized, size:', resizedFile.size);
-
-      if (resizedFile.size > 2 * 1024 * 1024) {
-        alert('Image is still too large after resizing. Please try a different image.');
-        return;
+        setLeagueData(leagues);
+        if (leagues.length > 0) {
+          setTeamName(leagues[0].teamName);
+          setTeamAvatar(leagues[0].teamAvatar);
+          origLeague.current = { teamName: leagues[0].teamName, teamAvatar: leagues[0].teamAvatar };
+        }
+      } catch (err) {
+        setError('Failed to load profile data.');
+        console.error(err);
+      } finally {
+        setLoading(false);
       }
+    };
+    load();
+  }, [currentUser]);
 
-      console.log('Uploading to Supabase storage...');
-      const url = await uploadAvatar(resizedFile);
-      console.log('Upload complete:', url);
-      setTeamAvatar(url);
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      alert(`Failed to upload image: ${error.message}`);
-    } finally {
-      setUploading(false);
-      event.target.value = '';
+  // When user switches league, load that league's team data from local state — no extra query
+  const handleLeagueChange = (idx) => {
+    setSelectedLeagueIdx(idx);
+    const league = leagueData[idx];
+    if (league) {
+      setTeamName(league.teamName);
+      setTeamAvatar(league.teamAvatar);
+      origLeague.current = { teamName: league.teamName, teamAvatar: league.teamAvatar };
     }
   };
 
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError('Please select an image file.'); return; }
+    if (file.size > 10_000_000) { setError('Image is too large (max 10MB).'); return; }
 
- const handleSave = async () => {
-   const { data: { user: currentUser } } = await supabase.auth.getUser();
-   if (!currentUser) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const resized = await resizeImage(file, 200, 200, 0.8);
+      if (resized.size > 2 * 1024 * 1024) { setError('Image still too large after resize. Try a different image.'); return; }
+      const url = await uploadAvatar(resized, currentUser.id);
+      setTeamAvatar(url);
+    } catch (err) {
+      setError(`Upload failed: ${err.message}`);
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
 
-   setSaving(true);
-   try {
-     const { error: userError } = await supabase
-       .from('users')
-       .update({
-         first_name: firstName.trim(),
-         last_name: lastName.trim(),
-         email: email.trim(),
-       })
-       .eq('id', currentUser.id);
+  const handleSave = async () => {
+    if (!currentUser) return;
+    setSaving(true);
+    setError(null);
+    try {
+      // Only update users table if something changed
+      const userChanged =
+        firstName.trim() !== origUser.current.firstName ||
+        lastName.trim()  !== origUser.current.lastName  ||
+        email.trim()     !== origUser.current.email;
 
-     if (userError) throw userError;
+      if (userChanged) {
+        const patch = { first_name: firstName.trim(), last_name: lastName.trim(), email: email.trim() };
+        const { error: userErr } = await supabase.from('users').update(patch).eq('id', currentUser.id);
+        if (userErr) throw userErr;
+        // Update AuthContext so home greeting refreshes immediately
+        updateUserData(patch);
+      }
 
-     if (selectedLeague) {
-       const memberData = {
-         team_name: teamName.trim(),
-         team_avatar: teamAvatar,
-         custom_avatar: teamAvatar.startsWith('http'),
-       };
+      // Only update league_members if team data changed
+      const selectedLeague = leagueData[selectedLeagueIdx];
+      if (selectedLeague) {
+        const leagueChanged =
+          teamName.trim()  !== origLeague.current.teamName ||
+          teamAvatar       !== origLeague.current.teamAvatar;
 
-       const { error: memberError } = await supabase
-         .from('league_members')
-         .update(memberData)
-         .eq('league_id', selectedLeague)
-         .eq('user_id', currentUser.id);
+        if (leagueChanged) {
+          const { error: memberErr } = await supabase
+            .from('league_members')
+            .update({ team_name: teamName.trim(), team_avatar: teamAvatar, custom_avatar: teamAvatar.startsWith('http') })
+            .eq('league_id', selectedLeague.leagueId)
+            .eq('user_id', currentUser.id);
+          if (memberErr) throw memberErr;
+        }
+      }
 
-       if (memberError) throw memberError;
-     }
+      onClose?.();
+    } catch (err) {
+      console.error('Error saving profile:', err);
+      setError('Failed to save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-     onClose?.();
-   } catch (err) {
-     console.error('Error saving profile:', err);
-     alert('Error saving profile. Please try again.');
-   } finally {
-     setSaving(false);
-   }
- };
+  const selectedLeague = leagueData[selectedLeagueIdx];
 
- // Modal content (rendered through a portal)
- const modalUI = (
-   <>
-     {/* Backdrop */}
-     <div
-       className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[10000]"
-       onClick={onClose}
-     />
+  const modalUI = (
+    <>
+      {/* Backdrop */}
+      <div
+        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 10000 }}
+        onClick={onClose}
+      />
 
-     {/* Panel */}
-     <div
-       className="fixed inset-0 z-[10001] flex items-center justify-center p-4"
-       aria-modal="true"
-       role="dialog"
-       onClick={onClose}
-     >
-       <div
-         className="bg-slate-800 rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto border border-white/20 shadow-2xl"
-         onClick={(e) => e.stopPropagation()}
-       >
-         {/* Header */}
-         <div className="flex items-center justify-between mb-6">
-           <h2 className="text-2xl font-bold text-white">Edit Profile</h2>
-           <button
-             onClick={onClose}
-             className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-             aria-label="Close"
-           >
-             <X size={20} className="text-white/60" />
-           </button>
-         </div>
+      {/* Panel */}
+      <div
+        style={{ position: 'fixed', inset: 0, zIndex: 10001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        onClick={onClose}
+      >
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{ backgroundColor: '#ffffff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}
+          aria-modal="true"
+          role="dialog"
+        >
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: '#111827', margin: 0 }}>Edit Profile</h2>
+            <button onClick={onClose} style={{ padding: 6, border: 'none', backgroundColor: 'transparent', cursor: 'pointer', borderRadius: 8, display: 'flex', alignItems: 'center' }}>
+              <X size={20} color="#9CA3AF" />
+            </button>
+          </div>
 
-         {loading ? (
-           <div className="text-center py-8">
-             <div className="text-2xl mb-2 animate-spin">⚙️</div>
-             <p className="text-white">Loading profile...</p>
-           </div>
-         ) : (
-           <>
-             {/* Global Settings */}
-             <div className="mb-6">
-               <h3 className="text-lg font-semibold text-white mb-4">Global Settings</h3>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '32px 0' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', border: '2.5px solid #0072BC', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              <p style={{ color: '#6B7280', fontSize: 14, margin: 0 }}>Loading profile...</p>
+            </div>
+          ) : (
+            <>
+              {error && (
+                <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', marginBottom: 20 }}>
+                  <p style={{ fontSize: 13, color: '#DC2626', margin: 0 }}>{error}</p>
+                </div>
+              )}
 
-               <div className="space-y-4">
-                 <div>
-                   <label className="block text-sm font-medium text-white/80 mb-1">First Name</label>
-                   <input
-                     type="text"
-                     value={firstName}
-                     onChange={(e) => setFirstName(e.target.value)}
-                     className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-white/50"
-                     placeholder="Enter your first name"
-                   />
-                 </div>
+              {/* Global Settings */}
+              <div style={{ marginBottom: 24 }}>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 16, marginTop: 0 }}>Account</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {[
+                    { label: 'First Name', value: firstName, set: setFirstName, type: 'text', placeholder: 'First name' },
+                    { label: 'Last Name',  value: lastName,  set: setLastName,  type: 'text', placeholder: 'Last name' },
+                    { label: 'Email',      value: email,     set: setEmail,     type: 'email', placeholder: 'Email address' },
+                  ].map(({ label, value, set, type, placeholder }) => (
+                    <div key={label}>
+                      <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>{label}</label>
+                      <input
+                        type={type}
+                        value={value}
+                        onChange={e => set(e.target.value)}
+                        placeholder={placeholder}
+                        style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E5E7EB', borderRadius: 8, fontSize: 14, color: '#111827', backgroundColor: '#F9FAFB', outline: 'none', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-                 <div>
-                   <label className="block text-sm font-medium text-white/80 mb-1">Last Name</label>
-                   <input
-                     type="text"
-                     value={lastName}
-                     onChange={(e) => setLastName(e.target.value)}
-                     className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-white/50"
-                     placeholder="Enter your last name"
-                   />
-                 </div>
+              {/* League Settings */}
+              {leagueData.length > 0 && (
+                <div style={{ marginBottom: 24 }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 16, marginTop: 0 }}>League</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-                 <div>
-                   <label className="block text-sm font-medium text-white/80 mb-1">Email</label>
-                   <input
-                     type="email"
-                     value={email}
-                     onChange={(e) => setEmail(e.target.value)}
-                     className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-white/50"
-                     placeholder="Enter your email"
-                   />
-                 </div>
-               </div>
-             </div>
+                    {/* League selector — only show if in multiple leagues */}
+                    {leagueData.length > 1 && (
+                      <div>
+                        <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Select League</label>
+                        <select
+                          value={selectedLeagueIdx}
+                          onChange={e => handleLeagueChange(Number(e.target.value))}
+                          style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E5E7EB', borderRadius: 8, fontSize: 14, color: '#111827', backgroundColor: '#F9FAFB', outline: 'none', boxSizing: 'border-box' }}
+                        >
+                          {leagueData.map((l, i) => (
+                            <option key={l.leagueId} value={i}>{l.leagueName}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
-             {/* League Settings */}
-             {userLeagues.length > 0 && (
-               <div className="mb-6">
-                 <h3 className="text-lg font-semibold text-white mb-4">League Settings</h3>
+                    {/* Team name */}
+                    <div>
+                      <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+                        Team Name {leagueData.length > 1 && selectedLeague && <span style={{ color: '#9CA3AF', fontWeight: 400 }}>— {selectedLeague.leagueName}</span>}
+                      </label>
+                      <input
+                        type="text"
+                        value={teamName}
+                        onChange={e => setTeamName(e.target.value)}
+                        placeholder="Enter your team name"
+                        style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #E5E7EB', borderRadius: 8, fontSize: 14, color: '#111827', backgroundColor: '#F9FAFB', outline: 'none', boxSizing: 'border-box' }}
+                      />
+                    </div>
 
-                 <div className="space-y-4">
-                   <div>
-                     <label className="block text-sm font-medium text-white/80 mb-1">Select League</label>
-                     <select
-                       value={selectedLeague}
-                       onChange={(e) => setSelectedLeague(e.target.value)}
-                       className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-white"
-                     >
-                       {userLeagues.map((league) => (
-                         <option key={league.id} value={league.id} className="bg-slate-700 text-white">
-                           {league.name}
-                         </option>
-                       ))}
-                     </select>
-                   </div>
+                    {/* Avatar */}
+                    <div>
+                      <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 8 }}>Team Avatar</label>
 
-                   <div>
-                     <label className="block text-sm font-medium text-white/80 mb-1">Team Name</label>
-                     <input
-                       type="text"
-                       value={teamName}
-                       onChange={(e) => setTeamName(e.target.value)}
-                       className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-white placeholder-white/50"
-                       placeholder="Enter your team name"
-                     />
-                   </div>
+                      {/* Current avatar preview */}
+                      {teamAvatar?.startsWith('http') && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                          <img src={teamAvatar} alt="Avatar" style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover', border: '2px solid #E5E7EB' }} />
+                          <button type="button" onClick={() => setTeamAvatar('')} style={{ fontSize: 13, color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                            Remove
+                          </button>
+                        </div>
+                      )}
 
-                   <div>
-                     <label className="block text-sm font-medium text-white/80 mb-2">Team Avatar</label>
-                     
-                     {/* Current Avatar Display */}
-                     {teamAvatar && (
-                       <div className="mb-3 flex items-center gap-3">
-                         <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-purple-400">
-                           {teamAvatar.startsWith('http') ? (
-                             <img 
-                               src={teamAvatar} 
-                               alt="Current avatar" 
-                               className="w-full h-full object-cover"
-                             />
-                           ) : (
-                             <div className="w-full h-full bg-gradient-to-r from-purple-500 to-blue-500 text-white text-sm font-bold flex items-center justify-center">
-                               {avatarOptions.indexOf(teamAvatar) + 1}
-                             </div>
-                           )}
-                         </div>
-                         <button
-                           type="button"
-                           onClick={() => setTeamAvatar('')}
-                           className="text-red-400 hover:text-red-300 text-sm"
-                         >
-                           Remove Avatar
-                         </button>
-                       </div>
-                     )}
+                      {/* Upload */}
+                      <label style={{ display: 'block', cursor: uploading ? 'not-allowed' : 'pointer' }}>
+                        <div style={{ border: '1.5px dashed #D1D5DB', borderRadius: 10, padding: '14px', textAlign: 'center', backgroundColor: uploading ? '#F9FAFB' : '#fff', opacity: uploading ? 0.6 : 1 }}>
+                          <div style={{ fontSize: 20, marginBottom: 4 }}>📷</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{uploading ? 'Uploading...' : 'Upload Avatar'}</div>
+                          <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>JPG or PNG, max 10MB</div>
+                        </div>
+                        <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} disabled={saving || uploading} />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-                     {/* Upload Custom Image */}
-                     <div className="mb-4">
-                       <label className="block w-full cursor-pointer">
-                         <div className={`border-2 border-dashed border-white/30 hover:border-purple-400/50 rounded-lg p-4 text-center transition-colors ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                           <div className="text-white/60 mb-2">📷</div>
-                           <div className="text-sm text-white/80 font-medium">
-                             {uploading ? 'Uploading...' : 'Upload Custom Avatar'}
-                           </div>
-                           <div className="text-xs text-white/60 mt-1">Max 2MB - please resize large images first</div>
-                         </div>
-                         <input
-                           type="file"
-                           accept="image/*"
-                           onChange={handleImageUpload}
-                           className="hidden"
-                           disabled={saving || uploading}
-                         />
-                       </label>
-                     </div>
-                   </div>
-                 </div>
-               </div>
-             )}
+              {/* Actions */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  style={{ padding: '11px 0', borderRadius: 10, border: '1.5px solid #E5E7EB', backgroundColor: '#fff', color: '#374151', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving || uploading}
+                  style={{ padding: '11px 0', borderRadius: 10, border: 'none', backgroundColor: saving || uploading ? '#9CA3AF' : '#0072BC', color: '#fff', fontWeight: 600, fontSize: 14, cursor: saving || uploading ? 'not-allowed' : 'pointer' }}
+                >
+                  {saving ? 'Saving...' : uploading ? 'Uploading...' : 'Save'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
 
-             {/* Actions */}
-             <div className="flex gap-3">
-               <button
-                 type="button"
-                 onClick={onClose}
-                 className="flex-1 py-3 px-4 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-colors border border-white/20"
-               >
-                 Cancel
-               </button>
-               <button
-                 type="button"
-                 onClick={handleSave}
-                 disabled={saving || uploading}
-                 className="flex-1 py-3 px-4 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white rounded-lg font-medium transition-colors"
-               >
-                 {saving ? 'Saving...' : uploading ? 'Uploading...' : 'Save Changes'}
-               </button>
-             </div>
-           </>
-         )}
-       </div>
-     </div>
-   </>
- );
-
- return createPortal(modalUI, document.body);
+  return createPortal(modalUI, document.body);
 };
 
 export default EditProfileModal;

@@ -101,8 +101,12 @@ export function AuthProvider({ children }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Allows components (e.g. EditProfileModal) to update cached user data after a save
+  // without triggering a full re-fetch
+  const updateUserData = (patch) => setUserData(prev => ({ ...prev, ...patch }));
+
   return (
-    <AuthContext.Provider value={{ currentUser, userData, seasonConfig, teams, loading }}>
+    <AuthContext.Provider value={{ currentUser, userData, seasonConfig, teams, loading, updateUserData }}>
       {!loading && children}
     </AuthContext.Provider>
   );

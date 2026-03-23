@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { supabase } from "../supabase/supabase";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Trophy, Users, ArrowRight, Plus, WifiOff } from "lucide-react";
-import { SEASON_YEAR } from "../utils/season";
 import { useAuth } from "../context/AuthContext";
 import ProfileDropdown from "../components/ProfileDropdown";
 import CfbNewsBanner from "../components/CfbNewsBanner";
@@ -55,17 +54,9 @@ function Home() {
       const leagueIds = (memberRows || []).map(r => r.league_id);
       if (leagueIds.length === 0) { setLeagueList([]); setLoading(false); return; }
 
-      // DB query 2 + 3 in parallel: fetch league details and member counts simultaneously
-      const [{ data: leaguesData }, { data: allMemberRows }] = await Promise.all([
-        supabase.from('leagues').select('*').in('id', leagueIds),
-        supabase.from('league_members').select('league_id').in('league_id', leagueIds),
-      ]);
-
-      // Count members per league and attach to each league object
-      const countByLeague = {};
-      (allMemberRows || []).forEach(m => { countByLeague[m.league_id] = (countByLeague[m.league_id] || 0) + 1; });
-      const leaguesWithCounts = (leaguesData || []).map(league => ({ ...league, memberCount: countByLeague[league.id] || 0 }));
-      setLeagueList(leaguesWithCounts.sort((a, b) => (a.name || "").localeCompare(b.name || "")));
+      // DB query 2: fetch league details
+      const { data: leaguesData } = await supabase.from('leagues').select('id, name').in('id', leagueIds);
+      setLeagueList((leaguesData || []).sort((a, b) => (a.name || "").localeCompare(b.name || "")));
       setLoading(false);
     };
 
@@ -182,9 +173,6 @@ function Home() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {league.name || "Unnamed League"}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>
-                      {league.memberCount || 0} / {league.max_managers || "—"} managers · {SEASON_YEAR}
                     </div>
                   </div>
                   <ArrowRight size={18} color="#D1D5DB" />
