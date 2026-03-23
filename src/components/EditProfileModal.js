@@ -139,85 +139,57 @@ async function uploadAvatar(fileOrDataUrl) {
  }, [onClose]);
 
  useEffect(() => {
+   const loadUserData = async () => {
+     const { data: { user: currentUser } } = await supabase.auth.getUser();
+     if (!currentUser) { setLoading(false); return; }
+     try {
+       const { data: userData, error: userError } = await supabase
+         .from('users').select('*').eq('id', currentUser.id).single();
+       if (userError) throw userError;
+       if (userData) {
+         setFirstName(userData.first_name || '');
+         setLastName(userData.last_name || '');
+         setEmail(userData.email || currentUser.email || '');
+         const { data: memberRows, error: memberError } = await supabase
+           .from('league_members').select('league_id, leagues(id, name)').eq('user_id', currentUser.id);
+         if (memberError) throw memberError;
+         const leagues = (memberRows || [])
+           .map(row => row.leagues ? { id: row.leagues.id, name: row.leagues.name || 'Unnamed League' } : null)
+           .filter(Boolean);
+         setUserLeagues(leagues);
+         if (leagues.length > 0) setSelectedLeague(leagues[0].id);
+       }
+     } catch (err) {
+       console.error('Error loading user data:', err);
+     } finally {
+       setLoading(false);
+     }
+   };
    loadUserData();
-   // eslint-disable-next-line react-hooks/exhaustive-deps
  }, []);
 
  useEffect(() => {
-   if (selectedLeague) {
-     loadLeagueData();
-   }
-   // eslint-disable-next-line react-hooks/exhaustive-deps
+   if (!selectedLeague) return;
+   const loadLeagueData = async () => {
+     const { data: { user: currentUser } } = await supabase.auth.getUser();
+     if (!currentUser) return;
+     try {
+       const { data: member, error: memberError } = await supabase
+         .from('league_members').select('team_name, team_avatar')
+         .eq('league_id', selectedLeague).eq('user_id', currentUser.id).single();
+       if (memberError && memberError.code !== 'PGRST116') throw memberError;
+       if (member) {
+         setTeamName(member.team_name || '');
+         setTeamAvatar(member.team_avatar || '');
+       } else {
+         setTeamName(''); setTeamAvatar('');
+       }
+     } catch (err) {
+       console.error('Error loading league data:', err);
+     }
+   };
+   loadLeagueData();
  }, [selectedLeague]);
-
- const loadUserData = async () => {
-   const { data: { user: currentUser } } = await supabase.auth.getUser();
-   if (!currentUser) {
-     setLoading(false);
-     return;
-   }
-
-   try {
-     const { data: userData, error: userError } = await supabase
-       .from('users')
-       .select('*')
-       .eq('id', currentUser.id)
-       .single();
-
-     if (userError) throw userError;
-
-     if (userData) {
-       setFirstName(userData.first_name || '');
-       setLastName(userData.last_name || '');
-       setEmail(userData.email || currentUser.email || '');
-
-       // Fetch leagues this user is a member of
-       const { data: memberRows, error: memberError } = await supabase
-         .from('league_members')
-         .select('league_id, leagues(id, name)')
-         .eq('user_id', currentUser.id);
-
-       if (memberError) throw memberError;
-
-       const leagues = (memberRows || [])
-         .map(row => row.leagues ? { id: row.leagues.id, name: row.leagues.name || 'Unnamed League' } : null)
-         .filter(Boolean);
-
-       setUserLeagues(leagues);
-       if (leagues.length > 0) setSelectedLeague(leagues[0].id);
-     }
-   } catch (err) {
-     console.error('Error loading user data:', err);
-   } finally {
-     setLoading(false);
-   }
- };
-
- const loadLeagueData = async () => {
-   const { data: { user: currentUser } } = await supabase.auth.getUser();
-   if (!currentUser || !selectedLeague) return;
-
-   try {
-     const { data: member, error: memberError } = await supabase
-       .from('league_members')
-       .select('team_name, team_avatar')
-       .eq('league_id', selectedLeague)
-       .eq('user_id', currentUser.id)
-       .single();
-
-     if (memberError && memberError.code !== 'PGRST116') throw memberError;
-
-     if (member) {
-       setTeamName(member.team_name || '');
-       setTeamAvatar(member.team_avatar || '');
-     } else {
-       setTeamName('');
-       setTeamAvatar('');
-     }
-   } catch (err) {
-     console.error('Error loading league data:', err);
-   }
- };
 
  // Updated image upload handler with resizing
   const handleImageUpload = async (event) => {

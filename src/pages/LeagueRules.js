@@ -4,11 +4,9 @@ import { supabase } from "../supabase/supabase";
 import { useLeague } from "../context/LeagueContext";
 import {
   Settings,
-  Users,
   Calendar,
   Trophy,
   Shield,
-  Clock,
   ChevronUp,
   ChevronDown,
   Shuffle,
@@ -22,11 +20,12 @@ import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
 import ScoringSystemModal from '../components/ScoringSystemModal';
 import { SEASON_YEAR } from "../utils/season";
+import { useModalState } from "../hooks/useModalState";
 
 function LeagueRules() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
-  const { leagueData, members: contextMembers, isAdmin, currentUserId } = useLeague();
+  const { leagueData, members: contextMembers, isAdmin } = useLeague();
   const [adminName, setAdminName] = useState("");
   const [formState, setFormState] = useState({});
   const [draftOrder, setDraftOrder] = useState([]);
@@ -44,34 +43,19 @@ function LeagueRules() {
     [contextMembers]
   );
 
-  // Custom modal states
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showErrorModal, setShowErrorModal] = useState(false);
-  const [modalMessage, setModalMessage] = useState("");
-  const [modalTitle, setModalTitle] = useState("");
   const [showScoringModal, setShowScoringModal] = useState(false);
 
-  // Helper functions for modals
-  const showSuccess = (title, message) => {
-    setModalTitle(title);
-    setModalMessage(message);
-    setShowSuccessModal(true);
-  };
-
-  const showError = (title, message) => {
-    setModalTitle(title);
-    setModalMessage(message);
-    setShowErrorModal(true);
-  };
+  const {
+    showSuccessModal, showErrorModal,
+    modalTitle, modalMessage,
+    showSuccess, showError, closeModals: closeBaseModals,
+  } = useModalState();
 
   const closeModals = () => {
-    setShowSuccessModal(false);
-    setShowErrorModal(false);
+    closeBaseModals();
     setShowDeleteModal(false);
-    setShowScoringModal(false); // Add this line
-    setModalTitle("");
-    setModalMessage("");
+    setShowScoringModal(false);
   };
 
   // Initialize form state from context leagueData
@@ -117,7 +101,7 @@ function LeagueRules() {
       }
     };
     fetchPageData();
-  }, [leagueData?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [leagueData?.id, leagueData?.created_by, leagueData?.draft_complete, leagueId]);
 
   // Handle member changes and refresh draft order
   useEffect(() => {
@@ -153,7 +137,7 @@ function LeagueRules() {
         }
       }
     }
-  }, [members, leagueData?.draft_order_type, leagueData?.custom_draft_order, draftStarted]);
+  }, [members, leagueData?.draft_order_type, leagueData?.custom_draft_order, draftStarted, draftOrder]);
 
   const isLeagueFull = members.length === leagueData?.max_managers;
 
@@ -192,25 +176,6 @@ function LeagueRules() {
   const randomizeDraftOrder = () => {
     const shuffled = [...draftOrder].sort(() => Math.random() - 0.5);
     setDraftOrder(shuffled);
-  };
-
-  const handleRemoveManager = async (uid, memberName) => {
-    try {
-      const { error: deleteError } = await supabase
-        .from('league_members')
-        .delete()
-        .eq('league_id', leagueId)
-        .eq('user_id', uid);
-      if (deleteError) throw deleteError;
-
-      setDraftOrder((prev) => prev.filter((m) => m.uid !== uid));
-
-      showSuccess("Manager Removed", `${memberName} has been successfully removed from the league.`);
-
-    } catch (error) {
-      console.error("Error removing manager:", error);
-      showError("Error", "Failed to remove manager. Please try again.");
-    }
   };
 
   const handleDeleteLeague = async () => {

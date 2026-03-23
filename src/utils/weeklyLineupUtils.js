@@ -13,8 +13,6 @@ teams table: id (text slug), school, mascot, logos, color, record, game_points, 
 // Migration script to move existing lineups to weekly system
 export const migrateToWeeklyLineups = async (leagueId) => {
   try {
-    console.log("Starting migration to weekly lineups...");
-
     // Get all members for this league
     const { data: members, error: membersError } = await supabase
       .from('league_members')
@@ -35,11 +33,8 @@ export const migrateToWeeklyLineups = async (leagueId) => {
         .limit(1);
 
       if (existing && existing.length > 0) {
-        console.log(`⏭️ User ${userId} already has weekly lineups`);
         continue;
       }
-
-      console.log(`Migrating user ${userId}...`);
 
       // Build rows for weeks 1-14
       const rows = [];
@@ -60,10 +55,9 @@ export const migrateToWeeklyLineups = async (leagueId) => {
         .insert(rows);
 
       if (insertError) throw insertError;
-      console.log(`✅ Migrated user ${userId}`);
     }
 
-    console.log("✅ Migration completed successfully!");
+
   } catch (error) {
     console.error("❌ Migration failed:", error);
     throw error;
@@ -74,15 +68,7 @@ export const migrateToWeeklyLineups = async (leagueId) => {
 export const weeklyLineupUtils = {
 
   // Get lock time for a specific week (not stored in Supabase; returns null)
-  getWeekLockTime: async (weekNum) => {
-    try {
-      // Schedule data is not stored in Supabase in this migration
-      return null;
-    } catch (error) {
-      console.error(`Error getting lock time for week ${weekNum}:`, error);
-      return null;
-    }
-  },
+  getWeekLockTime: async (_weekNum) => null,
 
   // Check if a week is currently editable
   isWeekEditable: async (weekNum, currentWeek) => {
@@ -98,14 +84,7 @@ export const weeklyLineupUtils = {
   },
 
   // Get unlock time for a week (not stored in Supabase; returns null)
-  getWeekUnlockTime: async (weekNum) => {
-    try {
-      return null;
-    } catch (error) {
-      console.error(`Error getting unlock time for week ${weekNum}:`, error);
-      return null;
-    }
-  },
+  getWeekUnlockTime: async (_weekNum) => null,
 
   // Auto-lock lineups for the current week
   autoLockCurrentWeek: async (leagueId, currentWeek) => {
@@ -114,10 +93,7 @@ export const weeklyLineupUtils = {
       const now = new Date();
       if (!lockTime || now < lockTime) return;
 
-      console.log(`Auto-locking lineups for week ${currentWeek}...`);
-
       // No lockedAt column in schema; this is a no-op placeholder
-      console.log(`✅ Lock check done for week ${currentWeek}`);
     } catch (error) {
       console.error(`Error auto-locking week ${currentWeek}:`, error);
     }
@@ -188,7 +164,6 @@ export const adminUtils = {
   migrateLeague: async (leagueId) => {
     try {
       await migrateToWeeklyLineups(leagueId);
-      console.log(`✅ Successfully migrated league ${leagueId}`);
     } catch (error) {
       console.error(`❌ Failed to migrate league ${leagueId}:`, error);
       throw error;
@@ -204,8 +179,6 @@ export const adminUtils = {
       for (const league of leagues || []) {
         await migrateToWeeklyLineups(league.id);
       }
-
-      console.log("✅ Successfully migrated all leagues");
     } catch (error) {
       console.error("❌ Failed to migrate all leagues:", error);
       throw error;
@@ -237,8 +210,6 @@ export const adminUtils = {
 
       const { error } = await supabase.from('weekly_lineups').insert(rows);
       if (error) throw error;
-
-      console.log(`✅ Reset weekly lineups for user ${userId}`);
     } catch (error) {
       console.error(`❌ Failed to reset user ${userId}:`, error);
       throw error;
@@ -248,7 +219,6 @@ export const adminUtils = {
   // Force lock a specific week for all users (no-op: no lockedAt in schema)
   forceLockWeek: async (leagueId, weekNum) => {
     try {
-      console.log(`✅ Force lock week ${weekNum} for league ${leagueId} (no-op: no lockedAt column)`);
     } catch (error) {
       console.error(`❌ Failed to force lock week ${weekNum}:`, error);
       throw error;

@@ -6,32 +6,27 @@ import LeagueNav from "../components/LeagueNav";
 import ScoringSystemModal from "../components/ScoringSystemModal";
 import WeeklyLineupManager from "../components/WeeklyLineupManager";
 import { useLeague } from "../context/LeagueContext";
+import { useTeams } from "../hooks/useTeams";
 import { Calendar, ChevronDown, ChevronUp } from "lucide-react";
 import { SEASON_YEAR } from "../utils/season";
 
 function MyLineup() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
-  const { currentUserId, members: ctxMembers } = useLeague();
+  const { currentUserId, members: ctxMembers, currentWeek } = useLeague();
+  const { teams: allTeams } = useTeams();
   const [loading, setLoading] = useState(true);
   const [teamName, setTeamName] = useState("");
   const [smackTalk, setSmackTalk] = useState("");
   const [isEditingSmackTalk, setIsEditingSmackTalk] = useState(false);
   const [smackTalkSaving, setSmackTalkSaving] = useState(false);
-  const [allTeams, setAllTeams] = useState({});
   const [squadPoints, setSquadPoints] = useState(0);
-  const [currentWeek, setCurrentWeek] = useState(1);
   const [showScoringModal, setShowScoringModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [showScheduleGrid, setShowScheduleGrid] = useState(false);
-  const [scheduleData, setScheduleData] = useState({});
-  const [scheduleLoading, setScheduleLoading] = useState(false);
-  const [weekNumbers, setWeekNumbers] = useState([]);
   const [userData, setUserData] = useState(null);
-  const [migrationNeeded, setMigrationNeeded] = useState(false);
   const [currentWeekRank, setCurrentWeekRank] = useState(null);
-  const [previousWeekRank, setPreviousWeekRank] = useState(null);
   const [rankChange, setRankChange] = useState(0);
   const [loadingRank, setLoadingRank] = useState(false);
 
@@ -61,12 +56,6 @@ function MyLineup() {
       return "→"; // No change
     };
 
-    const getTrendColor = (change) => {
-      if (change < 0) return "text-green-400"; // Improved
-      if (change > 0) return "text-red-400"; // Declined  
-      return "text-blue-400"; // No change
-    };
-
     const formatChange = (change) => {
       if (change === 0) return "";
       return Math.abs(change).toString();
@@ -92,12 +81,12 @@ function MyLineup() {
     return (
       <div className="relative inline-block">
         {/* Main Avatar Circle */}
-        <div 
+        <div
           className="rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 shadow-sm overflow-hidden"
-          style={{ border: '3px solid #E5E7EB' }}
           style={{
             width: size,
             height: size,
+            border: '3px solid #E5E7EB',
             backgroundColor: "#EFF8FF",
             color: "#0072BC"
           }}
@@ -581,78 +570,6 @@ function MyLineup() {
     );
   };
 
-  // Migration function
-  const runMigration = async () => {
-    try {
-      const { data: { user: currentUserAuth } } = await supabase.auth.getUser();
-      const userId = currentUserAuth?.id;
-
-      if (!userId) {
-        console.error('❌ No user logged in');
-        return;
-      }
-
-      console.log('🔄 Starting migration for user:', userId);
-
-      // Check if migration already done
-      const { data: weeklySnap } = await supabase
-        .from('weekly_lineups')
-        .select('id')
-        .eq('league_id', leagueId)
-        .eq('user_id', userId)
-        .single();
-
-      if (weeklySnap) {
-        console.log('✅ Migration already completed');
-        setMigrationNeeded(false);
-        return;
-      }
-
-      // Get current member data
-      const { data: memberSnap } = await supabase
-        .from('league_members')
-        .select('*')
-        .eq('league_id', leagueId)
-        .eq('user_id', userId)
-        .single();
-      const memberData = memberSnap;
-
-      if (memberData?.starters || memberData?.bench) {
-        console.log('📋 Found existing lineup starters/bench');
-
-        // Save to weekly_lineups table
-        await supabase.from('weekly_lineups').insert({
-          league_id: leagueId,
-          user_id: userId,
-          week: currentWeek.toString(),
-          starters: memberData.starters || [],
-          bench: memberData.bench || [],
-          captain: memberData.captain || null,
-          trip_play_team: memberData.trip_play_team || null
-        });
-
-        console.log('✅ Migration completed successfully!');
-        
-        setMigrationNeeded(false);
-        setSuccessMessage("Migration completed! Your teams have been moved to the new weekly format.");
-        setShowSuccessModal(true);
-        
-        // Refresh the page to load new data
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
-        
-      } else {
-        console.log('❌ No existing lineup found to migrate');
-        setMigrationNeeded(false);
-      }
-      
-    } catch (error) {
-      console.error('❌ Migration failed:', error);
-      setSuccessMessage("Migration failed. Please try again or contact support.");
-      setShowSuccessModal(true);
-    }
-  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -663,10 +580,7 @@ function MyLineup() {
         try {
           setLoadingRank(true);
 
-          // Get current week from config
-          const { data: configData } = await supabase.from('config').select('value').eq('key', 'season').single();
-          const currentWeekVal = configData?.value?.currentWeek || 1;
-          const previousWeek = Math.max(1, (typeof currentWeekVal === 'number' ? currentWeekVal : parseInt(String(currentWeekVal).match(/\d+/)?.[0] || '1')) - 1);
+          const previousWeek = Math.max(1, (currentWeek || 1) - 1);
 
           // Use context members for ranking (no extra fetch needed)
           const allMembers = ctxMembers.map(m => ({
@@ -692,7 +606,6 @@ function MyLineup() {
             .eq('week', previousWeek.toString())
             .single();
           const prevRank = weeklyStandingData?.rank || null;
-          setPreviousWeekRank(prevRank);
 
           // Calculate rank change
           if (liveRank && prevRank) {
@@ -722,71 +635,6 @@ function MyLineup() {
         setTeamName(memberData?.team_name || "Unnamed Squad");
         setSmackTalk(memberData?.smack_talk || "");
         setSquadPoints(memberData?.points || 0);
-
-        // Check if migration is needed (weekly_lineups table)
-        const { data: weeklySnap } = await supabase
-          .from('weekly_lineups')
-          .select('id')
-          .eq('league_id', leagueId)
-          .eq('user_id', currentUser.id)
-          .single();
-
-        if (!weeklySnap && (memberData?.starters || memberData?.bench)) {
-          console.log('🔧 Migration needed - old lineup format detected');
-          setMigrationNeeded(true);
-        }
-
-        // Get season info with better currentWeek parsing
-        const { data: seasonData } = await supabase.from('config').select('value').eq('key', 'season').single();
-
-        // Handle both "Preseason" and "Week X" formats
-        const weekString = seasonData?.value?.currentWeek || "1";
-        let weekNumber;
-
-        if (weekString === "Preseason") {
-          weekNumber = 1; // Default to week 1 for preseason
-        } else {
-          const weekMatch = weekString.toString().match(/\d+/);
-          weekNumber = weekMatch ? parseInt(weekMatch[0]) : 1;
-        }
-
-        console.log("Parsed week:", weekString, "→", weekNumber);
-        setCurrentWeek(weekNumber);
-
-        // Load all teams with proper structure
-        const { data: teamsData } = await supabase.from('teams').select('*');
-        const teamsMap = {};
-        (teamsData || []).forEach(teamData => {
-          if (teamData.school) {
-            const normalize = (name) =>
-              name
-                ?.toLowerCase()
-                .replace(/\s+/g, "-")
-                .replace(/&/g, "")
-                .replace(/[^a-z0-9\-]/g, "");
-
-            teamsMap[normalize(teamData.school)] = {
-              id: teamData.id,
-              ...teamData,
-              logo: (teamData.logos && teamData.logos[0]) || null,
-              logos1: (teamData.logos && teamData.logos[0]) || null,
-              logos2: (teamData.logos && teamData.logos[1]) || null,
-              colors: { primary: teamData.color, secondary: teamData.alternate_color },
-              conference: teamData.conference || "Unknown",
-              mascot: teamData.mascot || "",
-              city: teamData.school || "",
-              state: "",
-              currentWeekPoints: teamData.weekly_points?.[`week${weekNumber}`] || null,
-              gameComplete: teamData.game_complete || false,
-              name: teamData.school,
-              school: teamData.school
-            };
-          }
-        });
-        setAllTeams(teamsMap);
-
-        console.log("Teams loaded:", Object.keys(teamsMap).length);
-        console.log("Sample teams:", Object.keys(teamsMap).slice(0, 5));
 
         setLoading(false);
 

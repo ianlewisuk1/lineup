@@ -5,6 +5,9 @@ import { Plus, Search, Filter, ChevronDown } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
 import { useLeague } from "../context/LeagueContext";
+import { useModalState } from "../hooks/useModalState";
+import { parseGamesPlayed as parseRecord, calculateAverage } from "../utils/teamStats";
+import { useSeasonConfig } from "../hooks/useSeasonConfig";
 
 // Compact Sort Button Component
 const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
@@ -43,82 +46,18 @@ function FreeAgents() {
   const [sortConfig, setSortConfig] = useState({ key: "school", direction: "asc" });
   const [searchQuery, setSearchQuery] = useState("");
 
-  // ADDED: Free agency lock state
-  const [faLocked, setFaLocked] = useState(false);
-  const [configLoading, setConfigLoading] = useState(true);
+  const { config: seasonConfig, loading: configLoading } = useSeasonConfig();
+  const faLocked = seasonConfig?.faLocked || false;
 
-  // Custom notification modal states
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showErrorModal, setShowErrorModal] = useState(false);
-  const [modalMessage, setModalMessage] = useState("");
-  const [modalTitle, setModalTitle] = useState("");
-
-  // ADDED: Helper functions for proper data calculations
-  const parseRecord = (record) => {
-    if (!record || record === "0-0") return 0;
-    const parts = record.split('-');
-    if (parts.length !== 2) return 0;
-    const wins = parseInt(parts[0]) || 0;
-    const losses = parseInt(parts[1]) || 0;
-    return wins + losses;
-  };
-
-  const calculateAverage = (total, gamesPlayed) => {
-    if (!gamesPlayed || gamesPlayed === 0) return "0.0";
-    return (total / gamesPlayed).toFixed(1);
-  };
-
-  // Custom modal helper functions
-  const showSuccess = (title, message) => {
-    setModalTitle(title);
-    setModalMessage(message);
-    setShowSuccessModal(true);
-  };
-
-  const showError = (title, message) => {
-    setModalTitle(title);
-    setModalMessage(message);
-    setShowErrorModal(true);
-  };
-
-  const closeModals = () => {
-    setShowSuccessModal(false);
-    setShowErrorModal(false);
-    setModalTitle("");
-    setModalMessage("");
-  };
-
-  // ADDED: Function to fetch config data and check faLocked status
-  const fetchConfigData = async () => {
-    try {
-      const { data: configRow, error } = await supabase
-        .from('config')
-        .select('value')
-        .eq('key', 'season')
-        .single();
-
-      if (!error && configRow) {
-        const configData = configRow.value || {};
-        setFaLocked(configData.faLocked || false);
-      } else {
-        // If config doesn't exist, default to unlocked
-        setFaLocked(false);
-      }
-    } catch (error) {
-      console.error("Error fetching config:", error);
-      // Default to unlocked on error
-      setFaLocked(false);
-    } finally {
-      setConfigLoading(false);
-    }
-  };
-
+  const {
+    showSuccessModal, showErrorModal,
+    modalTitle, modalMessage,
+    showSuccess, showError, closeModals,
+  } = useModalState();
 
   // MODIFIED: Added config fetch to initial useEffect
   useEffect(() => {
     const fetchData = async () => {
-      // Fetch config data first
-      await fetchConfigData();
 
       const user = { id: currentUserId };
       if (!currentUserId) return;
@@ -299,22 +238,7 @@ function FreeAgents() {
         .eq('user_id', currentUserId);
       if (updateError) throw updateError;
 
-      // Get current week from config
-      const getCurrentWeekFromConfig = async () => {
-        try {
-          const { data: configRow } = await supabase
-            .from('config')
-            .select('value')
-            .eq('key', 'season')
-            .single();
-          return configRow?.value?.currentWeek || 1;
-        } catch (error) {
-          console.error("Error fetching current week:", error);
-          return 1;
-        }
-      };
-
-      const actualCurrentWeek = await getCurrentWeekFromConfig();
+      const actualCurrentWeek = seasonConfig?.currentWeek || 1;
 
       // Fetch manager name from users collection
       let managerName = "Unknown Manager";
@@ -423,21 +347,6 @@ function FreeAgents() {
         .eq('user_id', currentUserId);
       if (updateError) throw updateError;
 
-      // Get current week from config
-      const getCurrentWeekFromConfig = async () => {
-        try {
-          const { data: configRow } = await supabase
-            .from('config')
-            .select('value')
-            .eq('key', 'season')
-            .single();
-          return configRow?.value?.currentWeek || 1;
-        } catch (error) {
-          console.error("Error fetching current week:", error);
-          return 1;
-        }
-      };
-
       // Get display name for dropped team
       const droppedTeamData = Object.values(teamsByConference).flat().find(team =>
         team.school?.toLowerCase()
@@ -447,7 +356,7 @@ function FreeAgents() {
       );
       const droppedTeamName = droppedTeamData?.school || selectedDropTeam;
 
-      const actualCurrentWeek = await getCurrentWeekFromConfig();
+      const actualCurrentWeek = seasonConfig?.currentWeek || 1;
 
       // Fetch manager name from users collection
       let managerName = "Unknown Manager";

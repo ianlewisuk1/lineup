@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
 import { useAuth } from "./AuthContext";
@@ -13,7 +13,7 @@ export function LeagueProvider({ children }) {
   const [currentWeek, setCurrentWeek] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!leagueId) return;
 
     const [{ data: league }, { data: memberRows }, { data: configRow }] = await Promise.all([
@@ -49,7 +49,7 @@ export function LeagueProvider({ children }) {
     }
 
     setLoading(false);
-  };
+  }, [leagueId]);
 
   useEffect(() => {
     setLoading(true);
@@ -72,7 +72,7 @@ export function LeagueProvider({ children }) {
       .subscribe();
 
     return () => supabase.removeChannel(channel);
-  }, [leagueId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [leagueId, load]);
 
   const isAdmin = !!(currentUser && leagueData && currentUser.id === leagueData.admin_id);
   const isDraftComplete = leagueData?.draft_complete || false;

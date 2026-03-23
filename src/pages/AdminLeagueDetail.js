@@ -406,9 +406,6 @@ function AdminLeagueDetail() {
       const pickedTeamIds = new Set(Object.values(selectedTeams || {}).flat());
       let availableTeams = allFbsTeamIds.filter(id => !pickedTeamIds.has(id));
 
-      console.log(`🔍 Starting simulation from pick ${currentPickIndex + 1}`);
-      console.log(`🔍 Available teams at start: ${availableTeams.length}`);
-      console.log(`🔍 Teams to simulate: ${picksToSimulate}`);
 
       // 🔧 FIX 3: Ensure selectedTeams is properly initialized
       if (!selectedTeams) selectedTeams = {};
@@ -494,8 +491,6 @@ function AdminLeagueDetail() {
           rank: bestTeam.rank
         });
 
-        console.log(`✅ Pick ${pickIndex + 1}: ${teamName} (rank: ${bestTeam.rank}) → ${managerName}`);
-        console.log(`📊 Teams remaining: ${workingAvailableTeams.length}`);
       }
 
       const newPickIndex = endPickIndex;

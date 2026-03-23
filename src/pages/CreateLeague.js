@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { supabase } from "../supabase/supabase";
 import { useNavigate, Link } from "react-router-dom";
 import ProfileDropdown from "../components/ProfileDropdown";
+import { useSeasonConfig } from "../hooks/useSeasonConfig";
 
 function CreateLeague() {
   const navigate = useNavigate();
@@ -16,24 +17,8 @@ function CreateLeague() {
   const [timePerPick, setTimePerPick] = useState("120"); // seconds
   const [overlapWarning, setOverlapWarning] = useState("");
   const [loading, setLoading] = useState(false);
-  const [currentWeek, setCurrentWeek] = useState("Preseason");
-
-  // Fetch current week on component mount
-  useEffect(() => {
-    const fetchCurrentWeek = async () => {
-      try {
-        const { data: configData } = await supabase.from('config').select('value').eq('key', 'season').single();
-        if (configData) {
-          setCurrentWeek(configData.value?.currentWeek || "Preseason");
-        }
-      } catch (error) {
-        console.warn("Could not fetch current week:", error);
-        setCurrentWeek("Preseason");
-      }
-    };
-
-    fetchCurrentWeek();
-  }, []);
+  const { config: seasonConfig } = useSeasonConfig();
+  const currentWeek = seasonConfig?.currentWeek || "Preseason";
 
   const getMinDraftDate = () => {
     const now = new Date();

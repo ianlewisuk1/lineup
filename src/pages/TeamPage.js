@@ -5,6 +5,8 @@ import { Plus, ArrowLeft, Calendar, MapPin, Trophy, Users, TrendingUp, ChevronDo
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
 import { SEASON_YEAR } from "../utils/season";
+import { useModalState } from "../hooks/useModalState";
+import { parseGamesPlayed as parseRecord, calculateAverage } from "../utils/teamStats";
 
 function TeamPage() {
   const { leagueId, teamName } = useParams();
@@ -24,48 +26,13 @@ function TeamPage() {
   const [currentWeekGame, setCurrentWeekGame] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Custom notification modal states
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showErrorModal, setShowErrorModal] = useState(false);
-  const [modalMessage, setModalMessage] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
-  const [modalTitle, setModalTitle] = useState("");
 
-  // Helper function to parse record and calculate games played
-  const parseRecord = (record) => {
-    if (!record || record === "0-0") return 0;
-    const parts = record.split('-');
-    if (parts.length !== 2) return 0;
-    const wins = parseInt(parts[0]) || 0;
-    const losses = parseInt(parts[1]) || 0;
-    return wins + losses;
-  };
-
-  // Helper function to calculate averages safely
-  const calculateAverage = (total, gamesPlayed) => {
-    if (!gamesPlayed || gamesPlayed === 0) return "0.0";
-    return (total / gamesPlayed).toFixed(1);
-  };
-
-  // Custom modal helper functions
-  const showSuccess = (title, message) => {
-    setModalTitle(title);
-    setModalMessage(message);
-    setShowSuccessModal(true);
-  };
-
-  const showError = (title, message) => {
-    setModalTitle(title);
-    setModalMessage(message);
-    setShowErrorModal(true);
-  };
-
-  const closeModals = () => {
-    setShowSuccessModal(false);
-    setShowErrorModal(false);
-    setModalTitle("");
-    setModalMessage("");
-  };
+  const {
+    showSuccessModal, showErrorModal,
+    modalTitle, modalMessage,
+    showSuccess, showError, closeModals,
+  } = useModalState();
 
 
   const denormalizeTeamName = (normalizedName) => {

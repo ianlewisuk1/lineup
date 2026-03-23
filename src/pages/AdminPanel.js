@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
 import AdminUserPanel from "../components/AdminUserPanel";
 import AdminLeaguePanel from "../components/AdminLeaguePanel";
+import { useSeasonConfig } from "../hooks/useSeasonConfig";
 
 const WEEK_OPTIONS = [
   "Preseason",
@@ -13,16 +14,15 @@ const WEEK_OPTIONS = [
 ];
 
 function SeasonControls() {
+  const { config: seasonConfig } = useSeasonConfig();
   const [currentWeek, setCurrentWeek] = useState("Preseason");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // Populate dropdown once config loads
   useEffect(() => {
-    supabase.from("config").select("value").eq("key", "season").single()
-      .then(({ data }) => {
-        if (data?.value?.currentWeek) setCurrentWeek(String(data.value.currentWeek));
-      });
-  }, []);
+    if (seasonConfig?.currentWeek) setCurrentWeek(String(seasonConfig.currentWeek));
+  }, [seasonConfig]);
 
   const handleSave = async () => {
     setSaving(true);

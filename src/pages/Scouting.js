@@ -3,6 +3,7 @@ import { supabase } from "../supabase/supabase";
 import { useParams, useNavigate } from "react-router-dom";
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
+import { parseRecord } from "../utils/teamStats";
 
 function Scouting() {
   const { leagueId } = useParams();
@@ -54,7 +55,6 @@ useEffect(() => {
             isDrafted: draftedTeamsSet.has(team.id)
           }));
 
-        console.log("Teams with draft status:", fbsTeams.filter(t => t.isDrafted).length, "drafted out of", fbsTeams.length);
         setTeams(fbsTeams);
         setLoading(false);
       } catch (error) {
@@ -91,12 +91,6 @@ useEffect(() => {
   });
 
   const sortedTeams = [...filteredTeams].sort((a, b) => {
-    const parseRecord = (record) => {
-      if (!record || !record.includes("-")) return [0, 0];
-      const [wins, losses] = record.split("-").map(Number);
-      return [wins, losses];
-    };
-
     const aValue = a[sortConfig.key];
     const bValue = b[sortConfig.key];
 
