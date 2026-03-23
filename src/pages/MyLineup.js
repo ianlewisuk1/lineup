@@ -48,19 +48,11 @@ function MyLineup() {
   // New component for the ranking badge
   const RankingBadge = ({ currentRank, rankChange, loading }) => {
     if (loading) {
-      return (
-        <div className="text-2xl font-bold text-blue-400 mb-2 animate-pulse">
-          Loading rank...
-        </div>
-      );
+      return <div style={{ fontSize: 14, color: '#9CA3AF', marginTop: 4 }}>Loading rank...</div>;
     }
 
     if (!currentRank) {
-      return (
-        <div className="text-2xl font-bold text-blue-400 mb-2">
-          Season Start
-        </div>
-      );
+      return <div style={{ fontSize: 14, color: '#0072BC', marginTop: 4 }}>Season Start</div>;
     }
 
     const getTrendIcon = (change) => {
@@ -81,12 +73,11 @@ function MyLineup() {
     };
 
     return (
-      <div className="text-2xl font-bold text-blue-400 mb-2">
-        <span>{currentRank}{getOrdinalSuffix(currentRank)} Place</span>
+      <div style={{ fontSize: 15, fontWeight: 700, color: '#0072BC', marginTop: 4 }}>
+        {currentRank}{getOrdinalSuffix(currentRank)} Place
         {rankChange !== 0 && (
-          <span className={`ml-3 ${getTrendColor(rankChange)} text-lg inline-flex items-center gap-1`}>
-            <span>{getTrendIcon(rankChange)}</span>
-            <span className="text-sm">{formatChange(rankChange)}</span>
+          <span style={{ marginLeft: 8, color: rankChange < 0 ? '#22C55E' : '#EF4444', fontSize: 13 }}>
+            {getTrendIcon(rankChange)} {formatChange(rankChange)}
           </span>
         )}
       </div>
@@ -102,12 +93,13 @@ function MyLineup() {
       <div className="relative inline-block">
         {/* Main Avatar Circle */}
         <div 
-          className="rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 shadow-lg overflow-hidden border-4 border-white/30"
+          className="rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 shadow-sm overflow-hidden"
+          style={{ border: '3px solid #E5E7EB' }}
           style={{
             width: size,
             height: size,
-            backgroundColor: "rgba(255, 255, 255, 0.2)",
-            color: "white"
+            backgroundColor: "#EFF8FF",
+            color: "#0072BC"
           }}
         >
           {avatarUrl ? (
@@ -122,7 +114,7 @@ function MyLineup() {
                 }}
               />
             ) : (
-              <div className="w-full h-full bg-gradient-to-r from-purple-500 to-blue-500 text-white text-xl font-bold flex items-center justify-center">
+              <div className="w-full h-full text-xl font-bold flex items-center justify-center" style={{ backgroundColor: '#0072BC', color: '#fff' }}>
                 {['avatar1.png', 'avatar2.png', 'avatar3.png', 'avatar4.png', 'avatar5.png', 'avatar6.png', 'avatar7.png', 'avatar8.png'].indexOf(avatarUrl) + 1}
               </div>
             )
@@ -301,22 +293,17 @@ function MyLineup() {
     if (!showSuccessModal) return null;
 
     return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-white/95 backdrop-blur-lg rounded-2xl p-6 max-w-md w-full border border-white/20 shadow-2xl animate-pulse">
-          <div className="text-center">
-            <div className="text-4xl mb-4">✅</div>
-            <h3 className="text-xl font-bold text-gray-900 mb-4">
-              Success!
-            </h3>
-            <p className="text-gray-600 mb-6">
-              {successMessage}
-            </p>
+      <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}>
+        <div style={{ backgroundColor: '#fff', borderRadius: 20, padding: 24, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ width: 48, height: 48, borderRadius: '50%', backgroundColor: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: 22 }}>✓</div>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 8 }}>Success</h3>
+            <p style={{ fontSize: 14, color: '#6B7280', marginBottom: 20 }}>{successMessage}</p>
             <button
               onClick={() => setShowSuccessModal(false)}
-              className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors duration-200"
+              style={{ width: '100%', padding: '12px 0', borderRadius: 50, border: 'none', backgroundColor: '#0072BC', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}
             >
-              Got it!
-            </button>
+              Got it</button>
           </div>
         </div>
       </div>
@@ -844,54 +831,31 @@ function MyLineup() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
-        </div>
-        <div className="relative z-10 flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <div className="text-4xl mb-4 animate-spin">🏈</div>
-            <p className="text-xl text-white/80">Loading your lineup...</p>
-          </div>
-        </div>
+      <div style={{ minHeight: '100vh', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2.5px solid #0072BC', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
-      </div>
-
+    <div style={{ minHeight: '100vh', backgroundColor: '#F9FAFB', color: '#111827' }}>
       <BottomNavBar />
-
       <LeagueNav />
 
       {/* Header */}
-      <div className="relative z-10 text-center mb-8 px-4 sm:px-6">
-        <div className="flex flex-col items-center gap-4 mb-4">
-          <UserAvatar member={userData} points={squadPoints} size={120} />
-          
+      <div style={{ textAlign: 'center', padding: '24px 16px 16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <UserAvatar member={userData} points={squadPoints} size={100} />
           <div>
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black leading-tight mb-2">
-              <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                {teamName}
-              </span>
-            </h1>
-              <RankingBadge 
-                currentRank={currentWeekRank} 
-                rankChange={rankChange} 
-                loading={loadingRank} 
-              />
+            <h1 style={{ fontSize: 26, fontWeight: 900, color: '#111827', margin: 0 }}>{teamName}</h1>
+            <RankingBadge currentRank={currentWeekRank} rankChange={rankChange} loading={loadingRank} />
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 pb-32">
+      <div style={{ maxWidth: 600, margin: '0 auto', padding: '0 16px 100px' }}>
         
 
     {/* WEEKLY LINEUP MANAGER */}
@@ -908,21 +872,17 @@ function MyLineup() {
     </div>
 
         {/* Smack Talk Section */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold text-white flex items-center gap-2">
-              💬 Smack Talk
-            </h3>
-            <div className="flex gap-2">
-              {!isEditingSmackTalk && (
-                <button
-                  onClick={() => setIsEditingSmackTalk(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
-                >
-                  Edit
-                </button>
-              )}
-            </div>
+        <div style={{ backgroundColor: '#ffffff', borderRadius: 16, padding: '20px', border: '1px solid #F3F4F6', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: 0 }}>Smack Talk</h3>
+            {!isEditingSmackTalk && (
+              <button
+                onClick={() => setIsEditingSmackTalk(true)}
+                style={{ backgroundColor: '#0072BC', color: '#fff', padding: '6px 14px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+              >
+                Edit
+              </button>
+            )}
           </div>
 
           {isEditingSmackTalk ? (
@@ -931,42 +891,24 @@ function MyLineup() {
                 value={smackTalk}
                 onChange={(e) => setSmackTalk(e.target.value.slice(0, 80))}
                 placeholder="Say something to intimidate your opponents... (max 80 chars)"
-                className="w-full min-h-[80px] p-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl text-white placeholder-white/60 resize-none focus:outline-none focus:border-blue-400 transition-colors duration-200"
+                style={{ width: '100%', minHeight: 80, padding: '12px', border: '1.5px solid #E5E7EB', borderRadius: 10, fontSize: 14, color: '#111827', resize: 'none', outline: 'none', boxSizing: 'border-box', backgroundColor: '#F9FAFB' }}
               />
-              <div className="flex justify-between items-center mt-3">
-                <span className={`text-sm ${smackTalk.length > 70 ? 'text-red-400' : 'text-white/60'}`}>
-                  {smackTalk.length}/80 characters
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setIsEditingSmackTalk(false)}
-                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors duration-200"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSaveSmackTalk}
-                    disabled={smackTalkSaving}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-500 text-white rounded-lg text-sm font-medium transition-colors duration-200"
-                  >
-                    {smackTalkSaving ? "Saving..." : "Save"}
-                  </button>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                <span style={{ fontSize: 12, color: smackTalk.length > 70 ? '#DC2626' : '#9CA3AF' }}>{smackTalk.length}/80</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setIsEditingSmackTalk(false)} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #E5E7EB', backgroundColor: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#374151' }}>Cancel</button>
+                  <button onClick={handleSaveSmackTalk} disabled={smackTalkSaving} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', backgroundColor: '#0072BC', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{smackTalkSaving ? "Saving..." : "Save"}</button>
                 </div>
               </div>
             </div>
           ) : (
             <div>
               {smackTalk.trim() ? (
-                <div className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 py-3 rounded-2xl inline-block max-w-full relative">
+                <div style={{ backgroundColor: '#0072BC', color: '#fff', padding: '10px 16px', borderRadius: 12, fontSize: 14, display: 'inline-block', maxWidth: '100%' }}>
                   {smackTalk}
-                  <div className="absolute bottom-0 left-4 transform translate-y-full">
-                    <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-blue-500" />
-                  </div>
                 </div>
               ) : (
-                <p className="text-white/60 italic">
-                  No smack talk set. Click Edit to add some trash talk for your opponents to see!
-                </p>
+                <p style={{ fontSize: 14, color: '#9CA3AF', fontStyle: 'italic', margin: 0 }}>No smack talk set — click Edit to add some.</p>
               )}
             </div>
           )}
@@ -976,16 +918,16 @@ function MyLineup() {
         <div className="mb-6">
           <button
             onClick={() => setShowScheduleGrid(!showScheduleGrid)}
-            className="w-full bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 hover:bg-white/15 transition-all duration-200 flex items-center justify-between"
+            style={{ width: '100%', backgroundColor: '#ffffff', border: '1px solid #F3F4F6', borderRadius: 16, padding: '16px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
           >
-            <div className="flex items-center gap-3">
-              <Calendar className="text-blue-400" size={24} />
-              <span className="text-xl font-bold text-white">📅 Season Schedule Overview</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Calendar color="#0072BC" size={20} />
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Season Schedule</span>
             </div>
             {showScheduleGrid ? (
-              <ChevronUp className="text-white/60" size={24} />
+              <ChevronUp color="#9CA3AF" size={20} />
             ) : (
-              <ChevronDown className="text-white/60" size={24} />
+              <ChevronDown color="#9CA3AF" size={20} />
             )}
           </button>
         </div>
