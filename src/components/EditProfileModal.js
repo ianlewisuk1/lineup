@@ -94,7 +94,7 @@ const EditProfileModal = ({ onClose }) => {
       try {
         const { data: rows, error: err } = await supabase
           .from('league_members')
-          .select('league_id, team_name, avatar_url, leagues(id, name)')
+          .select('league_id, team_name, avatar_url, leagues!league_members_league_id_fkey(id, name)')
           .eq('user_id', currentUser.id);
         if (err) throw err;
 
