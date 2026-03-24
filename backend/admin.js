@@ -1,10 +1,12 @@
 /**
  * admin.js
  *
- * Admin REST endpoints. Replaces Firebase HTTP Cloud Functions.
- * All routes require Authorization: Bearer <ADMIN_SECRET> header.
+ * Admin REST endpoints. All routes require Authorization: Bearer <ADMIN_SECRET>.
  *
- * Mount in index.js: app.use('/admin', adminRouter)
+ * v2 schema notes:
+ *   - weekly_standings uses member_id (not user_id)
+ *   - weekly points come from weekly_lineups.points (not league_members.weekly_points)
+ *   - team stats live in team_season_stats (not teams)
  */
 
 const express = require('express');
@@ -28,8 +30,7 @@ router.use(requireAdmin);
 
 // ---------------------------------------------------------------------------
 // POST /admin/advance-week
-// Advances the global current week, snapshots standings, resets weekly lineups
-// Replaces: advanceWeekAndSnapshot Cloud Function
+// Snapshots standings for the outgoing week, then advances the global week.
 // ---------------------------------------------------------------------------
 router.post('/advance-week', async (req, res) => {
   try {
@@ -43,14 +44,26 @@ router.post('/advance-week', async (req, res) => {
       .single();
 
     const currentWeek = configRow?.value?.currentWeek;
+    const weekNum = parseInt(String(currentWeek || '').replace(/\D/g, ''), 10);
 
-    // Snapshot all member standings for the outgoing week
+    // Fetch all members (id + league_id + cumulative points)
     const { data: allMembers } = await supabase
       .from('league_members')
-      .select('league_id, user_id, points, weekly_points, team_name');
+      .select('id, league_id, points');
+
+    // Fetch this week's per-lineup points (what each member scored this week)
+    const { data: weekLineups } = await supabase
+      .from('weekly_lineups')
+      .select('member_id, points')
+      .eq('week', weekNum || currentWeek);
+
+    const weeklyPointsMap = {};
+    for (const l of weekLineups || []) {
+      weeklyPointsMap[l.member_id] = l.points || 0;
+    }
 
     if (allMembers?.length) {
-      // Group by league and rank
+      // Group by league and rank by cumulative points
       const byLeague = {};
       for (const m of allMembers) {
         if (!byLeague[m.league_id]) byLeague[m.league_id] = [];
@@ -63,18 +76,17 @@ router.post('/advance-week', async (req, res) => {
         sorted.forEach((m, i) => {
           standingsRows.push({
             league_id: leagueId,
-            user_id: m.user_id,
-            week: currentWeek,
-            points: m.points,
-            rank: i + 1,
-            team_name: m.team_name,
+            member_id: m.id,
+            week:      weekNum || currentWeek,
+            points:    weeklyPointsMap[m.id] || 0,  // weekly score, not cumulative
+            rank:      i + 1,
           });
         });
       }
 
       await supabase
         .from('weekly_standings')
-        .upsert(standingsRows, { onConflict: 'league_id,user_id,week' });
+        .upsert(standingsRows, { onConflict: 'league_id,member_id,week' });
     }
 
     // Advance the week
@@ -92,8 +104,7 @@ router.post('/advance-week', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // POST /admin/recalculate-points
-// Force recalculate all member points for current week
-// Replaces: recalculateMemberPoints Cloud Function
+// Force recalculate all member points for current week.
 // ---------------------------------------------------------------------------
 router.post('/recalculate-points', async (req, res) => {
   try {
@@ -114,24 +125,36 @@ router.post('/recalculate-points', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // POST /admin/reset-team-stats
-// Clears weekly team stats for a given week
-// Replaces: resetAllTeamStats Cloud Function
+// Clears weekly team stats for a given week in team_season_stats.
 // ---------------------------------------------------------------------------
 router.post('/reset-team-stats', async (req, res) => {
   try {
     const { week } = req.body;
     if (!week) return res.status(400).json({ error: 'week required' });
 
-    const { data: teams } = await supabase.from('teams').select('id, weekly_points');
+    const { data: configRow } = await supabase
+      .from('config')
+      .select('value')
+      .eq('key', 'season')
+      .single();
 
-    for (const team of teams || []) {
-      const wp = team.weekly_points || {};
-      delete wp[week];
+    const year = configRow?.value?.year || new Date().getFullYear();
+    const weekKey = String(parseInt(String(week).replace(/\D/g, ''), 10));
+
+    const { data: stats } = await supabase
+      .from('team_season_stats')
+      .select('team_id, weekly_points, game_points')
+      .eq('season_year', year);
+
+    for (const stat of stats || []) {
+      const wp = stat.weekly_points || {};
+      delete wp[weekKey];
       const gamePoints = Object.values(wp).reduce((a, b) => a + b, 0);
       await supabase
-        .from('teams')
+        .from('team_season_stats')
         .update({ weekly_points: wp, game_points: gamePoints })
-        .eq('id', team.id);
+        .eq('team_id', stat.team_id)
+        .eq('season_year', year);
     }
 
     res.json({ ok: true, week });
@@ -143,7 +166,7 @@ router.post('/reset-team-stats', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // POST /admin/set-fa-lock
-// Toggle free agency lock
+// Toggle free agency lock.
 // ---------------------------------------------------------------------------
 router.post('/set-fa-lock', async (req, res) => {
   try {
@@ -168,9 +191,6 @@ router.post('/set-fa-lock', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // POST /admin/initialize-playoffs
-// Creates the playoff bracket for a league
-// Replaces: initializePlayoffs Cloud Function
-// The complex bracket generation logic will be ported to playoffs.js
 // ---------------------------------------------------------------------------
 router.post('/initialize-playoffs', async (req, res) => {
   try {
@@ -188,8 +208,6 @@ router.post('/initialize-playoffs', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // POST /admin/advance-playoff-week
-// Advances the playoff bracket to the next round
-// Replaces: advancePlayoffWeek Cloud Function
 // ---------------------------------------------------------------------------
 router.post('/advance-playoff-week', async (req, res) => {
   try {
@@ -209,8 +227,6 @@ router.post('/advance-playoff-week', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // DELETE /admin/user/:uid
-// Deletes a Supabase Auth user (admin only)
-// Replaces: deleteAuthUser Cloud Function
 // ---------------------------------------------------------------------------
 router.delete('/user/:uid', async (req, res) => {
   try {

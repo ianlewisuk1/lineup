@@ -12,7 +12,7 @@ async function runAutoPickJobs() {
   // Find all active drafts where the deadline has passed
   const { data: expiredDrafts, error } = await supabase
     .from('drafts')
-    .select('id, league_id, draft_order, current_pick_index, total_rounds, pick_deadline')
+    .select('id, league_id, draft_order, current_pick, total_rounds, pick_deadline')
     .eq('status', 'active')
     .lt('pick_deadline', new Date().toISOString());
 
@@ -33,7 +33,7 @@ async function runAutoPickJobs() {
 }
 
 async function autoPick(draft) {
-  const { id: draftId, league_id } = draft;
+  const { id: draftId } = draft;
 
   // Get already-picked team IDs for this draft
   const { data: picks } = await supabase
@@ -43,21 +43,35 @@ async function autoPick(draft) {
 
   const pickedIds = new Set((picks ?? []).map((p) => p.team_id));
 
-  // Get best available FBS team by game_points (highest rank)
-  const { data: teams } = await supabase
+  // Get best available FBS team ranked by game_points from team_season_stats.
+  // Falls back to alphabetical order if season stats are not yet populated (offseason).
+  const { data: fbsTeams } = await supabase
     .from('teams')
-    .select('id, school, game_points')
-    .in('classification', ['fbs', 'FBS'])
+    .select('id, school')
+    .in('classification', ['fbs', 'FBS']);
+
+  const fbsIds = (fbsTeams ?? []).map((t) => t.id);
+
+  const { data: stats } = await supabase
+    .from('team_season_stats')
+    .select('team_id, game_points')
+    .in('team_id', fbsIds)
     .order('game_points', { ascending: false });
 
-  const bestTeam = (teams ?? []).find((t) => !pickedIds.has(t.id));
+  // Build ranked list: stats-ranked first, then any FBS teams missing from stats
+  const rankedIds = (stats ?? []).map((s) => s.team_id);
+  const unrankedIds = fbsIds.filter((id) => !rankedIds.includes(id)).sort();
+  const allRanked = [...rankedIds, ...unrankedIds];
+
+  const bestTeamId = allRanked.find((id) => !pickedIds.has(id));
+  const bestTeam = (fbsTeams ?? []).find((t) => t.id === bestTeamId);
 
   if (!bestTeam) {
     console.warn(`[Draft auto-pick] No available team found for draft ${draftId}`);
     return;
   }
 
-  // Call the same make_pick RPC with auto_pick=true (service role bypasses turn check)
+  // Call make_pick RPC (service role bypasses turn check via p_auto_pick=true)
   const { data: result, error } = await supabase.rpc('make_pick', {
     p_draft_id:  draftId,
     p_team_id:   bestTeam.id,

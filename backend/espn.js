@@ -4,7 +4,9 @@
  * Fetches live scores from the ESPN college football scoreboard API and
  * updates game records + team weekly points in Supabase.
  *
- * Ported from functions/index.js (triggerLiveScoresScheduled logic).
+ * v2 schema notes:
+ *   - Team stat writes go to team_season_stats (upsert on team_id, season_year)
+ *   - weekly_points keyed by normalised week number string ("3", "14", etc.)
  */
 
 const { supabase } = require('./db');
@@ -13,8 +15,8 @@ const { calculateTeamFantasyPoints, recalculateAllMemberPoints } = require('./sc
 const ESPN_URL =
   'https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80';
 
-const RETRY_ATTEMPTS = 3;
-const RETRY_DELAY_MS = 300;
+const RETRY_ATTEMPTS  = 3;
+const RETRY_DELAY_MS  = 300;
 const FETCH_TIMEOUT_MS = 7000;
 
 // ---------------------------------------------------------------------------
@@ -38,7 +40,6 @@ async function fetchESPN(url) {
 
 // ---------------------------------------------------------------------------
 // Team name normalization (ESPN → our team ids)
-// Ported from functions/index.js baseNorm()
 // ---------------------------------------------------------------------------
 function normalizeESPNName(name) {
   if (!name) return '';
@@ -50,7 +51,6 @@ function normalizeESPNName(name) {
     .replace(/^-|-$/g, '');
 }
 
-// Build a lookup map from ESPN event: homeTeam slug → event
 function buildEventIndex(events) {
   const index = new Map();
   for (const event of events) {
@@ -70,7 +70,6 @@ function buildEventIndex(events) {
 async function ingestESPNScores() {
   console.log('[ESPN] Fetching scores...');
 
-  // Get current week from config
   const { data: configRow } = await supabase
     .from('config')
     .select('value')
@@ -83,7 +82,15 @@ async function ingestESPNScores() {
     return;
   }
 
-  // Fetch ESPN data
+  // Normalised week key for JSONB storage ("Week 3" → "3")
+  const weekKey = String(parseInt(currentWeek.replace(/\D/g, ''), 10));
+  if (weekKey === 'NaN') {
+    console.log('[ESPN] Non-numeric week — skipping');
+    return;
+  }
+
+  const year = configRow?.value?.year || new Date().getFullYear();
+
   const espnData = await fetchESPN(ESPN_URL);
   const events = espnData?.events || [];
   if (!events.length) {
@@ -91,29 +98,27 @@ async function ingestESPNScores() {
     return;
   }
 
-  // Get all games for the current week
   const { data: games, error: gamesErr } = await supabase
     .from('games')
     .select('*')
-    .eq('year', new Date().getFullYear())
-    .eq('week', currentWeek);
+    .eq('year', year)
+    .eq('week', parseInt(weekKey, 10));
 
   if (gamesErr) throw gamesErr;
 
-  const eventIndex = buildEventIndex(events);
+  const eventIndex  = buildEventIndex(events);
   const teamUpdates = [];
-  let updatedGames = 0;
+  let updatedGames  = 0;
 
   for (const game of games) {
     if (game.game_complete) continue;
 
-    // Try to find matching ESPN event by home team name
     const homeSlug = normalizeESPNName(game.home_team);
     const match = eventIndex.get(homeSlug);
     if (!match) continue;
 
     const { competition } = match;
-    const status = competition.status?.type?.name || '';
+    const status    = competition.status?.type?.name || '';
     const completed = status === 'STATUS_FINAL';
     const inProgress = status === 'STATUS_IN_PROGRESS' || status === 'STATUS_HALFTIME';
 
@@ -127,15 +132,13 @@ async function ingestESPNScores() {
 
     const gameStatus = completed ? 'final' : inProgress ? 'in_progress' : 'scheduled';
 
-    // Update game record
     const { error: updateErr } = await supabase
       .from('games')
       .update({
-        home_score: homeScore,
-        away_score: awayScore,
-        game_status: gameStatus,
+        home_score:    homeScore,
+        away_score:    awayScore,
+        game_status:   gameStatus,
         game_complete: completed,
-        last_score_update: new Date().toISOString(),
       })
       .eq('id', game.id);
 
@@ -146,53 +149,58 @@ async function ingestESPNScores() {
 
     updatedGames++;
 
-    // If game just completed, calculate fantasy points for both teams
     if (completed && homeScore !== null && awayScore !== null) {
       const spread = game.home_spread;
 
       const homePoints = calculateTeamFantasyPoints({
-        won: homeScore > awayScore,
-        isUnderdog: spread !== null && spread > 0,
+        won:          homeScore > awayScore,
+        isUnderdog:   spread !== null && spread > 0,
         spread,
         actualMargin: homeScore - awayScore,
       });
 
       const awayPoints = calculateTeamFantasyPoints({
-        won: awayScore > homeScore,
-        isUnderdog: spread !== null && spread < 0,
-        spread: spread !== null ? -spread : null,
+        won:          awayScore > homeScore,
+        isUnderdog:   spread !== null && spread < 0,
+        spread:       spread !== null ? -spread : null,
         actualMargin: awayScore - homeScore,
       });
 
-      teamUpdates.push({ teamId: game.home_team, week: currentWeek, points: homePoints });
-      teamUpdates.push({ teamId: game.away_team, week: currentWeek, points: awayPoints });
+      teamUpdates.push({ teamId: game.home_team, weekKey, points: homePoints, year });
+      teamUpdates.push({ teamId: game.away_team, weekKey, points: awayPoints, year });
     }
   }
 
-  // Update weekly_points JSONB for each team
-  for (const { teamId, week, points } of teamUpdates) {
-    const { data: team } = await supabase
-      .from('teams')
+  // Write weekly points to team_season_stats
+  for (const { teamId, weekKey: wk, points, year: yr } of teamUpdates) {
+    const { data: existing } = await supabase
+      .from('team_season_stats')
       .select('weekly_points, game_points')
-      .eq('id', teamId)
+      .eq('team_id', teamId)
+      .eq('season_year', yr)
       .single();
 
-    if (!team) continue;
-
-    const weeklyPoints = team.weekly_points || {};
-    weeklyPoints[week] = points;
-
+    const weeklyPoints = existing?.weekly_points || {};
+    weeklyPoints[wk] = points;
     const gamePoints = Object.values(weeklyPoints).reduce((a, b) => a + b, 0);
 
     await supabase
-      .from('teams')
-      .update({ weekly_points: weeklyPoints, game_points: gamePoints, game_complete: true, game_status: 'final' })
-      .eq('id', teamId);
+      .from('team_season_stats')
+      .upsert(
+        {
+          team_id:       teamId,
+          season_year:   yr,
+          weekly_points: weeklyPoints,
+          game_points:   gamePoints,
+          game_complete: true,
+          game_status:   'final',
+        },
+        { onConflict: 'team_id,season_year' }
+      );
   }
 
   console.log(`[ESPN] Updated ${updatedGames} games, ${teamUpdates.length} team point updates`);
 
-  // Recalculate all member points if any games completed
   if (teamUpdates.length > 0) {
     await recalculateAllMemberPoints(currentWeek);
   }
