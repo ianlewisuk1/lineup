@@ -100,18 +100,39 @@ function TeamPage() {
         setLoadingStage("Loading team details...");
         const [configResult, teamsResult] = await Promise.all([
           supabase.from('config').select('value').eq('key', 'season').single(),
-          supabase.from('teams').select('*')
+          supabase.from('teams').select('*, team_season_stats(*)')
         ]);
 
         // Get current week
         const week = configResult.data?.value?.currentWeek || 1;
         setCurrentWeek(week);
 
-        // Find team info
+        // Find team info, flattening season stats
         let foundTeam = null;
         (teamsResult.data || []).forEach(team => {
           if (team.school === decodedTeamName) {
-            foundTeam = team;
+            const stats = team.team_season_stats?.[0] || {};
+            foundTeam = {
+              ...team,
+              logo: team.logo_filename ? `/logos/${team.logo_filename}` : null,
+              // Flatten live fields from team_season_stats
+              game_points: stats.game_points || 0,
+              record: stats.record || null,
+              conf_record: stats.conf_record || null,
+              ats_record: stats.ats_record || null,
+              is_on_bye: stats.is_on_bye || false,
+              next_opponent: stats.next_opponent || null,
+              next_game_is_home: stats.next_game_is_home || false,
+              next_opponent_spread: stats.next_opponent_spread || null,
+              next_opponent_spread_display: stats.next_opponent_spread_display || null,
+              total_points_for: stats.total_points_for || 0,
+              total_points_against: stats.total_points_against || 0,
+              sos_rank: stats.sos_rank || null,
+              prev_year_points: stats.prev_year_points || 0,
+              game_status: stats.game_status || null,
+              game_complete: stats.game_complete || false,
+              weekly_points: stats.weekly_points || {},
+            };
           }
         });
         setTeamInfo(foundTeam);
@@ -166,14 +187,33 @@ function TeamPage() {
         .replace(/&/g, "")
         .replace(/[^a-z0-9\-]/g, "");
 
+      // Get all members for this league
       const { data: memberRows } = await supabase
         .from('league_members')
-        .select('*')
+        .select('id, user_id, team_name')
         .eq('league_id', leagueId);
 
-      for (const memberRow of (memberRows || [])) {
-        const starters = memberRow.starters || [];
-        const bench = memberRow.bench || [];
+      if (!memberRows?.length) return null;
+
+      // Get current week lineups for all members
+      const memberIds = memberRows.map(m => m.id);
+      const currentWeekNum = (await supabase.from('config').select('value').eq('key', 'season').single())
+        .data?.value?.currentWeek || 1;
+
+      const { data: lineupRows } = await supabase
+        .from('weekly_lineups')
+        .select('member_id, starters, bench')
+        .eq('league_id', leagueId)
+        .eq('week', currentWeekNum)
+        .in('member_id', memberIds);
+
+      const lineupByMember = {};
+      (lineupRows || []).forEach(row => { lineupByMember[row.member_id] = row; });
+
+      for (const memberRow of memberRows) {
+        const lineup = lineupByMember[memberRow.id] || {};
+        const starters = lineup.starters || [];
+        const bench = lineup.bench || [];
 
         let status = null;
         if (starters.includes(normalizedTeamName)) {
@@ -214,16 +254,30 @@ function TeamPage() {
       if (!user) return [];
 
       try {
+        // Look up member_id for the current user in this league
         const { data: memberRow } = await supabase
           .from('league_members')
-          .select('starters, bench')
+          .select('id')
           .eq('league_id', leagueId)
           .eq('user_id', user.id)
           .single();
 
-        if (memberRow) {
-          const starters = memberRow.starters || [];
-          const bench = memberRow.bench || [];
+        if (!memberRow) return [];
+
+        const currentWeekNum = (await supabase.from('config').select('value').eq('key', 'season').single())
+          .data?.value?.currentWeek || 1;
+
+        const { data: lineupRow } = await supabase
+          .from('weekly_lineups')
+          .select('starters, bench')
+          .eq('league_id', leagueId)
+          .eq('member_id', memberRow.id)
+          .eq('week', currentWeekNum)
+          .single();
+
+        if (lineupRow) {
+          const starters = lineupRow.starters || [];
+          const bench = lineupRow.bench || [];
           return [...starters, ...bench];
         }
       } catch (error) {
@@ -285,15 +339,27 @@ function TeamPage() {
     try {
       if (!currentUser) return;
 
+      // Look up member_id for current user
       const { data: memberRow } = await supabase
         .from('league_members')
-        .select('starters, bench, team_name')
+        .select('id, team_name')
         .eq('league_id', leagueId)
         .eq('user_id', currentUser.id)
         .single();
 
-      const starters = [...(memberRow?.starters || [])];
-      const bench = [...(memberRow?.bench || [])];
+      if (!memberRow) return;
+
+      const weekNum = currentWeek || 1;
+      const { data: lineupRow } = await supabase
+        .from('weekly_lineups')
+        .select('starters, bench')
+        .eq('league_id', leagueId)
+        .eq('member_id', memberRow.id)
+        .eq('week', weekNum)
+        .single();
+
+      const starters = [...(lineupRow?.starters || Array(5).fill(null))];
+      const bench = [...(lineupRow?.bench || Array(2).fill(null))];
 
       // NORMALIZE THE TEAM NAME BEFORE SAVING
       const normalizedTeamName = teamToAdd.school
@@ -315,10 +381,14 @@ function TeamPage() {
       }
 
       const { error: updateError } = await supabase
-        .from('league_members')
-        .update({ starters, bench })
-        .eq('league_id', leagueId)
-        .eq('user_id', currentUser.id);
+        .from('weekly_lineups')
+        .upsert({
+          league_id: leagueId,
+          member_id: memberRow.id,
+          week: weekNum,
+          starters,
+          bench,
+        }, { onConflict: 'league_id,member_id,week' });
       if (updateError) throw updateError;
 
       setUserTeams([...starters, ...bench].filter(Boolean));
@@ -359,15 +429,27 @@ function TeamPage() {
     try {
       if (!currentUser) return;
 
+      // Look up member_id for current user
       const { data: memberRow } = await supabase
         .from('league_members')
-        .select('starters, bench, team_name')
+        .select('id, team_name')
         .eq('league_id', leagueId)
         .eq('user_id', currentUser.id)
         .single();
 
-      const starters = [...(memberRow?.starters || [])];
-      const bench = [...(memberRow?.bench || [])];
+      if (!memberRow) return;
+
+      const weekNum = currentWeek || 1;
+      const { data: lineupRow } = await supabase
+        .from('weekly_lineups')
+        .select('starters, bench')
+        .eq('league_id', leagueId)
+        .eq('member_id', memberRow.id)
+        .eq('week', weekNum)
+        .single();
+
+      const starters = [...(lineupRow?.starters || Array(5).fill(null))];
+      const bench = [...(lineupRow?.bench || Array(2).fill(null))];
 
       // NORMALIZE THE NEW TEAM NAME BEFORE SAVING
       const normalizedNewTeam = pendingAddTeam
@@ -386,10 +468,14 @@ function TeamPage() {
       }
 
       const { error: updateError } = await supabase
-        .from('league_members')
-        .update({ starters, bench })
-        .eq('league_id', leagueId)
-        .eq('user_id', currentUser.id);
+        .from('weekly_lineups')
+        .upsert({
+          league_id: leagueId,
+          member_id: memberRow.id,
+          week: weekNum,
+          starters,
+          bench,
+        }, { onConflict: 'league_id,member_id,week' });
       if (updateError) throw updateError;
 
       setUserTeams([...starters, ...bench].filter(Boolean));
@@ -556,9 +642,9 @@ function TeamPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="mb-4">
-            {teamInfo?.logos && teamInfo.logos[0] ? (
+            {teamInfo?.logo ? (
               <img
-                src={teamInfo.logos[0]}
+                src={teamInfo.logo}
                 alt={`${decodedTeamName} logo`}
                 className="w-16 h-16 sm:w-20 sm:h-20 rounded-full mx-auto border-2 border-white/20 bg-white/10 p-2"
               />

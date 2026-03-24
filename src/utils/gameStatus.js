@@ -10,19 +10,21 @@ import { weeklyLineupUtils } from './weeklyLineupUtils';
  */
 export const getTeamGameInfo = async (teamName, week) => {
   try {
-    // Schedule data is not in Supabase; fall back to teams table for basic info
+    // Schedule data is not in Supabase; fall back to team_season_stats for basic info
     const { data: teamRow } = await supabase
       .from('teams')
-      .select('*')
+      .select('id, school, team_season_stats(is_on_bye, next_opponent, game_status, game_complete)')
       .eq('school', teamName)
       .single();
 
     if (!teamRow) return null;
 
-    // Build a lightweight game-info-like object from teams table fields
-    if (teamRow.is_on_bye) return null;
+    const stats = teamRow.team_season_stats?.[0] || {};
 
-    const nextOpponent = teamRow.next_opponent || null;
+    // Build a lightweight game-info-like object from team_season_stats fields
+    if (stats.is_on_bye) return null;
+
+    const nextOpponent = stats.next_opponent || null;
     if (!nextOpponent) return null;
 
     return {
@@ -30,8 +32,8 @@ export const getTeamGameInfo = async (teamName, week) => {
       date: null,
       homeTeam: teamName,
       awayTeam: nextOpponent,
-      gameComplete: false,
-      gameStatus: 'scheduled',
+      gameComplete: stats.game_complete || false,
+      gameStatus: stats.game_status || 'scheduled',
       homeScore: 0,
       awayScore: 0,
       homeSpread: null,

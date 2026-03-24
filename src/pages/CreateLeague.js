@@ -58,7 +58,6 @@ function CreateLeague() {
         draft_type: draftType,
         draft_order_type: draftOrderType,
         scoring_type: "cumulative",
-        current_week: currentWeek,
         invite_code: inviteCode,
       };
 
@@ -100,7 +99,7 @@ function CreateLeague() {
         supabase.from('drafts').insert({ league_id: newLeague.id }),
         supabase.from('league_members').insert({
           league_id: newLeague.id, user_id: currentUser.id, team_name: teamName.trim(),
-          points: 0, weekly_points: 0, weekly_points_history: {}, free_agent_moves: 0, starters: [], bench: []
+          points: 0,
         }),
       ]);
 

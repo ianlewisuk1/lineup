@@ -48,7 +48,7 @@ function Stats() {
 
   useEffect(() => {
     const fetchTeams = async () => {
-      const { data, error } = await supabase.from('teams').select('*');
+      const { data, error } = await supabase.from('teams').select('*, team_season_stats(*)');
       if (error) {
         console.error("Error fetching teams:", error);
         setLoading(false);
@@ -59,7 +59,28 @@ function Stats() {
 
       (data || []).forEach(team => {
         if ((team.classification || "").toUpperCase() === "FBS") {
-          list.push(team);
+          // Flatten team_season_stats nested array into currentSeason
+          const stats = team.team_season_stats?.[0] || {};
+          list.push({
+            ...team,
+            currentSeason: {
+              gamePoints: stats.game_points || 0,
+              record: stats.record || null,
+              confRecord: stats.conf_record || null,
+              atsRecord: stats.ats_record || null,
+              totalPointsFor: stats.total_points_for || 0,
+              totalPointsAgainst: stats.total_points_against || 0,
+              sosRank: stats.sos_rank || null,
+              prevYearPoints: stats.prev_year_points || 0,
+              nextOpponent: stats.next_opponent || null,
+              isOnBye: stats.is_on_bye || false,
+            },
+            // Keep flat references for sort fallback compatibility
+            sos_rank: stats.sos_rank || null,
+            phil_metrics: null,
+            prev_year_points: stats.prev_year_points || 0,
+            next_opponent: stats.next_opponent || null,
+          });
           if (team.conference) confSet.add(team.conference);
         }
       });

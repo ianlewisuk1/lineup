@@ -125,8 +125,8 @@ function LeagueMembers() {
                 <div key={m.user_id} className="flex items-center gap-4 bg-white/5 rounded-xl p-4 border border-white/10">
                   {/* Avatar */}
                   <div className="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden">
-                    {m.team_avatar ? (
-                      <img src={m.team_avatar} alt="avatar" className="w-full h-full object-cover" />
+                    {m.avatar_url ? (
+                      <img src={m.avatar_url} alt="avatar" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full bg-gradient-to-r from-purple-500 to-blue-500 flex items-center justify-center font-bold text-white text-sm">
                         {m.first_name?.[0]?.toUpperCase() || (i + 1)}

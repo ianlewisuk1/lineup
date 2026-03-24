@@ -19,18 +19,26 @@ function Scouting() {
 useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch teams data
-        const { data: teamsData, error: teamsError } = await supabase.from('teams').select('*');
+        // Fetch teams data with season stats
+        const { data: teamsData, error: teamsError } = await supabase.from('teams').select('*, team_season_stats(*)');
         if (teamsError) throw teamsError;
 
         // Create teams map for logos/colors
         const teamsMap = {};
         (teamsData || []).forEach(teamData => {
           if (teamData.school) {
+            const stats = teamData.team_season_stats?.[0] || {};
             teamsMap[teamData.school] = {
-              logo: (teamData.logos && teamData.logos[0]) || null,
+              logo: teamData.logo_filename ? `/logos/${teamData.logo_filename}` : null,
               color: teamData.color || null,
-              ...teamData
+              ...teamData,
+              // Flatten season stats for column access
+              game_points: stats.game_points || 0,
+              record: stats.record || null,
+              sos_rank: stats.sos_rank || null,
+              prev_year_points: stats.prev_year_points || 0,
+              is_on_bye: stats.is_on_bye || false,
+              next_opponent: stats.next_opponent || null,
             };
           }
         });
@@ -47,13 +55,23 @@ useEffect(() => {
         }
         setDraftedTeams(draftedTeamsSet);
 
-        // Filter for FBS teams and mark as drafted
+        // Filter for FBS teams and mark as drafted, flattening season stats
         const fbsTeams = (teamsData || [])
           .filter((team) => (team.classification || "").toLowerCase() === "fbs")
-          .map(team => ({
-            ...team,
-            isDrafted: draftedTeamsSet.has(team.id)
-          }));
+          .map(team => {
+            const stats = team.team_season_stats?.[0] || {};
+            return {
+              ...team,
+              logo: team.logo_filename ? `/logos/${team.logo_filename}` : null,
+              game_points: stats.game_points || 0,
+              record: stats.record || null,
+              sos_rank: stats.sos_rank || null,
+              prev_year_points: stats.prev_year_points || 0,
+              is_on_bye: stats.is_on_bye || false,
+              next_opponent: stats.next_opponent || null,
+              isDrafted: draftedTeamsSet.has(team.id)
+            };
+          });
 
         setTeams(fbsTeams);
         setLoading(false);
@@ -163,7 +181,7 @@ useEffect(() => {
               objectFit: "cover"
             }}
             onError={(e) => {
-              const fallbackUrl = team?.logos && team.logos[1];
+              const fallbackUrl = null; // logos array removed; no fallback URL
               if (fallbackUrl && e.target.src !== fallbackUrl) {
                 e.target.src = fallbackUrl;
               } else {

@@ -12,21 +12,49 @@ function ConfirmAddTeam() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: memberData } = await supabase.from("league_members").select("*").eq("league_id", leagueId).eq("user_id", user.id).single();
-    const starters = memberData.starters || [];
-    const bench = memberData.bench || [];
-    const currentRoster = [...starters, ...bench];
+    const { data: memberData } = await supabase
+      .from("league_members")
+      .select("id")
+      .eq("league_id", leagueId)
+      .eq("user_id", user.id)
+      .single();
+    if (!memberData) return;
+
+    // Get current week from config
+    const { data: configRow } = await supabase
+      .from("config").select("value").eq("key", "season").single();
+    const currentWeek = configRow?.value?.currentWeek || 1;
+
+    const { data: lineupRow } = await supabase
+      .from("weekly_lineups")
+      .select("starters, bench")
+      .eq("league_id", leagueId)
+      .eq("member_id", memberData.id)
+      .eq("week", currentWeek)
+      .single();
+
+    const starters = [...(lineupRow?.starters || Array(5).fill(null))];
+    const bench = [...(lineupRow?.bench || Array(2).fill(null))];
+    const currentRoster = [...starters, ...bench].filter(Boolean);
 
     if (currentRoster.length >= 7) return;
 
-    const newStarters = starters.length < 5 ? [...starters, teamName] : starters;
-    const newBench = starters.length < 5 ? bench : [...bench, teamName];
+    const emptyStarterIndex = starters.findIndex(t => !t);
+    const emptyBenchIndex = bench.findIndex(t => !t);
 
-    await supabase.from("league_members").update({
-      starters: newStarters,
-      bench: newBench,
-      free_agent_moves: (memberData.free_agent_moves || 0) + 1
-    }).eq("league_id", leagueId).eq("user_id", user.id);
+    if (emptyStarterIndex !== -1) {
+      starters[emptyStarterIndex] = teamName;
+    } else if (emptyBenchIndex !== -1) {
+      bench[emptyBenchIndex] = teamName;
+    }
+
+    await supabase.from("weekly_lineups").upsert({
+      league_id: leagueId,
+      member_id: memberData.id,
+      week: currentWeek,
+      starters,
+      bench,
+    }, { onConflict: 'league_id,member_id,week' });
 
     navigate(`/${leagueId}/my-lineup`);
   };

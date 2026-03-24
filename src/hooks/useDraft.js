@@ -37,10 +37,11 @@ export function useDraft(leagueId) {
           supabase.from('drafts').select('*').eq('league_id', leagueId).single(),
           supabase.from('draft_picks').select('*').eq('league_id', leagueId).order('pick_number'),
           supabase.from('league_members')
-            .select('user_id, team_name, users(first_name, last_name)')
+            .select('id, user_id, team_name, users(first_name, last_name)')
             .eq('league_id', leagueId),
-          supabase.from('teams').select('id, school, mascot, logos, conference, game_points, sos_rank')
-            .in('classification', ['fbs', 'FBS']).order('game_points', { ascending: false }),
+          supabase.from('teams')
+            .select('id, school, mascot, logo_filename, conference, team_season_stats(game_points, sos_rank)')
+            .in('classification', ['fbs', 'FBS']),
         ]);
 
         if (draftErr) throw draftErr;
@@ -92,7 +93,7 @@ export function useDraft(leagueId) {
           // Re-fetch members when someone joins
           const { data } = await supabase
             .from('league_members')
-            .select('user_id, team_name, users(first_name, last_name)')
+            .select('id, user_id, team_name, users(first_name, last_name)')
             .eq('league_id', leagueId);
           if (data) setMembers(data);
         }
@@ -118,22 +119,24 @@ export function useDraft(leagueId) {
   const isMyTurn = !!currentPickerUid && currentPickerUid === currentUserId;
   const pickDeadline = draft?.pick_deadline ? new Date(draft.pick_deadline) : null;
 
-  // Picks per user (for roster display)
+  // Picks per member (for roster display) — keyed by member_id
   const rosterByUser = picks.reduce((acc, p) => {
-    if (!acc[p.user_id]) acc[p.user_id] = [];
-    acc[p.user_id].push(p.team_id);
+    const key = p.member_id ?? p.user_id; // fallback for legacy rows
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(p.team_id);
     return acc;
   }, {});
 
-  // Member lookup map
+  // Member lookup map — keyed by member.id (league_members PK)
   const memberMap = members.reduce((acc, m) => {
-    acc[m.user_id] = {
+    acc[m.id] = {
       teamName:  m.team_name,
       firstName: m.users?.first_name ?? '',
       lastName:  m.users?.last_name  ?? '',
       name:      m.users?.first_name
                    ? `${m.users.first_name} ${m.users.last_name ?? ''}`.trim()
                    : m.team_name,
+      userId:    m.user_id,
     };
     return acc;
   }, {});

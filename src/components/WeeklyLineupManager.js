@@ -37,7 +37,7 @@ export const ModalPortal = ({ open, children }) => (open ? createPortal(children
 /* ---------- WeeklyLineupManager ---------- */
 const WeeklyLineupManager = ({
   leagueId,
-  userId,
+  memberId,
   allTeams,
   currentWeek,
   onTeamClick,
@@ -56,7 +56,7 @@ const WeeklyLineupManager = ({
     getTripPlayStatusMessage,
     getWeekStatus,
     getStatusMessage,
-  } = useWeeklyLineup({ leagueId, userId, currentWeek });
+  } = useWeeklyLineup({ leagueId, memberId, currentWeek });
 
   const getWeekStatusIcon = (week) => {
     const status = getWeekStatus(week);
@@ -163,7 +163,7 @@ const WeeklyLineupManager = ({
           onTeamClick={onTeamClick}
           TeamLogo={TeamLogo}
           leagueId={leagueId}
-          userId={userId}
+          memberId={memberId}
           userDisplayName={userDisplayName}
           currentWeek={currentWeek}
           hasTripPlay={hasTripPlay}
@@ -183,7 +183,7 @@ const WeeklyLineupContent = ({
   onTeamClick,
   TeamLogo,
   leagueId,
-  userId,
+  memberId,
   userDisplayName,
   currentWeek,
   hasTripPlay,
@@ -385,44 +385,15 @@ const WeeklyLineupContent = ({
       setIsSaving(true);
       await saveLineupChanges(newStarters, newBench, newCaptain, newTripPlayTeam);
 
-// Fetch manager name from users table
-      let managerName = "Unknown Manager";
-      try {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('first_name, last_name')
-          .eq('id', userId)
-          .single();
-        if (userData) {
-          managerName = userData.first_name || "Unknown Manager";
-        }
-      } catch (userError) {
-        console.warn("Could not fetch user name:", userError);
-      }
-
       await supabase.from('move_history').insert({
         league_id: leagueId,
-        user_id: userId,
-        team_name: managerName,
+        member_id: memberId,
+        team_name: userDisplayName || "Unknown Manager",
         move_type: "drop",
         dropped: team.school || team.name,
         picked_up: null,
         week: currentWeek,
       });
-
-      // Increment free_agent_moves in league_members
-      const { data: currentMember } = await supabase
-        .from('league_members')
-        .select('free_agent_moves')
-        .eq('league_id', leagueId)
-        .eq('user_id', userId)
-        .single();
-
-      await supabase
-        .from('league_members')
-        .update({ free_agent_moves: (currentMember?.free_agent_moves || 0) + 1 })
-        .eq('league_id', leagueId)
-        .eq('user_id', userId);
     } catch (e) {
       console.error("Error cutting team and recording move:", e);
     } finally {

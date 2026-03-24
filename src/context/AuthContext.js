@@ -8,30 +8,42 @@ const AuthContext = createContext();
 const normalizeTeamName = (name) =>
   name?.toLowerCase().replace(/\s+/g, "-").replace(/&/g, "").replace(/[^a-z0-9-]/g, "");
 
-// Builds the normalized teams map from raw DB rows
+// Builds the normalized teams map from raw DB rows (teams joined with team_season_stats)
 const buildTeamsMap = (rows) => {
   const map = {};
   (rows || []).forEach((t) => {
     if (!t.school) return;
+    // Flatten the nested team_season_stats array (Supabase embedded select returns array)
+    const stats = t.team_season_stats?.[0] || {};
     map[normalizeTeamName(t.school)] = {
       ...t,
-      logo: t.logos?.[0] || null,
-      logos1: t.logos?.[0] || null,
-      logos2: t.logos?.[1] || null,
+      logo: t.logo_filename ? `/logos/${t.logo_filename}` : null,
+      logos1: t.logo_filename ? `/logos/${t.logo_filename}` : null,
+      logos2: null,
       colors: { primary: t.color, secondary: t.alternate_color },
       conference: t.conference || "Unknown",
       mascot: t.mascot || "",
       name: t.school,
       school: t.school,
       currentSeason: {
-        weeklyPoints: t.weekly_points || {},
-        gamePoints: t.game_points || 0,
-        gameComplete: t.game_complete || false,
-        record: t.record || null,
-        nextOpponent: t.next_opponent || null,
-        nextGameIsHome: t.next_game_is_home || false,
-        nextOpponentSpread: t.next_opponent_spread || null,
-        nextOpponentSpreadDisplay: t.next_opponent_spread_display || null,
+        weeklyPoints: stats.weekly_points || {},
+        gamePoints: stats.game_points || 0,
+        gameComplete: stats.game_complete || false,
+        gameStatus: stats.game_status || null,
+        record: stats.record || null,
+        confRecord: stats.conf_record || null,
+        atsRecord: stats.ats_record || null,
+        atsWins: stats.ats_wins || 0,
+        atsLosses: stats.ats_losses || 0,
+        nextOpponent: stats.next_opponent || null,
+        nextGameIsHome: stats.next_game_is_home || false,
+        nextOpponentSpread: stats.next_opponent_spread || null,
+        nextOpponentSpreadDisplay: stats.next_opponent_spread_display || null,
+        totalPointsFor: stats.total_points_for || 0,
+        totalPointsAgainst: stats.total_points_against || 0,
+        sosRank: stats.sos_rank || null,
+        prevYearPoints: stats.prev_year_points || 0,
+        isOnBye: stats.is_on_bye || false,
       },
     };
   });
@@ -56,7 +68,7 @@ export function AuthProvider({ children }) {
       ] = await Promise.all([
         supabase.from("users").select("*").eq("id", userId).single(),
         supabase.from("config").select("value").eq("key", "season").single(),
-        supabase.from("teams").select("*"),
+        supabase.from("teams").select("*, team_season_stats(*)"),
       ]);
 
       if (userRow) setUserData(userRow);

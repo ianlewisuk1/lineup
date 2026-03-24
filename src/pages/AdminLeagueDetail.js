@@ -228,17 +228,10 @@ function AdminLeagueDetail() {
       // ✅ MATCH DRAFTROOM: Update league status
       await supabase.from("leagues").update({ draft_complete: true }).eq("id", leagueId);
 
-      // ✅ MATCH DRAFTROOM: Update member lineups exactly like completeDraft function
-      const memberUpdates = Object.entries(selectedTeams).map(async ([uid, teams]) => {
-        const starters = teams.slice(0, 5);
-        const bench = teams.slice(5);
-
+      // Update member points on completion
+      const memberUpdates = Object.entries(selectedTeams).map(async ([uid]) => {
         await supabase.from("league_members").update({
-          starters,
-          bench,
-          free_agent_moves: 0,
           points: 0,
-          weekly_points: 0
         }).eq("league_id", leagueId).eq("user_id", uid);
       });
 
@@ -335,14 +328,7 @@ function AdminLeagueDetail() {
         draft_start_time: new Date().toISOString() // ✅ Set timer for final pick
       });
 
-      // ✅ MATCH DRAFTROOM: Update member lineups with current picks (but don't set starters/bench yet)
-      const memberUpdates = Object.entries(selectedTeams).map(async ([uid, teams]) => {
-        if (teams.length > 0) {
-          await supabase.from("league_members").update({
-            free_agent_moves: 0
-          }).eq("league_id", leagueId).eq("user_id", uid);
-        }
-      });
+      const memberUpdates = [];
 
       await Promise.all(memberUpdates);
 
@@ -506,18 +492,7 @@ function AdminLeagueDetail() {
       // 🔧 FIX 10: Update Supabase with updated draft data
       await supabase.from("drafts").update(draftUpdateData).eq("league_id", leagueId);
 
-      // Update member lineups
-      const memberUpdates = Object.entries(selectedTeams).map(async ([uid, teams]) => {
-        if (draftComplete) {
-          const starters = teams.slice(0, 5);
-          const bench = teams.slice(5);
-
-          await supabase.from("league_members").update({
-            starters,
-            bench
-          }).eq("league_id", leagueId).eq("user_id", uid);
-        }
-      });
+      const memberUpdates = [];
 
       await Promise.all(memberUpdates);
 
@@ -565,11 +540,7 @@ function AdminLeagueDetail() {
       const { data: membersData } = await supabase.from("league_members").select("user_id").eq("league_id", leagueId);
       const clears = (membersData || []).map(m =>
         supabase.from("league_members").update({
-          starters: [],
-          bench: [],
-          free_agent_moves: 0,
           points: 0,
-          weekly_points: 0
         }).eq("league_id", leagueId).eq("user_id", m.user_id)
       );
 
@@ -619,11 +590,7 @@ function AdminLeagueDetail() {
           league_id: leagueId,
           user_id: userData.id,
           team_name: teamName,
-          free_agent_moves: 0,
           points: 0,
-          weekly_points: 0,
-          starters: [],
-          bench: []
         });
       });
 
@@ -818,9 +785,9 @@ function AdminLeagueDetail() {
                 <th style={th}>Display Name</th>
                 <th style={th}>Team Name</th>
                 <th style={th}>Email</th>
-                <th style={th}>Starters</th>
-                <th style={th}>Bench</th>
-                <th style={th}>FA Moves</th>
+                <th style={th}>Points</th>
+                <th style={th}>Trip Play</th>
+                <th style={th}>Freezes</th>
                 <th style={th}>Actions</th>
               </tr>
             </thead>
@@ -831,9 +798,9 @@ function AdminLeagueDetail() {
                   <td style={td}>{m.displayName}</td>
                   <td style={td}>{m.team_name}</td>
                   <td style={td}>{m.email}</td>
-                  <td style={td}>{formatList(m.starters)}</td>
-                  <td style={td}>{formatList(m.bench)}</td>
-                  <td style={td}>{m.free_agent_moves || 0}</td>
+                  <td style={td}>{m.points || 0} pts</td>
+                  <td style={td}>{m.has_trip_play ? "Available" : "Used"}</td>
+                  <td style={td}>{m.freezes_remaining ?? 0}</td>
                   <td style={td}>
                     {m.id !== league.admin_id ? (
                       <>

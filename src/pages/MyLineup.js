@@ -13,7 +13,7 @@ import { SEASON_YEAR } from "../utils/season";
 function MyLineup() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
-  const { currentUserId, members: ctxMembers, currentWeek } = useLeague();
+  const { currentUserId, currentMemberId, members: ctxMembers, currentWeek } = useLeague();
   const { teams: allTeams } = useTeams();
   const [loading, setLoading] = useState(true);
   const [teamName, setTeamName] = useState("");
@@ -75,7 +75,7 @@ function MyLineup() {
 
   // User Avatar Component with Points Badge
   const UserAvatar = ({ member, points = 0, size = 80 }) => {
-    const avatarUrl = member?.teamAvatar;
+    const avatarUrl = member?.avatar_url;
     const isCustomUpload = avatarUrl && (avatarUrl.startsWith('http') || avatarUrl.startsWith('data:'));
     
     return (
@@ -351,7 +351,8 @@ function MyLineup() {
     if (!showScheduleGrid) return null;
 
     // Get current roster from member.lineup
-    const currentLineup = { starters: userData?.starters || [], bench: userData?.bench || [] };
+    // starters/bench now live in weekly_lineups; schedule grid shows empty until loaded separately
+    const currentLineup = { starters: [], bench: [] };
     const allRosterTeams = [
       ...(currentLineup?.starters || []),
       ...(currentLineup?.bench || [])
@@ -602,7 +603,7 @@ function MyLineup() {
             .from('weekly_standings')
             .select('rank')
             .eq('league_id', leagueId)
-            .eq('user_id', currentUser.id)
+            .eq('member_id', currentMemberId)
             .eq('week', previousWeek.toString())
             .single();
           const prevRank = weeklyStandingData?.rank || null;
@@ -626,7 +627,7 @@ function MyLineup() {
         // Get user/member data
         const { data: memberData } = await supabase
           .from('league_members')
-          .select('*')
+          .select('id, team_name, points, smack_talk, avatar_url, has_trip_play, trip_play_used_week, freezes_remaining')
           .eq('league_id', leagueId)
           .eq('user_id', currentUser.id)
           .single();
@@ -710,7 +711,7 @@ function MyLineup() {
     <div className="mb-6">
       <WeeklyLineupManager
         leagueId={leagueId}
-        userId={userData?.user_id}
+        memberId={currentMemberId}
         allTeams={allTeams}
         currentWeek={currentWeek}
         onTeamClick={handleTeamClick}

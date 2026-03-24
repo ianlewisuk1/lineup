@@ -31,7 +31,7 @@ const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
 function FreeAgents() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
-  const { currentUserId } = useLeague();
+  const { currentUserId, currentMemberId, currentWeek } = useLeague();
   const [teamsByConference, setTeamsByConference] = useState({});
   const [conferenceList, setConferenceList] = useState([]);
   const [activeConference, setActiveConference] = useState("National");
@@ -65,24 +65,36 @@ function FreeAgents() {
       const { data: teamsData } = await supabase.from('teams').select('*');
       const { data: memberRows } = await supabase
         .from('league_members')
-        .select('*')
+        .select('id, user_id, team_name')
         .eq('league_id', leagueId);
+
+      // Build member id→name map
+      const memberNameMap = {};
+      (memberRows || []).forEach(row => {
+        memberNameMap[row.id] = row.team_name || "Unknown";
+      });
 
       const teamsMap = {};
       const drafted = {};
 
-      // Build drafted teams object
-      (memberRows || []).forEach(row => {
+      // Build drafted teams object from weekly_lineups for the current week
+      const week = currentWeek || 1;
+      const { data: lineupRows } = await supabase
+        .from('weekly_lineups')
+        .select('member_id, starters, bench')
+        .eq('league_id', leagueId)
+        .eq('week', week);
+
+      (lineupRows || []).forEach(row => {
         const starters = row.starters || [];
         const bench = row.bench || [];
+        const ownerName = memberNameMap[row.member_id] || "Unknown";
         const current = [...starters, ...bench];
-
         current.forEach(teamId => {
-          // Teams are stored as document IDs, so use them directly
           if (teamId && teamId.trim()) {
             drafted[teamId] = {
-              ownerName: row.team_name || "Unknown",
-              teamName: row.team_name || "Unnamed Squad"
+              ownerName,
+              teamName: ownerName,
             };
           }
         });
@@ -99,25 +111,9 @@ function FreeAgents() {
         teamsMap[conf].push({
           id: data.id,
           ...data,
-          logo: (data.logos && data.logos[0]) || null,
-          currentWeekPoints: data.weekly_points?.currentWeekPoints || null,
-          gameComplete: data.weekly_points?.gameComplete || false,
+          logo: data.logo_filename ? `/logos/${data.logo_filename}` : null,
           color: data.color || null,
-          // ADDED: Include all currentSeason data for proper display
-          currentSeason: {
-            // Ensure all fields exist with defaults
-            gamePoints: data.game_points || 0,
-            record: data.record || "0-0",
-            confRecord: data.conf_record || "0-0", // FIXED: Use confRecord
-            atsRecord: data.ats_record || "0-0", // FIXED: Use atsRecord instead of ats
-            totalPointsFor: data.weekly_points?.totalPointsFor || 0,
-            totalPointsAgainst: data.weekly_points?.totalPointsAgainst || 0,
-            nextOpponent: data.next_opponent || null,
-            nextGameIsHome: data.next_game_is_home || null,
-            nextOpponentSpreadDisplay: data.next_opponent_spread_display || null,
-            nextOpponentSpread: data.next_opponent_spread || null,
-            nextGameDate: null
-          }
+          currentSeason: {}
         });
       });
 
@@ -134,16 +130,19 @@ function FreeAgents() {
         return;
       }
 
-      const { data: userMemberRow } = await supabase
-        .from('league_members')
-        .select('starters, bench')
-        .eq('league_id', leagueId)
-        .eq('user_id', user.id)
-        .single();
-
-      const starters = userMemberRow?.starters || [];
-      const bench = userMemberRow?.bench || [];
-      setUserTeams([...starters, ...bench].filter(Boolean));
+      // Load current user's lineup from weekly_lineups
+      if (currentMemberId) {
+        const { data: userLineupRow } = await supabase
+          .from('weekly_lineups')
+          .select('starters, bench')
+          .eq('league_id', leagueId)
+          .eq('member_id', currentMemberId)
+          .eq('week', week)
+          .single();
+        const starters = userLineupRow?.starters || [];
+        const bench = userLineupRow?.bench || [];
+        setUserTeams([...starters, ...bench].filter(Boolean));
+      }
 
       setLoading(false);
     };
@@ -193,17 +192,20 @@ function FreeAgents() {
     }
 
     try {
-      if (!currentUserId) return;
+      if (!currentUserId || !currentMemberId) return;
 
-      const { data: memberRow } = await supabase
-        .from('league_members')
-        .select('*')
+      const actualCurrentWeek = currentWeek || seasonConfig?.currentWeek || 1;
+
+      const { data: lineupRow } = await supabase
+        .from('weekly_lineups')
+        .select('starters, bench')
         .eq('league_id', leagueId)
-        .eq('user_id', currentUserId)
+        .eq('member_id', currentMemberId)
+        .eq('week', actualCurrentWeek)
         .single();
 
-      const starters = [...(memberRow?.starters || [])];
-      const bench = [...(memberRow?.bench || [])];
+      const starters = [...(lineupRow?.starters || Array(5).fill(null))];
+      const bench = [...(lineupRow?.bench || Array(2).fill(null))];
 
       // NORMALIZE THE TEAM NAME BEFORE SAVING
       const normalizedTeamName = teamToAdd.school
@@ -224,41 +226,28 @@ function FreeAgents() {
         return;
       }
 
-      // INCREMENT FREE AGENT MOVES COUNTER
-      const currentMoves = memberRow?.free_agent_moves || 0;
-
       const { error: updateError } = await supabase
-        .from('league_members')
-        .update({
+        .from('weekly_lineups')
+        .upsert({
+          league_id: leagueId,
+          member_id: currentMemberId,
+          week: actualCurrentWeek,
           starters,
           bench,
-          free_agent_moves: currentMoves + 1
-        })
-        .eq('league_id', leagueId)
-        .eq('user_id', currentUserId);
+        }, { onConflict: 'league_id,member_id,week' });
       if (updateError) throw updateError;
 
-      const actualCurrentWeek = seasonConfig?.currentWeek || 1;
-
-      // Fetch manager name from users collection
-      let managerName = "Unknown Manager";
-      try {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('first_name')
-          .eq('id', currentUserId)
-          .single();
-        if (userData) {
-          managerName = userData.first_name || "Unknown Manager";
-        }
-      } catch (userError) {
-        console.warn("Could not fetch user name:", userError);
-      }
+      // Fetch team name for move history
+      const { data: memberRow } = await supabase
+        .from('league_members')
+        .select('team_name')
+        .eq('id', currentMemberId)
+        .single();
 
       // Log the move
       await supabase.from('move_history').insert({
         league_id: leagueId,
-        user_id: currentUserId,
+        member_id: currentMemberId,
         team_name: memberRow?.team_name || "",
         picked_up: teamToAdd.school,
         dropped: null,
@@ -305,17 +294,20 @@ function FreeAgents() {
     }
 
     try {
-      if (!currentUserId) return;
+      if (!currentUserId || !currentMemberId) return;
 
-      const { data: memberRow } = await supabase
-        .from('league_members')
-        .select('*')
+      const actualCurrentWeek = currentWeek || seasonConfig?.currentWeek || 1;
+
+      const { data: lineupRow } = await supabase
+        .from('weekly_lineups')
+        .select('starters, bench')
         .eq('league_id', leagueId)
-        .eq('user_id', currentUserId)
+        .eq('member_id', currentMemberId)
+        .eq('week', actualCurrentWeek)
         .single();
 
-      const starters = [...(memberRow?.starters || [])];
-      const bench = [...(memberRow?.bench || [])];
+      const starters = [...(lineupRow?.starters || Array(5).fill(null))];
+      const bench = [...(lineupRow?.bench || Array(2).fill(null))];
 
       // NORMALIZE THE NEW TEAM NAME
       const normalizedNewTeam = pendingAddTeam
@@ -333,18 +325,15 @@ function FreeAgents() {
         bench[benchIndex] = normalizedNewTeam;
       }
 
-      // INCREMENT FREE AGENT MOVES COUNTER
-      const currentMoves = memberRow?.free_agent_moves || 0;
-
       const { error: updateError } = await supabase
-        .from('league_members')
-        .update({
+        .from('weekly_lineups')
+        .upsert({
+          league_id: leagueId,
+          member_id: currentMemberId,
+          week: actualCurrentWeek,
           starters,
           bench,
-          free_agent_moves: currentMoves + 1
-        })
-        .eq('league_id', leagueId)
-        .eq('user_id', currentUserId);
+        }, { onConflict: 'league_id,member_id,week' });
       if (updateError) throw updateError;
 
       // Get display name for dropped team
@@ -356,27 +345,17 @@ function FreeAgents() {
       );
       const droppedTeamName = droppedTeamData?.school || selectedDropTeam;
 
-      const actualCurrentWeek = seasonConfig?.currentWeek || 1;
-
-      // Fetch manager name from users collection
-      let managerName = "Unknown Manager";
-      try {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('first_name')
-          .eq('id', currentUserId)
-          .single();
-        if (userData) {
-          managerName = userData.first_name || "Unknown Manager";
-        }
-      } catch (userError) {
-        console.warn("Could not fetch user name:", userError);
-      }
+      // Fetch team name for move history
+      const { data: memberRow } = await supabase
+        .from('league_members')
+        .select('team_name')
+        .eq('id', currentMemberId)
+        .single();
 
       // Log the move
       await supabase.from('move_history').insert({
         league_id: leagueId,
-        user_id: currentUserId,
+        member_id: currentMemberId,
         team_name: memberRow?.team_name || "",
         picked_up: pendingAddTeam,
         dropped: droppedTeamName,

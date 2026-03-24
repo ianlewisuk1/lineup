@@ -22,7 +22,7 @@ export function LeagueProvider({ children }) {
     const [{ data: league }, { data: memberRows }] = await Promise.all([
       supabase.from("leagues").select("*").eq("id", leagueId).single(),
       supabase.from("league_members")
-        .select("user_id, team_name, points, joined_at, team_avatar, custom_avatar")
+        .select("id, user_id, team_name, points, avatar_url")
         .eq("league_id", leagueId),
     ]);
 
@@ -40,8 +40,7 @@ export function LeagueProvider({ children }) {
           ...m,
           first_name: userMap[m.user_id]?.first_name || "",
           last_name: userMap[m.user_id]?.last_name || "",
-        }))
-        .sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
+        }));
       setMembers(enriched);
     } else {
       setMembers([]);
@@ -76,9 +75,12 @@ export function LeagueProvider({ children }) {
   const isAdmin = !!(currentUser && leagueData && currentUser.id === leagueData.admin_id);
   const isDraftComplete = leagueData?.draft_complete || false;
   const currentUserId = currentUser?.id || null;
+  const currentMemberId = currentUser
+    ? (members.find((m) => m.user_id === currentUser.id)?.id ?? null)
+    : null;
 
   return (
-    <LeagueContext.Provider value={{ leagueData, members, isAdmin, isDraftComplete, currentUserId, currentWeek, loading }}>
+    <LeagueContext.Provider value={{ leagueData, members, isAdmin, isDraftComplete, currentUserId, currentMemberId, currentWeek, loading }}>
       {children}
     </LeagueContext.Provider>
   );

@@ -181,16 +181,9 @@ function AdminLeaguePanel() {
         await supabase.from("league_members").insert({
           league_id: newLeague.id,
           user_id: userId,
-          custom_avatar: Math.random() > 0.7,
-          free_agent_moves: Math.floor(Math.random() * 3),
-          starters: [],
-          bench: [],
           points: 0,
           smack_talk: generateSmackTalk(),
-          team_avatar: "",
           team_name: `${userData.first_name || 'Test'}'s ${['Warriors', 'Dragons', 'Eagles', 'Lions', 'Tigers', 'Sharks', 'Thunder', 'Lightning', 'Storm', 'Blaze'][Math.floor(Math.random() * 10)]}`,
-          weekly_points: 0,
-          weekly_points_history: []
         });
       }
     }

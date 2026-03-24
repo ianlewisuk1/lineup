@@ -410,8 +410,8 @@ export default function DraftRoom() {
                           : 'bg-white/5 border-white/5 cursor-default opacity-70'
                       }`}
                     >
-                      {team.logos?.[0] && (
-                        <img src={team.logos[0]} alt={team.school} className="w-8 h-8 object-contain flex-shrink-0" />
+                      {team.logo_filename && (
+                        <img src={`/logos/${team.logo_filename}`} alt={team.school} className="w-8 h-8 object-contain flex-shrink-0" />
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-sm truncate">{team.school}</div>
@@ -456,7 +456,7 @@ export default function DraftRoom() {
                         {flash && <Check size={12} className="text-green-400 flex-shrink-0" />}
                         <span className="text-white/50 text-xs w-5 flex-shrink-0">#{pick.pick_number}</span>
                         {team?.logos?.[0] && (
-                          <img src={team.logos[0]} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
+                          <img src={team.logo_filename ? `/logos/${team.logo_filename}` : ''} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
                         )}
                         <div className="flex-1 min-w-0">
                           <div className="truncate font-medium">{team?.school ?? pick.team_id}</div>
@@ -486,7 +486,7 @@ export default function DraftRoom() {
                       return (
                         <div key={teamId} className="flex items-center gap-2 text-sm">
                           {team?.logos?.[0] && (
-                            <img src={team.logos[0]} alt="" className="w-5 h-5 object-contain" />
+                            <img src={team.logo_filename ? `/logos/${team.logo_filename}` : ''} alt="" className="w-5 h-5 object-contain" />
                           )}
                           <span>{team?.school ?? teamId}</span>
                         </div>
@@ -546,7 +546,7 @@ export default function DraftRoom() {
                     return (
                       <div key={teamId} className="flex items-center gap-2 text-sm bg-white/5 rounded-lg p-2">
                         {team?.logos?.[0] && (
-                          <img src={team.logos[0]} alt="" className="w-5 h-5 object-contain" />
+                          <img src={team.logo_filename ? `/logos/${team.logo_filename}` : ''} alt="" className="w-5 h-5 object-contain" />
                         )}
                         <span className="truncate">{team?.school ?? teamId}</span>
                       </div>

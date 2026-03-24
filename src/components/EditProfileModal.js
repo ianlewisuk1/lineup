@@ -59,7 +59,7 @@ const EditProfileModal = ({ onClose }) => {
   const [email, setEmail]         = useState(userData?.email || currentUser?.email || '');
 
   // League-specific state — loaded once on mount
-  const [leagueData, setLeagueData]       = useState([]); // [{ leagueId, leagueName, teamName, teamAvatar }]
+  const [leagueData, setLeagueData]       = useState([]); // [{ leagueId, leagueName, teamName, avatarUrl }]
   const [selectedLeagueIdx, setSelectedLeagueIdx] = useState(0);
   const [teamName, setTeamName]           = useState('');
   const [teamAvatar, setTeamAvatar]       = useState('');
@@ -94,7 +94,7 @@ const EditProfileModal = ({ onClose }) => {
       try {
         const { data: rows, error: err } = await supabase
           .from('league_members')
-          .select('league_id, team_name, team_avatar, leagues(id, name)')
+          .select('league_id, team_name, avatar_url, leagues(id, name)')
           .eq('user_id', currentUser.id);
         if (err) throw err;
 
@@ -102,16 +102,16 @@ const EditProfileModal = ({ onClose }) => {
           .map(r => r.leagues ? {
             leagueId:   r.leagues.id,
             leagueName: r.leagues.name || 'Unnamed League',
-            teamName:   r.team_name   || '',
-            teamAvatar: r.team_avatar || '',
+            teamName:   r.team_name  || '',
+            avatarUrl:  r.avatar_url || '',
           } : null)
           .filter(Boolean);
 
         setLeagueData(leagues);
         if (leagues.length > 0) {
           setTeamName(leagues[0].teamName);
-          setTeamAvatar(leagues[0].teamAvatar);
-          origLeague.current = { teamName: leagues[0].teamName, teamAvatar: leagues[0].teamAvatar };
+          setTeamAvatar(leagues[0].avatarUrl);
+          origLeague.current = { teamName: leagues[0].teamName, teamAvatar: leagues[0].avatarUrl };
         }
       } catch (err) {
         setError('Failed to load profile data.');
@@ -129,8 +129,8 @@ const EditProfileModal = ({ onClose }) => {
     const league = leagueData[idx];
     if (league) {
       setTeamName(league.teamName);
-      setTeamAvatar(league.teamAvatar);
-      origLeague.current = { teamName: league.teamName, teamAvatar: league.teamAvatar };
+      setTeamAvatar(league.avatarUrl);
+      origLeague.current = { teamName: league.teamName, teamAvatar: league.avatarUrl };
     }
   };
 
@@ -184,7 +184,7 @@ const EditProfileModal = ({ onClose }) => {
         if (leagueChanged) {
           const { error: memberErr } = await supabase
             .from('league_members')
-            .update({ team_name: teamName.trim(), team_avatar: teamAvatar, custom_avatar: teamAvatar.startsWith('http') })
+            .update({ team_name: teamName.trim(), avatar_url: teamAvatar || null })
             .eq('league_id', selectedLeague.leagueId)
             .eq('user_id', currentUser.id);
           if (memberErr) throw memberErr;

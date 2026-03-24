@@ -1,68 +1,19 @@
 // weeklyLineupUtils.js - Utility functions for weekly lineup management
 import { supabase } from '../supabase/supabase';
-import { useState, useEffect } from 'react';
 
 /*
 Database Structure for Weekly Lineups (Supabase):
 
-weekly_lineups table: id, league_id, user_id, week, starters (text[]), bench (text[]), captain, trip_play_team
-league_members table: id, league_id, user_id, team_name, starters (text[]), bench (text[]), captain, trip_play_team, ...
-teams table: id (text slug), school, mascot, logos, color, record, game_points, ...
+weekly_lineups table: id, league_id, member_id, week, starters (text[]), bench (text[]),
+  captain, trip_play_team, frozen_teams, team_points, points
+league_members table: id, league_id, user_id, team_name, avatar_url, points,
+  has_trip_play, trip_play_used_week, freezes_remaining
+teams table: id (text slug), school, mascot, logo_filename, color, classification, conference, ...
+team_season_stats table: team_id (FK→teams.id), season_year, record, conf_record, ats_record,
+  ats_wins, ats_losses, game_points, weekly_points (jsonb), game_status, game_complete,
+  is_on_bye, next_opponent, next_game_is_home, next_opponent_spread, next_opponent_spread_display,
+  total_points_for, total_points_against, sos_rank, prev_year_points
 */
-
-// Migration script to move existing lineups to weekly system
-export const migrateToWeeklyLineups = async (leagueId) => {
-  try {
-    // Get all members for this league
-    const { data: members, error: membersError } = await supabase
-      .from('league_members')
-      .select('*')
-      .eq('league_id', leagueId);
-
-    if (membersError) throw membersError;
-
-    for (const member of members || []) {
-      const userId = member.user_id;
-
-      // Check if they already have weekly lineups
-      const { data: existing } = await supabase
-        .from('weekly_lineups')
-        .select('id')
-        .eq('league_id', leagueId)
-        .eq('user_id', userId)
-        .limit(1);
-
-      if (existing && existing.length > 0) {
-        continue;
-      }
-
-      // Build rows for weeks 1-14
-      const rows = [];
-      for (let week = 1; week <= 14; week++) {
-        rows.push({
-          league_id: leagueId,
-          user_id: userId,
-          week,
-          starters: Array(5).fill(null),
-          bench: Array(2).fill(null),
-          captain: null,
-          trip_play_team: null
-        });
-      }
-
-      const { error: insertError } = await supabase
-        .from('weekly_lineups')
-        .insert(rows);
-
-      if (insertError) throw insertError;
-    }
-
-
-  } catch (error) {
-    console.error("❌ Migration failed:", error);
-    throw error;
-  }
-};
 
 // Utility functions for managing weekly lineups
 export const weeklyLineupUtils = {
@@ -110,13 +61,14 @@ export const weeklyLineupUtils = {
   },
 
   // Calculate points for a specific week's lineup
-  calculateWeeklyPoints: async (leagueId, userId, weekNum) => {
+  // Uses member_id and joins teams with team_season_stats for game_points
+  calculateWeeklyPoints: async (leagueId, memberId, weekNum) => {
     try {
       const { data: weekRow, error: weekError } = await supabase
         .from('weekly_lineups')
         .select('starters, bench')
         .eq('league_id', leagueId)
-        .eq('user_id', userId)
+        .eq('member_id', memberId)
         .eq('week', weekNum)
         .single();
 
@@ -124,7 +76,7 @@ export const weeklyLineupUtils = {
 
       const { data: teamsData, error: teamsError } = await supabase
         .from('teams')
-        .select('id, school, game_points');
+        .select('id, school, team_season_stats(game_points)');
 
       if (teamsError) throw teamsError;
 
@@ -132,7 +84,10 @@ export const weeklyLineupUtils = {
       (teamsData || []).forEach(team => {
         if (team.school) {
           const normalized = weeklyLineupUtils.normalizeTeamName(team);
-          teamsMap[normalized] = team;
+          teamsMap[normalized] = {
+            ...team,
+            game_points: team.team_season_stats?.[0]?.game_points || 0,
+          };
         }
       });
 
@@ -156,170 +111,4 @@ export const weeklyLineupUtils = {
       return 0;
     }
   }
-};
-
-// Admin utility to manually trigger migration and testing
-export const adminUtils = {
-  // Migrate a specific league
-  migrateLeague: async (leagueId) => {
-    try {
-      await migrateToWeeklyLineups(leagueId);
-    } catch (error) {
-      console.error(`❌ Failed to migrate league ${leagueId}:`, error);
-      throw error;
-    }
-  },
-
-  // Migrate all leagues
-  migrateAllLeagues: async () => {
-    try {
-      const { data: leagues, error } = await supabase.from('leagues').select('id');
-      if (error) throw error;
-
-      for (const league of leagues || []) {
-        await migrateToWeeklyLineups(league.id);
-      }
-    } catch (error) {
-      console.error("❌ Failed to migrate all leagues:", error);
-      throw error;
-    }
-  },
-
-  // Reset a user's weekly lineups (useful for testing)
-  resetUserWeeklyLineups: async (leagueId, userId) => {
-    try {
-      // Delete existing rows then re-insert empty ones
-      await supabase
-        .from('weekly_lineups')
-        .delete()
-        .eq('league_id', leagueId)
-        .eq('user_id', userId);
-
-      const rows = [];
-      for (let week = 1; week <= 14; week++) {
-        rows.push({
-          league_id: leagueId,
-          user_id: userId,
-          week,
-          starters: Array(5).fill(null),
-          bench: Array(2).fill(null),
-          captain: null,
-          trip_play_team: null
-        });
-      }
-
-      const { error } = await supabase.from('weekly_lineups').insert(rows);
-      if (error) throw error;
-    } catch (error) {
-      console.error(`❌ Failed to reset user ${userId}:`, error);
-      throw error;
-    }
-  },
-
-  // Force lock a specific week for all users (no-op: no lockedAt in schema)
-  forceLockWeek: async (leagueId, weekNum) => {
-    try {
-    } catch (error) {
-      console.error(`❌ Failed to force lock week ${weekNum}:`, error);
-      throw error;
-    }
-  }
-};
-
-// Hook for using weekly lineup functionality in components
-export const useWeeklyLineups = (leagueId, userId) => {
-  const [weeklyLineups, setWeeklyLineups] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (!leagueId || !userId) return;
-
-    const loadWeeklyLineups = async () => {
-      try {
-        setLoading(true);
-
-        const { data, error: fetchError } = await supabase
-          .from('weekly_lineups')
-          .select('*')
-          .eq('league_id', leagueId)
-          .eq('user_id', userId);
-
-        if (fetchError) throw fetchError;
-
-        if (data && data.length > 0) {
-          const lineupMap = {};
-          data.forEach(row => {
-            lineupMap[`week${row.week}`] = row;
-          });
-          setWeeklyLineups(lineupMap);
-        } else {
-          // Initialize if doesn't exist
-          await migrateToWeeklyLineups(leagueId);
-          const { data: newData } = await supabase
-            .from('weekly_lineups')
-            .select('*')
-            .eq('league_id', leagueId)
-            .eq('user_id', userId);
-
-          const lineupMap = {};
-          (newData || []).forEach(row => {
-            lineupMap[`week${row.week}`] = row;
-          });
-          setWeeklyLineups(lineupMap);
-        }
-
-        setError(null);
-      } catch (err) {
-        console.error("Error loading weekly lineups:", err);
-        setError(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadWeeklyLineups();
-  }, [leagueId, userId]);
-
-  const updateWeeklyLineup = async (weekNum, starters, bench) => {
-    try {
-      const normalizedStarters = starters.map(team => weeklyLineupUtils.normalizeTeamName(team));
-      const normalizedBench = bench.map(team => weeklyLineupUtils.normalizeTeamName(team));
-
-      const { error: upsertError } = await supabase
-        .from('weekly_lineups')
-        .upsert({
-          league_id: leagueId,
-          user_id: userId,
-          week: weekNum,
-          starters: normalizedStarters,
-          bench: normalizedBench
-        }, { onConflict: 'league_id,user_id,week' });
-
-      if (upsertError) throw upsertError;
-
-      const weekKey = `week${weekNum}`;
-      setWeeklyLineups(prev => ({
-        ...prev,
-        [weekKey]: {
-          ...(prev[weekKey] || {}),
-          starters: normalizedStarters,
-          bench: normalizedBench
-        }
-      }));
-
-      return true;
-    } catch (err) {
-      console.error("Error updating weekly lineup:", err);
-      setError(err);
-      return false;
-    }
-  };
-
-  return {
-    weeklyLineups,
-    loading,
-    error,
-    updateWeeklyLineup
-  };
 };

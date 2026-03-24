@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase/supabase';
 import { weeklyLineupUtils } from '../utils/weeklyLineupUtils';
 
-export const useWeeklyLineup = ({ leagueId, userId, currentWeek }) => {
+export const useWeeklyLineup = ({ leagueId, memberId, currentWeek }) => {
   const [selectedWeek, setSelectedWeek] = useState(currentWeek);
   const [weeklyLineups, setWeeklyLineups] = useState({});
   const [weekStatuses, setWeekStatuses] = useState({});
@@ -10,34 +10,40 @@ export const useWeeklyLineup = ({ leagueId, userId, currentWeek }) => {
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [hasTripPlay, setHasTripPlay] = useState(false);
   const [tripPlayUsedWeek, setTripPlayUsedWeek] = useState(null);
+  const [freezesRemaining, setFreezesRemaining] = useState(0);
 
   useEffect(() => {
     initializeWeeklyLineups();
-  }, [leagueId, userId, currentWeek]); // Fix: currentWeek was missing, causing stale lineups on week change
+  }, [leagueId, memberId, currentWeek]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initializeWeeklyLineups = async () => {
+    if (!leagueId || !memberId) {
+      setLoading(false);
+      return;
+    }
     try {
       const weeks = Array.from({ length: 14 }, (_, i) => i + 1);
       setAvailableWeeks(weeks);
 
-      // Single query for current lineup + trip play status (was two separate queries)
-      const { data: memberData } = await supabase
-        .from('league_members')
-        .select('starters, bench, captain, trip_play_team, has_trip_play, trip_play_used_week')
-        .eq('league_id', leagueId)
-        .eq('user_id', userId)
-        .single();
+      // Fetch member status fields + all weekly lineup rows in parallel
+      const [{ data: memberData }, { data: weeklyRows }] = await Promise.all([
+        supabase
+          .from('league_members')
+          .select('has_trip_play, trip_play_used_week, freezes_remaining')
+          .eq('id', memberId)
+          .single(),
+        supabase
+          .from('weekly_lineups')
+          .select('*')
+          .eq('league_id', leagueId)
+          .eq('member_id', memberId),
+      ]);
 
       if (memberData) {
         setHasTripPlay(memberData.has_trip_play || false);
         setTripPlayUsedWeek(memberData.trip_play_used_week || null);
+        setFreezesRemaining(memberData.freezes_remaining ?? 0);
       }
-
-      const { data: weeklyRows } = await supabase
-        .from('weekly_lineups')
-        .select('*')
-        .eq('league_id', leagueId)
-        .eq('user_id', userId);
 
       const historicalData = {};
       (weeklyRows || []).forEach(row => {
@@ -49,23 +55,13 @@ export const useWeeklyLineup = ({ leagueId, userId, currentWeek }) => {
         const weekKey = `week${week}`;
         const histRow = historicalData[weekKey];
 
-        if (week === currentWeek && memberData) {
-          lineupData[weekKey] = {
-            starters: memberData.starters || Array(5).fill(null),
-            bench: memberData.bench || Array(2).fill(null),
-            captain: memberData.captain || null,
-            tripPlayTeam: memberData.trip_play_team || null,
-            lockedTeams: [],
-            teamLockTimes: {},
-            lockedAt: null,
-            isEditable: true
-          };
-        } else if (histRow) {
+        if (histRow) {
           lineupData[weekKey] = {
             starters: histRow.starters || Array(5).fill(null),
             bench: histRow.bench || Array(2).fill(null),
             captain: histRow.captain || null,
             tripPlayTeam: histRow.trip_play_team || null,
+            frozenTeams: histRow.frozen_teams || [],
             lockedTeams: [],
             teamLockTimes: {},
             lockedAt: null,
@@ -77,6 +73,7 @@ export const useWeeklyLineup = ({ leagueId, userId, currentWeek }) => {
             bench: Array(2).fill(null),
             captain: null,
             tripPlayTeam: null,
+            frozenTeams: [],
             lockedTeams: [],
             teamLockTimes: {},
             lockedAt: null,
@@ -86,7 +83,7 @@ export const useWeeklyLineup = ({ leagueId, userId, currentWeek }) => {
       });
 
       setWeeklyLineups(lineupData);
-      calculateWeekStatuses(weeks); // no longer async
+      calculateWeekStatuses(weeks);
       setLoading(false);
     } catch (error) {
       console.error("Error initializing weekly lineups:", error);
@@ -94,7 +91,6 @@ export const useWeeklyLineup = ({ leagueId, userId, currentWeek }) => {
     }
   };
 
-  // Fix: was unnecessarily async — doesn't await anything
   const calculateWeekStatuses = (weeks) => {
     const statuses = {};
     for (const week of weeks) {
@@ -124,38 +120,45 @@ export const useWeeklyLineup = ({ leagueId, userId, currentWeek }) => {
       const normalizedStarters = starters.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null);
       const normalizedBench = bench.map(team => team ? weeklyLineupUtils.normalizeTeamName(team) : null);
 
-      // Fix: use existing state instead of re-fetching from DB
       const weekKey = `week${week}`;
       const currentTripPlayTeam = weeklyLineups[weekKey]?.tripPlayTeam || null;
 
-      const memberUpdate = {
-        starters: normalizedStarters,
-        bench: normalizedBench,
-        captain,
-        trip_play_team: tripPlayTeam
-      };
+      // Upsert lineup row in weekly_lineups
+      const { error: upsertError } = await supabase
+        .from('weekly_lineups')
+        .upsert({
+          league_id: leagueId,
+          member_id: memberId,
+          week,
+          starters: normalizedStarters,
+          bench: normalizedBench,
+          captain,
+          trip_play_team: tripPlayTeam,
+        }, { onConflict: 'league_id,member_id,week' });
 
+      if (upsertError) throw upsertError;
+
+      // Handle trip play state changes on league_members
+      let memberPatch = null;
       if (tripPlayTeam && hasTripPlay) {
-        memberUpdate.has_trip_play = false;
-        memberUpdate.trip_play_used_week = week;
+        memberPatch = { has_trip_play: false, trip_play_used_week: week };
         setHasTripPlay(false);
         setTripPlayUsedWeek(week);
       } else if (!tripPlayTeam && currentTripPlayTeam && tripPlayUsedWeek === week) {
-        memberUpdate.has_trip_play = true;
-        memberUpdate.trip_play_used_week = null;
+        memberPatch = { has_trip_play: true, trip_play_used_week: null };
         setHasTripPlay(true);
         setTripPlayUsedWeek(null);
       } else if (!tripPlayTeam && currentTripPlayTeam && tripPlayUsedWeek !== week) {
         console.warn("Cannot remove trip play - it was used in a different week");
       }
 
-      const { error: memberSaveError } = await supabase
-        .from('league_members')
-        .update(memberUpdate)
-        .eq('league_id', leagueId)
-        .eq('user_id', userId);
-
-      if (memberSaveError) throw memberSaveError;
+      if (memberPatch) {
+        const { error: memberErr } = await supabase
+          .from('league_members')
+          .update(memberPatch)
+          .eq('id', memberId);
+        if (memberErr) throw memberErr;
+      }
 
       setWeeklyLineups(prev => ({
         ...prev,
@@ -164,7 +167,7 @@ export const useWeeklyLineup = ({ leagueId, userId, currentWeek }) => {
           starters: normalizedStarters,
           bench: normalizedBench,
           captain,
-          tripPlayTeam: tripPlayTeam,
+          tripPlayTeam,
         }
       }));
     } catch (error) {
@@ -179,7 +182,6 @@ export const useWeeklyLineup = ({ leagueId, userId, currentWeek }) => {
     return "x3 USED";
   };
 
-  // Fix: was returning JSX from a hook (anti-pattern) — moved to WeeklyLineupManager component
   const getWeekStatus = (week) => weekStatuses[week]?.status;
 
   const getStatusMessage = (week) => {
@@ -211,6 +213,7 @@ export const useWeeklyLineup = ({ leagueId, userId, currentWeek }) => {
     availableWeeks,
     hasTripPlay,
     tripPlayUsedWeek,
+    freezesRemaining,
     saveLineup,
     getTripPlayStatusMessage,
     getWeekStatus,

@@ -58,11 +58,6 @@ function JoinLeague() {
         user_id: currentUser.id,
         team_name: teamName.trim(),
         points: 0,
-        weekly_points: 0,
-        weekly_points_history: {},
-        free_agent_moves: 0,
-        starters: [],
-        bench: []
       });
 
       navigate(`/${leagueId}/scouting`);

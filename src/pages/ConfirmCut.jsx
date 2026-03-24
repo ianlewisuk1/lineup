@@ -26,23 +26,39 @@ function ConfirmCut() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: member } = await supabase
+    const { data: memberRow } = await supabase
       .from("league_members")
-      .select("starters, bench")
+      .select("id")
       .eq("league_id", leagueId)
       .eq("user_id", user.id)
       .single();
 
-    if (!member) return;
+    if (!memberRow) return;
+
+    // Get current week
+    const { data: configRow } = await supabase
+      .from("config").select("value").eq("key", "season").single();
+    const currentWeek = configRow?.value?.currentWeek || 1;
+
+    const { data: lineupRow } = await supabase
+      .from("weekly_lineups")
+      .select("starters, bench")
+      .eq("league_id", leagueId)
+      .eq("member_id", memberRow.id)
+      .eq("week", currentWeek)
+      .single();
+
+    if (!lineupRow) return;
 
     await supabase
-      .from("league_members")
+      .from("weekly_lineups")
       .update({
-        starters: (member.starters || []).filter(t => t !== teamName),
-        bench: (member.bench || []).filter(t => t !== teamName),
+        starters: (lineupRow.starters || []).map(t => t === teamName ? null : t),
+        bench: (lineupRow.bench || []).map(t => t === teamName ? null : t),
       })
       .eq("league_id", leagueId)
-      .eq("user_id", user.id);
+      .eq("member_id", memberRow.id)
+      .eq("week", currentWeek);
 
     navigate(`/${leagueId}/my-lineup`);
   };

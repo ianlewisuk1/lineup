@@ -12,10 +12,30 @@ function ConfirmSwapTeam() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: memberData } = await supabase.from("league_members").select("*").eq("league_id", leagueId).eq("user_id", user.id).single();
-    const starters = memberData.starters || [];
-    const bench = memberData.bench || [];
-    const currentRoster = [...starters, ...bench];
+    const { data: memberData } = await supabase
+      .from("league_members")
+      .select("id")
+      .eq("league_id", leagueId)
+      .eq("user_id", user.id)
+      .single();
+    if (!memberData) return;
+
+    // Get current week from config
+    const { data: configRow } = await supabase
+      .from("config").select("value").eq("key", "season").single();
+    const currentWeek = configRow?.value?.currentWeek || 1;
+
+    const { data: lineupRow } = await supabase
+      .from("weekly_lineups")
+      .select("starters, bench")
+      .eq("league_id", leagueId)
+      .eq("member_id", memberData.id)
+      .eq("week", currentWeek)
+      .single();
+
+    const starters = [...(lineupRow?.starters || Array(5).fill(null))];
+    const bench = [...(lineupRow?.bench || Array(2).fill(null))];
+    const currentRoster = [...starters, ...bench].filter(Boolean);
 
     if (!currentRoster.includes(dropTeam)) return;
 
@@ -27,15 +47,16 @@ function ConfirmSwapTeam() {
     } else if (bench.includes(dropTeam)) {
       newBench = bench.map(t => (t === dropTeam ? addTeam : t));
     } else {
-      // Defensive fallback: dropTeam is somehow not in either group
       return;
     }
 
-    await supabase.from("league_members").update({
+    await supabase.from("weekly_lineups").upsert({
+      league_id: leagueId,
+      member_id: memberData.id,
+      week: currentWeek,
       starters: newStarters,
       bench: newBench,
-      free_agent_moves: (memberData.free_agent_moves || 0) + 1
-    }).eq("league_id", leagueId).eq("user_id", user.id);
+    }, { onConflict: 'league_id,member_id,week' });
 
     navigate(`/${leagueId}/my-lineup`);
   };
