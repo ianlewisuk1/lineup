@@ -1,28 +1,25 @@
 import React, { useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
-import { Users, UserPlus, Trophy, AlertCircle } from "lucide-react";
-import ProfileDropdown from "../components/ProfileDropdown";
+import { useAuth } from "../context/AuthContext";
+import PageShell from "../components/PageShell";
 
 function JoinLeague() {
   const navigate = useNavigate();
-
+  const { currentUser } = useAuth();
   const { code } = useParams();
+
   const [inviteCode, setInviteCode] = useState(code || "");
   const [teamName, setTeamName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   const handleJoinLeague = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError("");
-    setSuccess("");
+    setLoading(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
       if (!teamName.trim()) {
         setError("Please enter a team name.");
         setLoading(false);
@@ -35,7 +32,10 @@ function JoinLeague() {
         return;
       }
 
-      const { data: leagueData } = await supabase.from('leagues').select('id').eq('invite_code', inviteCode.trim().toUpperCase()).single();
+      // Find league by invite code
+      const { data: leagueData } = await supabase
+        .from('leagues').select('id').eq('invite_code', inviteCode.trim().toUpperCase()).single();
+
       if (!leagueData) {
         setError("League not found. Please check your invite code.");
         setLoading(false);
@@ -44,17 +44,18 @@ function JoinLeague() {
 
       const leagueId = leagueData.id;
 
-      // Guard against joining the same league twice — redirect them in instead
-      const { data: existingMember } = await supabase.from('league_members').select('id').eq('league_id', leagueId).eq('user_id', user.id).single();
+      // Already a member — go straight to scouting
+      const { data: existingMember } = await supabase
+        .from('league_members').select('id').eq('league_id', leagueId).eq('user_id', currentUser.id).single();
+
       if (existingMember) {
-        navigate(`/${leagueId}/draft-room`);
+        navigate(`/${leagueId}/scouting`);
         return;
       }
 
-      // Create member record in league_members table
       await supabase.from('league_members').insert({
         league_id: leagueId,
-        user_id: user.id,
+        user_id: currentUser.id,
         team_name: teamName.trim(),
         points: 0,
         weekly_points: 0,
@@ -64,168 +65,95 @@ function JoinLeague() {
         bench: []
       });
 
-      setSuccess("Successfully joined the league!");
-      setTimeout(() => {
-        navigate(`/${leagueId}/draft-room`);
-      }, 1500);
+      navigate(`/${leagueId}/scouting`);
+
     } catch (err) {
-      setError("Error: " + err.message);
+      setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
+  const inputStyle = {
+    width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 14,
+    border: '1.5px solid #E5E7EB', backgroundColor: '#fff', color: '#111827',
+    outline: 'none', boxSizing: 'border-box',
+  };
+
+  const labelStyle = { fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
+    <PageShell>
+      {/* Page header */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 900, color: '#111827', margin: 0 }}>Join a League</h1>
+        <p style={{ fontSize: 14, color: '#6B7280', marginTop: 4 }}>Enter your invite code to get started</p>
       </div>
 
-      {/* Navigation */}
-      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
-        <Link to="/home" className="flex items-center space-x-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
-            L
-          </div>
-          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-            Lineup
-          </span>
-        </Link>
-        <ProfileDropdown />
-      </nav>
-
-      {/* Main Content */}
-      <div className="relative z-10 max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
-        {/* Header */}
-        <div className="text-center mb-8 sm:mb-12">
-          <div className="mb-4 sm:mb-6">
-            <span className="inline-block text-4xl sm:text-5xl mb-2 sm:mb-4">🤝</span>
-          </div>
-          <h1 className="text-3xl sm:text-5xl font-black mb-4 sm:mb-6 leading-tight">
-            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              Join a League
-            </span>
-          </h1>
-          <p className="text-lg sm:text-xl text-white/80 max-w-md mx-auto">
-            Enter your league details to join the competition
-          </p>
+      {/* Error banner */}
+      {error && (
+        <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+          <p style={{ fontSize: 14, color: '#DC2626', margin: 0 }}>{error}</p>
         </div>
+      )}
 
-        {/* Success Message */}
-        {success && (
-          <div className="mb-8 p-4 bg-green-500/20 border border-green-400/30 rounded-xl">
-            <div className="flex items-center space-x-3">
-              <Trophy size={20} className="text-green-400" />
-              <p className="text-green-200 font-medium">{success}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Error Message */}
-        {error && (
-          <div className="mb-8 p-4 bg-red-500/20 border border-red-400/30 rounded-xl">
-            <div className="flex items-center space-x-3">
-              <AlertCircle size={20} className="text-red-400" />
-              <p className="text-red-200 font-medium">{error}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Join Form */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20 mb-8">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <UserPlus size={32} className="text-white" />
-            </div>
-            
-            <h2 className="text-2xl font-bold text-white mb-2">
-              Ready to Join?
-            </h2>
-            <p className="text-white/80">
-              Fill out the form below to join your fantasy league
-            </p>
+      {/* Form */}
+      <div style={{ backgroundColor: '#ffffff', border: '1.5px solid #F3F4F6', borderRadius: 16, padding: '20px', marginBottom: 16 }}>
+        <form onSubmit={handleJoinLeague}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Invite Code</label>
+            <input
+              style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}
+              type="text"
+              placeholder="e.g. WOLF24"
+              maxLength={6}
+              value={inviteCode}
+              onChange={e => setInviteCode(e.target.value)}
+              required
+            />
+            <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>Ask your commissioner for the 6-character code</p>
           </div>
 
-          <form onSubmit={handleJoinLeague} className="space-y-6">
-            {/* League ID Input */}
-            <div>
-              <label className="block text-sm font-medium text-white/80 mb-2">
-                Invite Code *
-              </label>
-              <input
-                type="text"
-                placeholder="Enter your 6-character invite code (e.g. WOLF24)"
-                maxLength={6}
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
-                required
-                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-              />
-              <p className="mt-1 text-xs text-white/60">
-                Ask your commissioner for the invite code
-              </p>
-            </div>
+          <div style={{ marginBottom: 20 }}>
+            <label style={labelStyle}>Team Name</label>
+            <input
+              style={inputStyle}
+              type="text"
+              placeholder="Name your fantasy team"
+              value={teamName}
+              maxLength={20}
+              onChange={e => setTeamName(e.target.value)}
+              required
+            />
+            <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>{teamName.length}/20 characters</p>
+          </div>
 
-            {/* Team Name Input */}
-            <div>
-              <label className="block text-sm font-medium text-white/80 mb-2">
-                Team Name *
-              </label>
-              <input
-                type="text"
-                placeholder="Name your fantasy team"
-                value={teamName}
-                maxLength={20}
-                onChange={(e) => setTeamName(e.target.value)}
-                required
-                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-              />
-              <p className="mt-1 text-xs text-white/60">
-                {teamName.length}/20 characters
-              </p>
-            </div>
-
-            {/* Submit Button */}
-            <button 
-              type="submit" 
-              disabled={loading || !inviteCode.trim() || !teamName.trim()}
-              className={`w-full py-4 px-8 rounded-xl text-lg font-bold transition-all duration-300 transform flex items-center justify-center space-x-3 ${
-                loading || !inviteCode.trim() || !teamName.trim()
-                  ? 'bg-white/20 text-white/50 cursor-not-allowed' 
-                  : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white hover:scale-105 shadow-2xl hover:shadow-green-500/40'
-              }`}
-            >
-              {loading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span>Joining League...</span>
-                </>
-              ) : (
-                <>
-                  <UserPlus size={20} />
-                  <span>Join League</span>
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-
-        {/* Help Info Card */}
-        <div className="bg-blue-500/20 border border-blue-400/30 rounded-2xl p-6">
-          <h3 className="text-lg font-semibold text-blue-200 mb-4 flex items-center space-x-2">
-            <AlertCircle size={18} />
-            <span>Need Help?</span>
-          </h3>
-          <ul className="text-blue-200 text-sm space-y-2 leading-relaxed">
-            <li>• Ask your league commissioner for the League ID</li>
-            <li>• Pick a creative team name - you can change it later</li>
-            <li>• Team name is limited to 20 characters</li>
-          </ul>
-        </div>
+          <button
+            type="submit"
+            disabled={loading || !inviteCode.trim() || !teamName.trim()}
+            style={{
+              width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+              backgroundColor: (loading || !inviteCode.trim() || !teamName.trim()) ? '#E5E7EB' : '#0072BC',
+              color: (loading || !inviteCode.trim() || !teamName.trim()) ? '#9CA3AF' : '#fff',
+              fontSize: 15, fontWeight: 700,
+              cursor: (loading || !inviteCode.trim() || !teamName.trim()) ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {loading ? "Joining…" : "Join League"}
+          </button>
+        </form>
       </div>
-    </div>
+
+      {/* Help */}
+      <div style={{ backgroundColor: '#EFF8FF', border: '1px solid #BFDBFE', borderRadius: 16, padding: '16px 20px' }}>
+        <p style={{ fontSize: 14, fontWeight: 600, color: '#1D4ED8', margin: '0 0 8px' }}>Need help?</p>
+        <ul style={{ fontSize: 13, color: '#1E40AF', margin: 0, paddingLeft: 16, lineHeight: 1.7 }}>
+          <li>Ask your league commissioner for the invite code</li>
+          <li>Pick a creative team name — you can change it later</li>
+          <li>Team name is limited to 20 characters</li>
+        </ul>
+      </div>
+    </PageShell>
   );
 }
 

@@ -1,11 +1,15 @@
 import React, { useState } from "react";
 import { supabase } from "../supabase/supabase";
-import { useNavigate, Link } from "react-router-dom";
-import ProfileDropdown from "../components/ProfileDropdown";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import { useSeasonConfig } from "../hooks/useSeasonConfig";
+import PageShell from "../components/PageShell";
 
 function CreateLeague() {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const { config: seasonConfig } = useSeasonConfig();
+  const currentWeek = seasonConfig?.currentWeek || "Preseason";
 
   const [leagueName, setLeagueName] = useState("");
   const [teamName, setTeamName] = useState("");
@@ -14,48 +18,41 @@ function CreateLeague() {
   const [draftOrderType, setDraftOrderType] = useState("random");
   const [draftDate, setDraftDate] = useState("");
   const [draftTime, setDraftTime] = useState("");
-  const [timePerPick, setTimePerPick] = useState("120"); // seconds
+  const [timePerPick, setTimePerPick] = useState("120");
   const [overlapWarning, setOverlapWarning] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { config: seasonConfig } = useSeasonConfig();
-  const currentWeek = seasonConfig?.currentWeek || "Preseason";
 
   const getMinDraftDate = () => {
     const now = new Date();
     const localOffset = now.getTimezoneOffset() * 60000;
-    const localDate = new Date(now.getTime() - localOffset);
-    return localDate.toISOString().split("T")[0];
-  };
-
-  const getMaxDraftDate = () => {
-    return "2026-09-01";
+    return new Date(now.getTime() - localOffset).toISOString().split("T")[0];
   };
 
   const handleCreateLeague = async (e) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("User not logged in");
 
+    try {
       if (!teamName.trim()) {
-        alert("Please enter a team name.");
+        setError("Please enter a team name.");
         setLoading(false);
         return;
       }
 
       if (draftType === "live" && (!draftDate || !draftTime || !timePerPick)) {
-        alert("Please select a draft date, time, and pick duration.");
+        setError("Please select a draft date, time, and pick duration.");
         setLoading(false);
         return;
       }
 
+      // Build league payload — add live draft fields if applicable
       const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-
       const leagueData = {
         name: leagueName,
-        created_by: user.id,
-        admin_id: user.id,
+        created_by: currentUser.id,
+        admin_id: currentUser.id,
         max_managers: maxManagers,
         draft_complete: false,
         draft_type: draftType,
@@ -68,330 +65,215 @@ function CreateLeague() {
       if (draftType === "live") {
         const [year, month, day] = draftDate.split('-').map(Number);
         const [hours, minutes] = draftTime.split(':').map(Number);
-
         const draftDateTime = new Date(year, month - 1, day, hours, minutes, 0);
 
-        const now = new Date();
-        const minTime = new Date(now.getTime() + 15 * 60 * 1000);
-
-        if (draftDateTime < minTime) {
-          alert("Draft must be scheduled at least 15 minutes in the future.");
+        if (draftDateTime < new Date(Date.now() + 15 * 60 * 1000)) {
+          setError("Draft must be scheduled at least 15 minutes in the future.");
           setLoading(false);
           return;
         }
 
-        // Overlap check
         const { data: overlapCount } = await supabase.rpc('count_overlapping_drafts', {
           p_draft_time: draftDateTime.toISOString(),
         });
+
         if (overlapCount >= 5) {
           setOverlapWarning(`${overlapCount} other leagues are drafting within an hour of this time. Please choose a different slot.`);
           setLoading(false);
           return;
-        } else if (overlapCount > 0) {
-          setOverlapWarning(`Note: ${overlapCount} other league${overlapCount > 1 ? 's are' : ' is'} drafting around this time.`);
-        } else {
-          setOverlapWarning("");
         }
+        setOverlapWarning(overlapCount > 0
+          ? `Note: ${overlapCount} other league${overlapCount > 1 ? 's are' : ' is'} drafting around this time.`
+          : ""
+        );
 
-        leagueData.draft_date    = draftDateTime;
-        leagueData.time_per_pick = Number(timePerPick); // already in seconds
+        leagueData.draft_date = draftDateTime;
+        leagueData.time_per_pick = Number(timePerPick);
       }
 
-      const { data: newLeague, error: leagueError } = await supabase.from('leagues').insert(leagueData).select('id, invite_code').single();
+      // Insert league, then fire drafts + league_members inserts in parallel
+      const { data: newLeague, error: leagueError } = await supabase
+        .from('leagues').insert(leagueData).select('id, invite_code').single();
       if (leagueError) throw leagueError;
 
-      // Create draft row so the draft room is ready immediately
-      await supabase.from('drafts').insert({ league_id: newLeague.id });
+      await Promise.all([
+        supabase.from('drafts').insert({ league_id: newLeague.id }),
+        supabase.from('league_members').insert({
+          league_id: newLeague.id, user_id: currentUser.id, team_name: teamName.trim(),
+          points: 0, weekly_points: 0, weekly_points_history: {}, free_agent_moves: 0, starters: [], bench: []
+        }),
+      ]);
 
-      // Note: displayName removed, using user's first name from auth/user profile instead
-      await supabase.from('league_members').insert({
-        league_id: newLeague.id,
-        user_id: user.id,
-        team_name: teamName.trim(),
-        points: 0,
-        weekly_points: 0,
-        weekly_points_history: {},
-        free_agent_moves: 0,
-        starters: [],
-        bench: []
-      });
+      navigate("/home", { state: { message: `League created! Your invite code is: ${newLeague.invite_code}` } });
 
-      navigate("/home", {
-        state: { message: `✅ League created! Your invite code is: ${newLeague.invite_code}`, leagueId: newLeague.id }
-      });
     } catch (err) {
-      alert("Error: " + err.message);
+      setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
+  const inputStyle = {
+    width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 14,
+    border: '1.5px solid #E5E7EB', backgroundColor: '#fff', color: '#111827',
+    outline: 'none', boxSizing: 'border-box',
+  };
+
+  const labelStyle = { fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 };
+  const cardStyle = { backgroundColor: '#ffffff', border: '1.5px solid #F3F4F6', borderRadius: 16, padding: '20px', marginBottom: 16 };
+  const sectionTitle = { fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 16, marginTop: 0 };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
+    <PageShell>
+      {/* Page header */}
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 900, color: '#111827', margin: 0 }}>Create a League</h1>
+        <p style={{ fontSize: 14, color: '#6B7280', marginTop: 4 }}>Season week: {currentWeek}</p>
       </div>
 
-      {/* Navigation */}
-      <nav className="relative z-10 flex justify-between items-center p-4 sm:p-6 lg:p-8">
-        <Link to="/home" className="flex items-center space-x-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center font-bold text-lg sm:text-xl">
-            L
-          </div>
-          <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-            Lineup
-          </span>
-        </Link>
-        <ProfileDropdown />
-      </nav>
+      {/* Error banner */}
+      {error && (
+        <div style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+          <p style={{ fontSize: 14, color: '#DC2626', margin: 0 }}>{error}</p>
+        </div>
+      )}
 
-      {/* Main Content */}
-      <div className="relative z-10 max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
-        {/* Header */}
-        <div className="text-center mb-8 sm:mb-12">
-          <div className="mb-4 sm:mb-6">
-            <span className="inline-block text-4xl sm:text-5xl mb-2 sm:mb-4">🏆</span>
+      <form onSubmit={handleCreateLeague}>
+        {/* League settings */}
+        <div style={cardStyle}>
+          <p style={sectionTitle}>League Settings</p>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>League Name</label>
+            <input style={inputStyle} type="text" placeholder="Enter league name" value={leagueName}
+              onChange={e => setLeagueName(e.target.value)} maxLength={25} required />
+            <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>{leagueName.length}/25 characters</p>
           </div>
-          <h1 className="text-3xl sm:text-5xl font-black mb-4 sm:mb-6 leading-tight">
-            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              Create a League
-            </span>
-          </h1>
-          <div className="inline-flex items-center px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full border border-white/20">
-            <span className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>
-            <span className="text-sm font-medium">Current Week: {currentWeek}</span>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Number of Managers</label>
+            <select style={inputStyle} value={maxManagers} onChange={e => setMaxManagers(Number(e.target.value))} required>
+              <option value={8}>8 Managers</option>
+              <option value={10}>10 Managers</option>
+              <option value={12}>12 Managers</option>
+            </select>
           </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Draft Type</label>
+            <select style={inputStyle} value={draftType} onChange={e => setDraftType(e.target.value)}>
+              <option value="manual">Manual Draft</option>
+              <option value="live">Live Draft</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: draftOrderType !== "manual" ? 12 : 0 }}>
+            <label style={labelStyle}>Draft Order</label>
+            <select style={inputStyle} value={draftOrderType} onChange={e => setDraftOrderType(e.target.value)}>
+              <option value="random">Random Order</option>
+              <option value="admin">Commissioner Sets Order</option>
+            </select>
+          </div>
+
+          {draftOrderType === "random" && (
+            <div style={{ backgroundColor: '#EFF8FF', border: '1px solid #BFDBFE', borderRadius: 10, padding: '10px 14px', marginTop: 12 }}>
+              <p style={{ fontSize: 13, color: '#1D4ED8', margin: 0 }}>Draft order will be randomly shuffled when the draft begins.</p>
+            </div>
+          )}
+          {draftOrderType === "admin" && (
+            <div style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px', marginTop: 12 }}>
+              <p style={{ fontSize: 13, color: '#92400E', margin: 0 }}>You'll be able to arrange the draft order before starting the draft.</p>
+            </div>
+          )}
         </div>
 
-        <form onSubmit={handleCreateLeague} className="space-y-6 sm:space-y-8">
-          {/* League Settings Card */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20">
-            <h3 className="text-xl sm:text-2xl font-bold mb-6 text-white">
-              League Settings
-            </h3>
+        {/* Live draft settings */}
+        {draftType === "live" && (
+          <div style={cardStyle}>
+            <p style={sectionTitle}>Live Draft Settings</p>
 
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  League Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="Enter league name"
-                  value={leagueName}
-                  onChange={(e) => setLeagueName(e.target.value)}
-                  maxLength={25}
-                  required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                />
-                <p className="mt-1 text-xs text-white/60">
-                  {leagueName.length}/25 characters
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Number of Managers
-                </label>
-                <select
-                  value={maxManagers}
-                  onChange={(e) => setMaxManagers(Number(e.target.value))}
-                  required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                >
-                  <option value={8} className="text-black">8 Managers</option>
-                  <option value={10} className="text-black">10 Managers</option>
-                  <option value={12} className="text-black">12 Managers</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Draft Type
-                </label>
-                <select
-                  value={draftType}
-                  onChange={(e) => setDraftType(e.target.value)}
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300 appearance-none cursor-pointer"
-                >
-                  <option value="manual" className="text-black">Manual Draft</option>
-                  <option value="live" className="text-black">Live Draft</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Draft Order
-                </label>
-                <select
-                  value={draftOrderType}
-                  onChange={(e) => setDraftOrderType(e.target.value)}
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                >
-                  <option value="random" className="text-black">Random Order</option>
-                  <option value="admin" className="text-black">Commissioner Sets Order</option>
-                </select>
-              </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Draft Date</label>
+              <input style={inputStyle} type="date" value={draftDate}
+                onChange={e => setDraftDate(e.target.value)}
+                min={getMinDraftDate()} max="2026-09-01" required />
             </div>
 
-            {/* Info Cards */}
-            {draftOrderType === "random" && (
-              <div className="mt-6 p-4 bg-blue-500/20 border border-blue-400/30 rounded-xl">
-                <p className="text-sm text-blue-200">
-                  <strong>Random Order:</strong> Draft order will be randomly shuffled when the draft begins.
-                </p>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>Draft Time</label>
+              <select style={inputStyle} value={draftTime}
+                onChange={e => { setDraftTime(e.target.value); setOverlapWarning(""); }} required>
+                <option value="">Select a time…</option>
+                {Array.from({ length: 96 }, (_, i) => {
+                  const h = Math.floor(i / 4);
+                  const m = (i % 4) * 15;
+                  const hh = String(h).padStart(2, '0');
+                  const mm = String(m).padStart(2, '0');
+                  const ampm = h < 12 ? 'AM' : 'PM';
+                  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+                  return <option key={i} value={`${hh}:${mm}`}>{h12}:{mm} {ampm}</option>;
+                })}
+              </select>
+            </div>
+
+            {overlapWarning && (
+              <div style={{
+                backgroundColor: overlapWarning.startsWith('Note') ? '#FFFBEB' : '#FEF2F2',
+                border: `1px solid ${overlapWarning.startsWith('Note') ? '#FDE68A' : '#FECACA'}`,
+                borderRadius: 10, padding: '10px 14px', marginBottom: 16,
+              }}>
+                <p style={{ fontSize: 13, color: overlapWarning.startsWith('Note') ? '#92400E' : '#DC2626', margin: 0 }}>{overlapWarning}</p>
               </div>
             )}
 
-            {draftOrderType === "admin" && (
-              <div className="mt-6 p-4 bg-amber-500/20 border border-amber-400/30 rounded-xl">
-                <p className="text-sm text-amber-200">
-                  <strong>Commissioner Sets Order:</strong> You'll be able to arrange the draft order before starting the draft.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Live Draft Settings */}
-          {draftType === "live" && (
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20">
-              <h3 className="text-xl sm:text-2xl font-bold mb-6 text-white">
-                Live Draft Settings
-              </h3>
-
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-white/80 mb-2">
-                    Draft Date
-                  </label>
-                  <input
-                    type="date"
-                    value={draftDate}
-                    onChange={(e) => setDraftDate(e.target.value)}
-                    min={getMinDraftDate()}
-                    max={getMaxDraftDate()}
-                    required
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-white/80 mb-2">
-                    Draft Time
-                  </label>
-                  <select
-                    value={draftTime}
-                    onChange={(e) => { setDraftTime(e.target.value); setOverlapWarning(""); }}
-                    required
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                  >
-                    <option value="" className="text-black">Select a time…</option>
-                    {Array.from({ length: 96 }, (_, i) => {
-                      const h = Math.floor(i / 4);
-                      const m = (i % 4) * 15;
-                      const hh = String(h).padStart(2, '0');
-                      const mm = String(m).padStart(2, '0');
-                      const ampm = h < 12 ? 'AM' : 'PM';
-                      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-                      return (
-                        <option key={i} value={`${hh}:${mm}`} className="text-black">
-                          {h12}:{mm} {ampm}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-
-                {overlapWarning && (
-                  <div className={`p-4 rounded-xl text-sm ${
-                    overlapWarning.startsWith('Note')
-                      ? 'bg-amber-500/20 border border-amber-400/30 text-amber-200'
-                      : 'bg-red-500/20 border border-red-400/30 text-red-200'
-                  }`}>
-                    {overlapWarning}
-                  </div>
-                )}
-
-                <div className="p-4 bg-amber-500/20 border border-amber-400/30 rounded-xl">
-                  <p className="text-sm text-amber-200">
-                    Draft must be scheduled at least 15 minutes from now.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-white/80 mb-2">
-                    Time on Clock
-                  </label>
-                  <select
-                    value={timePerPick}
-                    onChange={(e) => setTimePerPick(e.target.value)}
-                    required
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                  >
-                    <option value="60" className="text-black">1 minute</option>
-                    <option value="120" className="text-black">2 minutes</option>
-                    <option value="300" className="text-black">5 minutes</option>
-                    <option value="600" className="text-black">10 minutes</option>
-                  </select>
-                </div>
-              </div>
+            <div style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+              <p style={{ fontSize: 13, color: '#92400E', margin: 0 }}>Draft must be scheduled at least 15 minutes from now.</p>
             </div>
-          )}
 
-          {/* Manual Draft Info */}
-          {draftType === "manual" && (
-            <div className="bg-blue-500/20 border border-blue-400/30 rounded-2xl p-6">
-              <h4 className="text-lg font-semibold text-blue-200 mb-2">
-                Manual Draft
-              </h4>
-              <p className="text-sm text-blue-200">
-                You can enter team lineups after league creation. The commissioner will manually input all drafted teams for each manager.
-              </p>
-            </div>
-          )}
-
-          {/* Your Team Info Card */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 border border-white/20">
-            <h3 className="text-xl sm:text-2xl font-bold mb-6 text-white">
-              Your Team Information
-            </h3>
-
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Your Team Name (max 20 characters)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Enter your team name"
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  maxLength={20}
-                  required
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
-                />
-              </div>
+            <div>
+              <label style={labelStyle}>Time on Clock</label>
+              <select style={inputStyle} value={timePerPick} onChange={e => setTimePerPick(e.target.value)} required>
+                <option value="60">1 minute</option>
+                <option value="120">2 minutes</option>
+                <option value="300">5 minutes</option>
+                <option value="600">10 minutes</option>
+              </select>
             </div>
           </div>
+        )}
 
-          {/* Submit Button */}
-          <button 
-            type="submit" 
-            disabled={loading}
-            className={`w-full py-4 px-8 rounded-xl text-lg font-bold transition-all duration-300 transform ${
-              loading 
-                ? 'bg-white/20 text-white/50 cursor-not-allowed' 
-                : 'bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white hover:scale-105 shadow-2xl hover:shadow-purple-500/40'
-            }`}
-          >
-            {loading ? "Creating League..." : "Create League"}
-          </button>
-        </form>
-      </div>
-    </div>
+        {/* Manual draft info */}
+        {draftType === "manual" && (
+          <div style={{ backgroundColor: '#EFF8FF', border: '1px solid #BFDBFE', borderRadius: 16, padding: '16px 20px', marginBottom: 16 }}>
+            <p style={{ fontSize: 14, fontWeight: 600, color: '#1D4ED8', margin: '0 0 4px' }}>Manual Draft</p>
+            <p style={{ fontSize: 13, color: '#1E40AF', margin: 0 }}>The commissioner will manually input all drafted teams for each manager after league creation.</p>
+          </div>
+        )}
+
+        {/* Team info */}
+        <div style={cardStyle}>
+          <p style={sectionTitle}>Your Team</p>
+          <label style={labelStyle}>Team Name</label>
+          <input style={inputStyle} type="text" placeholder="Enter your team name" value={teamName}
+            onChange={e => setTeamName(e.target.value)} maxLength={20} required />
+          <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>{teamName.length}/20 characters</p>
+        </div>
+
+        {/* Submit */}
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+            backgroundColor: loading ? '#E5E7EB' : '#0072BC',
+            color: loading ? '#9CA3AF' : '#fff',
+            fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {loading ? "Creating League…" : "Create League"}
+        </button>
+      </form>
+    </PageShell>
   );
 }
 

@@ -102,7 +102,7 @@ function Home() {
             Welcome back, {userName}
           </h1>
           <p style={{ fontSize: 14, color: '#6B7280', marginTop: 4 }}>
-            {leagueList.length === 0 ? "Get started by creating or joining a league." : `${SEASON_YEAR} season`}
+            {leagueList.length === 0 ? "Get started by creating or joining a league." : "Your active leagues"}
           </p>
         </div>
 
