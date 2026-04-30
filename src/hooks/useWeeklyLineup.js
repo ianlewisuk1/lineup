@@ -176,6 +176,56 @@ export const useWeeklyLineup = ({ leagueId, memberId, currentWeek }) => {
     }
   };
 
+  const saveFreezePlay = async (week, normalizedTeamName, frozenPoints) => {
+    if (week !== currentWeek) return;
+
+    const weekKey = `week${week}`;
+    const existing = weeklyLineups[weekKey] || {};
+    if ((existing.frozenTeams || []).includes(normalizedTeamName)) return;
+
+    try {
+      const { data: row } = await supabase
+        .from('weekly_lineups')
+        .select('team_points, frozen_teams')
+        .eq('league_id', leagueId)
+        .eq('member_id', memberId)
+        .eq('week', week)
+        .maybeSingle();
+
+      const newFrozen     = [...(row?.frozen_teams || []), normalizedTeamName];
+      const newTeamPoints = { ...(row?.team_points || {}), [normalizedTeamName]: frozenPoints };
+
+      const { error: lineupErr } = await supabase
+        .from('weekly_lineups')
+        .upsert({
+          league_id:   leagueId,
+          member_id:   memberId,
+          week,
+          frozen_teams: newFrozen,
+          team_points:  newTeamPoints,
+        }, { onConflict: 'league_id,member_id,week' });
+
+      if (lineupErr) throw lineupErr;
+
+      const newRemaining = Math.max(0, freezesRemaining - 1);
+      const { error: memberErr } = await supabase
+        .from('league_members')
+        .update({ freezes_remaining: newRemaining })
+        .eq('id', memberId);
+
+      if (memberErr) throw memberErr;
+
+      setFreezesRemaining(newRemaining);
+      setWeeklyLineups(prev => ({
+        ...prev,
+        [weekKey]: { ...prev[weekKey], frozenTeams: newFrozen },
+      }));
+    } catch (error) {
+      console.error('Error saving freeze play:', error);
+      throw error;
+    }
+  };
+
   const getTripPlayStatusMessage = () => {
     if (hasTripPlay) return "x3 PLAY AVAILABLE";
     if (tripPlayUsedWeek) return `x3 PLAY USED (Week ${tripPlayUsedWeek})`;
@@ -215,6 +265,7 @@ export const useWeeklyLineup = ({ leagueId, memberId, currentWeek }) => {
     tripPlayUsedWeek,
     freezesRemaining,
     saveLineup,
+    saveFreezePlay,
     getTripPlayStatusMessage,
     getWeekStatus,
     getStatusMessage,

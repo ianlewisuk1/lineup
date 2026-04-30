@@ -52,7 +52,9 @@ const WeeklyLineupManager = ({
     availableWeeks,
     hasTripPlay,
     tripPlayUsedWeek,
+    freezesRemaining,
     saveLineup,
+    saveFreezePlay,
     getTripPlayStatusMessage,
     getWeekStatus,
     getStatusMessage,
@@ -160,6 +162,7 @@ const WeeklyLineupManager = ({
           allTeams={allTeams}
           isEditable={selectedWeek === currentWeek}
           onSave={(starters, bench, captain, tripPlayTeam) => saveLineup(selectedWeek, starters, bench, captain, tripPlayTeam)}
+          onFreezePlay={(normalizedTeamName, frozenPoints) => saveFreezePlay(selectedWeek, normalizedTeamName, frozenPoints)}
           onTeamClick={onTeamClick}
           TeamLogo={TeamLogo}
           leagueId={leagueId}
@@ -168,6 +171,7 @@ const WeeklyLineupManager = ({
           currentWeek={currentWeek}
           hasTripPlay={hasTripPlay}
           tripPlayUsedWeek={tripPlayUsedWeek}
+          freezesRemaining={freezesRemaining}
         />
       </div>
     </div>
@@ -180,6 +184,7 @@ const WeeklyLineupContent = ({
   allTeams,
   isEditable,
   onSave,
+  onFreezePlay,
   onTeamClick,
   TeamLogo,
   leagueId,
@@ -187,7 +192,8 @@ const WeeklyLineupContent = ({
   userDisplayName,
   currentWeek,
   hasTripPlay,
-  tripPlayUsedWeek
+  tripPlayUsedWeek,
+  freezesRemaining,
 }) => {
   const [starters, setStarters] = useState(Array(5).fill(null));
   const [bench, setBench] = useState(Array(2).fill(null));
@@ -547,11 +553,14 @@ const WeeklyLineupContent = ({
               captain={captain}
               tripPlayTeam={tripPlayTeam}
               hasTripPlay={hasTripPlay}
+              frozenTeams={lineup?.frozenTeams || []}
+              freezesRemaining={freezesRemaining}
               TeamLogo={TeamLogo}
               handleTeamMove={handleTeamMove}
               handleTeamCut={handleTeamCut}
               handleCaptainSelect={handleCaptainSelect}
               handleTripPlaySelect={handleTripPlaySelect}
+              handleFreezePlay={onFreezePlay}
             />
           ))}
         </div>
@@ -576,11 +585,14 @@ const WeeklyLineupContent = ({
               captain={captain}
               tripPlayTeam={tripPlayTeam}
               hasTripPlay={hasTripPlay}
+              frozenTeams={lineup?.frozenTeams || []}
+              freezesRemaining={freezesRemaining}
               TeamLogo={TeamLogo}
               handleTeamMove={handleTeamMove}
               handleTeamCut={handleTeamCut}
               handleCaptainSelect={handleCaptainSelect}
               handleTripPlaySelect={handleTripPlaySelect}
+              handleFreezePlay={onFreezePlay}
             />
           ))}
         </div>

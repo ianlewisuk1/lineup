@@ -1,7 +1,7 @@
 // TeamSlot.js — Team card with captain/trip play actions, extracted from WeeklyLineupManager
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Lock, ChevronDown, ChevronUp, Crown, Zap } from 'lucide-react';
+import { Lock, ChevronDown, ChevronUp, Crown, Zap, Snowflake } from 'lucide-react';
 import { weeklyLineupUtils } from '../../utils/weeklyLineupUtils';
 import {
   isTeamLocked,
@@ -24,11 +24,14 @@ const TeamSlot = ({
   captain,
   tripPlayTeam,
   hasTripPlay,
+  frozenTeams = [],
+  freezesRemaining = 0,
   TeamLogo,
   handleTeamMove,
   handleTeamCut,
   handleCaptainSelect,
   handleTripPlaySelect,
+  handleFreezePlay,
 }) => {
   const [showActions, setShowActions] = useState(false);
   const [lockStatus, setLockStatus] = useState({ locked: false, message: null });
@@ -100,8 +103,9 @@ const TeamSlot = ({
 
   const teamName = team.school || team.name;
   const normalizedTeamName = weeklyLineupUtils.normalizeTeamName(team);
-  const isCaptain = captain && captain === normalizedTeamName;
+  const isCaptain  = captain && captain === normalizedTeamName;
   const isTripPlay = tripPlayTeam && tripPlayTeam === normalizedTeamName;
+  const isFrozen   = frozenTeams.includes(normalizedTeamName);
 
   // Calculate combined points for display
   const pointsInfo = calculateCombinedPoints(baseWeeklyPts, isCaptain, isTripPlay);
@@ -146,7 +150,13 @@ const TeamSlot = ({
                 </div>
               )}
 
-              {lockStatus.locked && (
+              {isFrozen && (
+                <div className="absolute -bottom-1 -left-1 bg-blue-500 rounded-full p-1">
+                  <Snowflake size={12} className="text-white" />
+                </div>
+              )}
+
+              {lockStatus.locked && !isFrozen && (
                 <div className="absolute -top-1 -left-1 bg-red-500 rounded-full p-1">
                   <Lock size={12} className="text-white" />
                 </div>
@@ -214,18 +224,23 @@ const TeamSlot = ({
               Season Points
             </div>
             <div className={`font-bold text-sm mt-1 ${
-              isCaptain && isTripPlay
-                ? 'text-purple-400'
-                : isCaptain
-                  ? 'text-yellow-400'
-                  : isTripPlay
-                    ? 'text-cyan-400'
-                    : 'text-orange-400'
+              isFrozen
+                ? 'text-blue-400'
+                : isCaptain && isTripPlay
+                  ? 'text-purple-400'
+                  : isCaptain
+                    ? 'text-yellow-400'
+                    : isTripPlay
+                      ? 'text-cyan-400'
+                      : 'text-orange-400'
             }`}>
               {pointsInfo.finalPoints}
             </div>
-            <div className="text-[11px] text-orange-300/80 -mt-0.5">
-              Weekly ({pointsInfo.multiplier})
+            <div className="text-[11px] -mt-0.5">
+              {isFrozen
+                ? <span className="text-blue-300/80 flex items-center justify-end gap-0.5"><Snowflake size={9} />Frozen</span>
+                : <span className="text-orange-300/80">Weekly ({pointsInfo.multiplier})</span>
+              }
             </div>
           </div>
         </div>
@@ -254,6 +269,36 @@ const TeamSlot = ({
                 🗑️ Cut
               </button>
             </div>
+
+            {/* Freeze Play button — only shown during live games */}
+            {gameDisplayInfo?.isLive && (
+              <button
+                onClick={() => {
+                  if (isFrozen) return;
+                  if (freezesRemaining <= 0) { alert('No freezes remaining this season.'); return; }
+                  if (window.confirm(`Freeze ${teamName} at ${pointsInfo.finalPoints} pts? This cannot be undone. (${freezesRemaining} freeze${freezesRemaining === 1 ? '' : 's'} remaining)`)) {
+                    handleFreezePlay(normalizedTeamName, pointsInfo.finalPoints);
+                    setShowActions(false);
+                  }
+                }}
+                disabled={isSaving || isFrozen || freezesRemaining <= 0}
+                className={`w-full px-3 py-2 text-white text-xs rounded-lg transition-colors font-medium flex items-center justify-center gap-1.5 ${
+                  isFrozen
+                    ? 'bg-blue-700 cursor-default'
+                    : freezesRemaining <= 0
+                      ? 'bg-gray-500 cursor-not-allowed'
+                      : 'bg-blue-500 hover:bg-blue-600'
+                } disabled:opacity-70`}
+              >
+                <Snowflake size={12} />
+                {isFrozen
+                  ? `❄️ Score Frozen (${pointsInfo.finalPoints} pts)`
+                  : freezesRemaining <= 0
+                    ? '❄️ No Freezes Left'
+                    : `❄️ Freeze at ${pointsInfo.finalPoints} pts (${freezesRemaining} left)`
+                }
+              </button>
+            )}
 
             {/* Captain and Trip Play buttons - split the row */}
             <div className="flex gap-2">
