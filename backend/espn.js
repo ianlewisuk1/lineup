@@ -131,14 +131,19 @@ async function ingestESPNScores() {
     }
 
     const gameStatus = completed ? 'final' : inProgress ? 'in_progress' : 'scheduled';
+    const period = competition.status?.period || null;
+    const clock  = competition.status?.clock  || null;
 
     const { error: updateErr } = await supabase
       .from('games')
       .update({
-        home_score:    homeScore,
-        away_score:    awayScore,
-        game_status:   gameStatus,
-        game_complete: completed,
+        home_score:         homeScore,
+        away_score:         awayScore,
+        game_status:        gameStatus,
+        game_complete:      completed,
+        period:             inProgress ? period : (completed ? period : null),
+        clock:              inProgress ? clock  : null,
+        last_score_update:  new Date().toISOString(),
       })
       .eq('id', game.id);
 
@@ -148,6 +153,16 @@ async function ingestESPNScores() {
     }
 
     updatedGames++;
+
+    // Keep team_season_stats.game_status in sync so the frontend can detect live games
+    if (inProgress) {
+      for (const teamId of [game.home_team, game.away_team]) {
+        await supabase.from('team_season_stats')
+          .update({ game_status: 'in_progress', game_complete: false })
+          .eq('team_id', teamId)
+          .eq('season_year', year);
+      }
+    }
 
     if (completed && homeScore !== null && awayScore !== null) {
       const spread = game.home_spread;

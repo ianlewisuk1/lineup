@@ -10,7 +10,6 @@ import { weeklyLineupUtils } from './weeklyLineupUtils';
  */
 export const getTeamGameInfo = async (teamName, week) => {
   try {
-    // Schedule data is not in Supabase; fall back to team_season_stats for basic info
     const { data: teamRow } = await supabase
       .from('teams')
       .select('id, school, team_season_stats(is_on_bye, next_opponent, game_status, game_complete)')
@@ -21,24 +20,47 @@ export const getTeamGameInfo = async (teamName, week) => {
 
     const stats = teamRow.team_season_stats?.[0] || {};
 
-    // Build a lightweight game-info-like object from team_season_stats fields
     if (stats.is_on_bye) return null;
 
     const nextOpponent = stats.next_opponent || null;
     if (!nextOpponent) return null;
 
+    const gameStatus = stats.game_status || 'scheduled';
+
+    // For live games, read actual scores + period/clock from the games table
+    let myScore = 0, oppScore = 0, period = null, clock = null;
+    if (gameStatus === 'in_progress') {
+      const { data: liveGame } = await supabase
+        .from('games')
+        .select('home_team, away_team, home_score, away_score, period, clock')
+        .or(`home_team.eq.${teamRow.id},away_team.eq.${teamRow.id}`)
+        .eq('year', new Date().getFullYear())
+        .eq('game_status', 'in_progress')
+        .maybeSingle();
+
+      if (liveGame) {
+        const isHome = liveGame.home_team === teamRow.id;
+        myScore  = isHome ? (liveGame.home_score || 0) : (liveGame.away_score || 0);
+        oppScore = isHome ? (liveGame.away_score || 0) : (liveGame.home_score || 0);
+        period   = liveGame.period;
+        clock    = liveGame.clock;
+      }
+    }
+
     return {
       id: null,
       date: null,
+      teamId: teamRow.id,
       homeTeam: teamName,
       awayTeam: nextOpponent,
       gameComplete: stats.game_complete || false,
-      gameStatus: stats.game_status || 'scheduled',
-      homeScore: 0,
-      awayScore: 0,
+      gameStatus,
+      // homeScore/awayScore are from the queried team's perspective (my score vs opponent)
+      homeScore: myScore,
+      awayScore: oppScore,
       homeSpread: null,
-      period: null,
-      clock: null
+      period,
+      clock
     };
   } catch (error) {
     console.error(`Error getting game info for ${teamName}, week ${week}:`, error);
