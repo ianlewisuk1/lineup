@@ -312,444 +312,419 @@ function LeagueRules() {
 
   const inputClass = "w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-colors disabled:opacity-50 disabled:bg-gray-50";
   const labelClass = "block text-sm font-medium text-gray-600 mb-2";
-  const cardClass = "bg-white rounded-2xl p-6 sm:p-8 border border-gray-200 shadow-sm w-full";
+  const cardClass = "bg-white rounded-2xl p-6 border border-gray-200 shadow-sm w-full";
+
+  const getWeekPhase = (i) => {
+    const m = formState.maxManagers;
+    const isPlayoff = (m === 8 && i >= 12) || ((m === 10 || m === 12) && i >= 11);
+    if (i < 3) return { label: 'Pre-Season', color: 'bg-orange-100 text-orange-700' };
+    if (isPlayoff) {
+      if ((m === 8 && i === 13) || ((m === 10 || m === 12) && i === 13)) return { label: 'Championship', color: 'bg-blue-100 text-blue-700' };
+      if ((m === 10 || m === 12) && i === 12) return { label: 'Semifinals', color: 'bg-blue-100 text-blue-700' };
+      return { label: 'Playoffs', color: 'bg-blue-100 text-blue-700' };
+    }
+    return { label: 'Regular Season', color: 'bg-green-100 text-green-700' };
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-hidden">
       <LeagueNav />
 
-      <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 pb-40">
+      <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 pb-40">
 
         {/* Header */}
-        <div className="text-center mb-8 sm:mb-12">
-          <span className="inline-block text-4xl sm:text-5xl mb-3">⚙️</span>
-          <h1 className="text-3xl sm:text-4xl font-black text-gray-900 mb-2">League Settings</h1>
-          <p className="text-lg text-gray-500">{leagueData?.name}</p>
+        <div className="mb-8">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">⚙️</span>
+            <div>
+              <h1 className="text-2xl font-black text-gray-900 leading-tight">League Settings</h1>
+              <p className="text-gray-500 text-sm mt-0.5">{leagueData?.name}</p>
+            </div>
+          </div>
         </div>
 
         {/* Draft Status Alert */}
         {draftStarted && (
-          <div className={`mb-8 p-5 rounded-2xl border w-full flex items-center space-x-4 ${
-            leagueData?.draft_complete
-              ? 'bg-green-50 border-green-200'
-              : 'bg-yellow-50 border-yellow-200'
+          <div className={`mb-6 p-4 rounded-2xl border flex items-center gap-3 ${
+            leagueData?.draft_complete ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'
           }`}>
-            {leagueData?.draft_complete ? (
-              <CheckCircle size={28} className="text-green-600 flex-shrink-0" />
-            ) : (
-              <Lock size={28} className="text-yellow-600 flex-shrink-0" />
-            )}
-            <div className="min-w-0 flex-1">
-              <div className={`text-base font-bold mb-1 ${
-                leagueData?.draft_complete ? 'text-green-800' : 'text-yellow-800'
-              }`}>
-                {leagueData?.draft_complete ? "Draft Completed" : "Draft In Progress"}
-              </div>
-              <div className={`text-sm ${
-                leagueData?.draft_complete ? 'text-green-600' : 'text-yellow-600'
-              }`}>
-                League settings are now locked and cannot be changed.
-              </div>
+            {leagueData?.draft_complete
+              ? <CheckCircle size={20} className="text-green-600 flex-shrink-0" />
+              : <Lock size={20} className="text-yellow-600 flex-shrink-0" />
+            }
+            <div>
+              <span className={`font-semibold text-sm ${leagueData?.draft_complete ? 'text-green-800' : 'text-yellow-800'}`}>
+                {leagueData?.draft_complete ? "Draft Completed — " : "Draft In Progress — "}
+              </span>
+              <span className={`text-sm ${leagueData?.draft_complete ? 'text-green-600' : 'text-yellow-600'}`}>
+                League settings are locked and cannot be changed.
+              </span>
             </div>
           </div>
         )}
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-8 p-5 rounded-2xl border bg-red-50 border-red-200 w-full flex items-center space-x-4">
-            <AlertTriangle size={28} className="text-red-500 flex-shrink-0" />
-            <div className="text-red-700 break-words min-w-0 flex-1 text-sm">{error}</div>
+          <div className="mb-6 p-4 rounded-2xl border bg-red-50 border-red-200 flex items-center gap-3">
+            <AlertTriangle size={20} className="text-red-500 flex-shrink-0" />
+            <div className="text-red-700 text-sm">{error}</div>
           </div>
         )}
 
-        <div className="w-full space-y-8 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-8">
-          {isAdmin ? (
-            <>
-              {/* League Settings */}
-              <div className={cardClass}>
-                <div className="flex items-center space-x-3 mb-6">
-                  <Settings size={28} className="text-blue-600 flex-shrink-0" />
-                  <h2 className="text-xl font-bold text-gray-900">League Configuration</h2>
-                </div>
+        {/* ── Two-column desktop layout ── */}
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
 
-                <div className="space-y-5 w-full">
-                  <div className="w-full">
-                    <label className={labelClass}>League Name</label>
-                    <input
-                      value={formState.name || ''}
-                      onChange={(e) => handleInputChange("name", e.target.value)}
-                      disabled={draftStarted}
-                      className={inputClass}
-                    />
-                  </div>
+          {/* ── LEFT: Config / Info ── */}
+          <div className="w-full lg:w-[360px] lg:flex-shrink-0 space-y-5">
 
-                  <div className="w-full">
-                    <label className={labelClass}>Draft Type</label>
-                    <select
-                      value={formState.draftType || ''}
-                      onChange={(e) => handleInputChange("draftType", e.target.value)}
-                      disabled={draftStarted}
-                      className={inputClass}
-                    >
-                      <option value="manual">Manual Draft (Commissioner Enters Teams)</option>
-                      <option value="live">Live Draft</option>
-                    </select>
-                  </div>
-
-                  <div className="w-full">
-                    <label className={labelClass}>Draft Order</label>
-                    <select
-                      value={formState.draftOrderType || ''}
-                      onChange={(e) => handleInputChange("draftOrderType", e.target.value)}
-                      disabled={draftStarted}
-                      className={inputClass}
-                    >
-                      <option value="random">Random Order (Determined at Draft Start)</option>
-                      <option value="admin">Commissioner Sets Order</option>
-                    </select>
-                  </div>
-
-                  {formState.draftType === "live" && (
-                    <>
-                      <div className="w-full">
-                        <label className={labelClass}>Draft Date &amp; Time</label>
-                        <input
-                          type="datetime-local"
-                          value={formState.draftDate || ''}
-                          onChange={(e) => handleInputChange("draftDate", e.target.value)}
-                          min={getMinDateTime()}
-                          max={getMaxDate()}
-                          disabled={draftStarted}
-                          className={inputClass}
-                        />
-                        <p className="text-xs text-gray-400 mt-1.5">
-                          Draft must be scheduled at least 15 minutes from now.
-                        </p>
-                      </div>
-
-                      <div className="w-full">
-                        <label className={labelClass}>Time Per Pick (minutes)</label>
-                        <select
-                          value={formState.timePerPick || ''}
-                          onChange={(e) => handleInputChange("timePerPick", e.target.value)}
-                          disabled={draftStarted}
-                          className={inputClass}
-                        >
-                          <option value={1}>1 minute</option>
-                          <option value={2}>2 minutes</option>
-                          <option value={5}>5 minutes</option>
-                          <option value={10}>10 minutes</option>
-                        </select>
-                      </div>
-                    </>
-                  )}
-
-                  <div className="w-full">
-                    <label className={labelClass}>Max Managers</label>
-                    <select
-                      value={formState.maxManagers || ''}
-                      onChange={(e) => handleInputChange("maxManagers", parseInt(e.target.value))}
-                      disabled={draftStarted}
-                      className={inputClass}
-                    >
-                      {[8, 10, 12].map((num) => (
-                        <option key={num} value={num}>{num}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 mt-8 w-full">
-                  <button
-                    onClick={handleConfirmChanges}
-                    disabled={draftStarted}
-                    className="flex items-center justify-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold rounded-xl transition-colors disabled:cursor-not-allowed"
-                  >
-                    <Save size={16} />
-                    <span>{draftStarted ? "Settings Locked" : "Save Changes"}</span>
-                  </button>
-
-                  <button
-                    onClick={() => setShowDeleteModal(true)}
-                    className="flex items-center justify-center space-x-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors"
-                  >
-                    <Trash2 size={16} />
-                    <span>Delete League</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Draft Order Management */}
-              {formState.draftOrderType === "admin" && !draftStarted && (
+            {isAdmin ? (
+              <>
+                {/* League Configuration */}
                 <div className={cardClass}>
-                  <div className="flex items-center space-x-3 mb-6">
-                    <Trophy size={28} className="text-yellow-500 flex-shrink-0" />
-                    <h2 className="text-xl font-bold text-gray-900">Draft Order Management</h2>
+                  <div className="flex items-center gap-2.5 mb-5">
+                    <Settings size={20} className="text-blue-600 flex-shrink-0" />
+                    <h2 className="text-base font-bold text-gray-900">League Configuration</h2>
                   </div>
 
-                  {!isLeagueFull ? (
-                    <div className="p-5 rounded-2xl border bg-yellow-50 border-yellow-200 mb-6 w-full flex items-center space-x-4">
-                      <AlertTriangle size={24} className="text-yellow-600 flex-shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-base font-bold text-yellow-800 mb-1">
-                          League must be full before setting draft order
-                        </div>
-                        <div className="text-yellow-600 text-sm">
-                          Current: {members.length}/{leagueData.max_managers} managers
-                        </div>
-                      </div>
+                  <div className="space-y-4">
+                    <div>
+                      <label className={labelClass}>League Name</label>
+                      <input
+                        value={formState.name || ''}
+                        onChange={(e) => handleInputChange("name", e.target.value)}
+                        disabled={draftStarted}
+                        className={inputClass}
+                      />
                     </div>
-                  ) : (
-                    <>
-                      <p className="text-gray-500 text-sm mb-5">
-                        Drag and drop to reorder managers. Position 1 gets the first pick.
-                      </p>
 
-                      <div className="flex flex-col sm:flex-row gap-3 mb-5 w-full">
-                        <button
-                          onClick={randomizeDraftOrder}
-                          className="flex items-center justify-center space-x-2 px-4 py-2 bg-white border border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 transition-colors"
-                        >
-                          <Shuffle size={16} />
-                          <span>Randomize Order</span>
-                        </button>
+                    <div>
+                      <label className={labelClass}>Draft Type</label>
+                      <select
+                        value={formState.draftType || ''}
+                        onChange={(e) => handleInputChange("draftType", e.target.value)}
+                        disabled={draftStarted}
+                        className={inputClass}
+                      >
+                        <option value="manual">Manual Draft</option>
+                        <option value="live">Live Draft</option>
+                      </select>
+                    </div>
 
-                        <button
-                          onClick={saveDraftOrder}
-                          className="flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-xl transition-colors"
-                        >
-                          <Save size={16} />
-                          <span>Save Draft Order</span>
-                        </button>
-                      </div>
+                    <div>
+                      <label className={labelClass}>Draft Order</label>
+                      <select
+                        value={formState.draftOrderType || ''}
+                        onChange={(e) => handleInputChange("draftOrderType", e.target.value)}
+                        disabled={draftStarted}
+                        className={inputClass}
+                      >
+                        <option value="random">Random (at draft start)</option>
+                        <option value="admin">Commissioner sets order</option>
+                      </select>
+                    </div>
 
-                      <div className="space-y-3 w-full">
-                        {draftOrder.map((member, index) => (
-                          <div key={member.uid} className="flex items-center p-4 bg-gray-50 border border-gray-200 rounded-xl w-full">
-                            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-base mr-4 flex-shrink-0">
-                              {index + 1}
-                            </div>
+                    {formState.draftType === "live" && (
+                      <>
+                        <div>
+                          <label className={labelClass}>Draft Date &amp; Time</label>
+                          <input
+                            type="datetime-local"
+                            value={formState.draftDate || ''}
+                            onChange={(e) => handleInputChange("draftDate", e.target.value)}
+                            min={getMinDateTime()}
+                            max={getMaxDate()}
+                            disabled={draftStarted}
+                            className={inputClass}
+                          />
+                          <p className="text-xs text-gray-400 mt-1.5">At least 15 minutes from now.</p>
+                        </div>
 
-                            <div className="flex-1 min-w-0">
-                              <div className="text-gray-900 font-semibold truncate">
-                                {member.name || member.username}
-                              </div>
-                              <div className="text-gray-500 text-sm truncate">
-                                {member.teamName}
-                              </div>
-                            </div>
+                        <div>
+                          <label className={labelClass}>Time Per Pick</label>
+                          <select
+                            value={formState.timePerPick || ''}
+                            onChange={(e) => handleInputChange("timePerPick", e.target.value)}
+                            disabled={draftStarted}
+                            className={inputClass}
+                          >
+                            <option value={1}>1 minute</option>
+                            <option value={2}>2 minutes</option>
+                            <option value={5}>5 minutes</option>
+                            <option value={10}>10 minutes</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
 
-                            <div className="flex flex-col space-y-1.5 flex-shrink-0">
-                              <button
-                                onClick={() => handleDraftOrderChange(index, Math.max(0, index - 1))}
-                                disabled={index === 0}
-                                className="p-2 bg-white border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                              >
-                                <ChevronUp size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleDraftOrderChange(index, Math.min(draftOrder.length - 1, index + 1))}
-                                disabled={index === draftOrder.length - 1}
-                                className="p-2 bg-white border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                              >
-                                <ChevronDown size={16} />
-                              </button>
-                            </div>
-                          </div>
+                    <div>
+                      <label className={labelClass}>Max Managers</label>
+                      <select
+                        value={formState.maxManagers || ''}
+                        onChange={(e) => handleInputChange("maxManagers", parseInt(e.target.value))}
+                        disabled={draftStarted}
+                        className={inputClass}
+                      >
+                        {[8, 10, 12].map((num) => (
+                          <option key={num} value={num}>{num} managers</option>
                         ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 mt-6">
+                    <button
+                      onClick={handleConfirmChanges}
+                      disabled={draftStarted}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold rounded-xl transition-colors disabled:cursor-not-allowed text-sm"
+                    >
+                      <Save size={15} />
+                      {draftStarted ? "Locked" : "Save Changes"}
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteModal(true)}
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-semibold rounded-xl transition-colors text-sm"
+                    >
+                      <Trash2 size={15} />
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                {/* Draft Order Management */}
+                {formState.draftOrderType === "admin" && !draftStarted && (
+                  <div className={cardClass}>
+                    <div className="flex items-center gap-2.5 mb-5">
+                      <Trophy size={20} className="text-yellow-500 flex-shrink-0" />
+                      <h2 className="text-base font-bold text-gray-900">Draft Order</h2>
+                    </div>
+
+                    {!isLeagueFull ? (
+                      <div className="p-4 rounded-xl border bg-yellow-50 border-yellow-200 flex items-start gap-3">
+                        <AlertTriangle size={18} className="text-yellow-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <div className="text-sm font-semibold text-yellow-800">League must be full first</div>
+                          <div className="text-yellow-600 text-xs mt-0.5">{members.length}/{leagueData.max_managers} managers joined</div>
+                        </div>
                       </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </>
-          ) : (
-            /* Non-Admin View */
-            <div className={cardClass}>
-              <div className="flex items-center space-x-3 mb-6">
-                <Shield size={28} className="text-blue-600 flex-shrink-0" />
-                <h2 className="text-xl font-bold text-gray-900">League Information</h2>
-              </div>
+                    ) : (
+                      <>
+                        <div className="flex gap-2 mb-4">
+                          <button
+                            onClick={randomizeDraftOrder}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
+                          >
+                            <Shuffle size={14} />
+                            Randomize
+                          </button>
+                          <button
+                            onClick={saveDraftOrder}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+                          >
+                            <Save size={14} />
+                            Save Order
+                          </button>
+                        </div>
 
-              <div className="space-y-1 w-full">
-                <div className="flex justify-between items-center py-3 border-b border-gray-100">
-                  <span className="text-gray-500 font-medium text-sm">League Name</span>
-                  <span className="text-gray-900 break-words text-right text-sm">{leagueData.name}</span>
-                </div>
-
-                <div className="flex justify-between items-center py-3 border-b border-gray-100">
-                  <span className="text-gray-500 font-medium text-sm">Commissioner</span>
-                  <span className="text-gray-900 break-words text-right text-sm">{adminName || "Unknown"}</span>
-                </div>
-
-                <div className="flex justify-between items-center py-3 border-b border-gray-100">
-                  <span className="text-gray-500 font-medium text-sm">Draft Type</span>
-                  <span className="text-gray-900 break-words text-right text-sm">{getDraftDisplayText(leagueData.draft_type)}</span>
-                </div>
-
-                <div className="flex justify-between items-center py-3 border-b border-gray-100">
-                  <span className="text-gray-500 font-medium text-sm">Draft Order</span>
-                  <span className="text-gray-900 break-words text-right text-sm">{getDraftOrderTypeDisplay(leagueData.draft_order_type)}</span>
-                </div>
-
-                {leagueData.draft_type === "live" && leagueData.draft_date && (
-                  <>
-                    <div className="flex justify-between items-center py-3 border-b border-gray-100">
-                      <span className="text-gray-500 font-medium text-sm">Draft Date</span>
-                      <span className="text-gray-900 text-sm break-words text-right">
-                        {new Date(leagueData.draft_date).toLocaleString("en-US", {
-                          timeZone: "America/New_York",
-                          weekday: "long",
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                          timeZoneName: "short"
-                        })}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between items-center py-3">
-                      <span className="text-gray-500 font-medium text-sm">Time Per Pick</span>
-                      <span className="text-gray-900 text-sm">{leagueData.time_per_pick} minutes</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Season Timeline */}
-        <div className="mt-8 bg-white rounded-2xl p-6 sm:p-8 border border-gray-200 shadow-sm w-full">
-          <div className="flex items-center space-x-3 mb-6">
-            <Calendar size={28} className="text-blue-600 flex-shrink-0" />
-            <h2 className="text-xl font-bold text-gray-900">{`${SEASON_YEAR} Season Timeline`}</h2>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 w-full">
-            {weeks.map((date, i) => (
-              <div key={i} className={`p-4 rounded-xl border bg-gradient-to-br ${getWeekColor(i)} text-center`}>
-                <div className="text-gray-900 font-bold text-sm mb-1">
-                  Week {i + 1}
-                </div>
-                <div className="text-gray-500 text-xs mb-1.5">
-                  {date}
-                </div>
-                <div className="text-gray-700 text-xs font-semibold mb-1.5">
-                  {getWeekLabel(i)}
-                </div>
-                {i === 9 && (
-                  <div className="text-gray-500 text-xs italic mb-1.5">
-                    Last week of free agency
+                        <div className="space-y-2">
+                          {draftOrder.map((member, index) => (
+                            <div key={member.uid} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-100 rounded-xl">
+                              <div className="w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                                {index + 1}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-gray-900 font-semibold text-sm truncate">{member.name || member.username}</div>
+                                <div className="text-gray-500 text-xs truncate">{member.teamName}</div>
+                              </div>
+                              <div className="flex flex-col gap-0.5 flex-shrink-0">
+                                <button
+                                  onClick={() => handleDraftOrderChange(index, Math.max(0, index - 1))}
+                                  disabled={index === 0}
+                                  className="p-1 bg-white border border-gray-200 rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  <ChevronUp size={13} />
+                                </button>
+                                <button
+                                  onClick={() => handleDraftOrderChange(index, Math.min(draftOrder.length - 1, index + 1))}
+                                  disabled={index === draftOrder.length - 1}
+                                  className="p-1 bg-white border border-gray-200 rounded text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  <ChevronDown size={13} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-3 text-center">Snake draft — round 2 reverses</p>
+                      </>
+                    )}
                   </div>
                 )}
-                <div className="text-gray-600 text-xs">
-                  Captain Bonus: {i === 0 ? "No" : "Yes"}
+              </>
+            ) : (
+              /* Non-Admin: League Info */
+              <div className={cardClass}>
+                <div className="flex items-center gap-2.5 mb-5">
+                  <Shield size={20} className="text-blue-600 flex-shrink-0" />
+                  <h2 className="text-base font-bold text-gray-900">League Information</h2>
+                </div>
+
+                <div className="space-y-0">
+                  {[
+                    { label: 'League Name', value: leagueData.name },
+                    { label: 'Commissioner', value: adminName || 'Unknown' },
+                    { label: 'Draft Type', value: getDraftDisplayText(leagueData.draft_type) },
+                    { label: 'Draft Order', value: getDraftOrderTypeDisplay(leagueData.draft_order_type) },
+                    ...(leagueData.draft_type === "live" && leagueData.draft_date ? [
+                      { label: 'Draft Date', value: new Date(leagueData.draft_date).toLocaleString("en-US", {
+                        timeZone: "America/New_York", weekday: "short", month: "short",
+                        day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short"
+                      })},
+                      { label: 'Time Per Pick', value: `${leagueData.time_per_pick} min` },
+                    ] : []),
+                  ].map(({ label, value }, i, arr) => (
+                    <div key={label} className={`flex justify-between items-start py-3 gap-4 ${i < arr.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                      <span className="text-gray-500 text-sm flex-shrink-0">{label}</span>
+                      <span className="text-gray-900 text-sm font-medium text-right">{value}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
+            )}
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-4 text-sm text-gray-500">
-            <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 bg-gradient-to-br from-green-100 to-green-50 border border-green-200 rounded"></div>
-              <span>Game bonuses active</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 bg-gradient-to-br from-red-100 to-red-50 border border-red-200 rounded"></div>
-              <span>Game bonuses not active</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 bg-gradient-to-br from-blue-100 to-blue-50 border border-blue-200 rounded"></div>
-              <span>Playoffs/Championship (Free agency closed)</span>
-            </div>
-          </div>
-        </div>
+          {/* ── RIGHT: Timeline + FAQ ── */}
+          <div className="flex-1 min-w-0 space-y-5">
 
-        {/* FAQ Section */}
-        <div className="mt-8 bg-white rounded-2xl p-6 sm:p-8 border border-gray-200 shadow-sm w-full">
-          <div className="flex items-center space-x-3 mb-6">
-            <div className="text-2xl">❓</div>
-            <h2 className="text-xl font-bold text-gray-900">Frequently Asked Questions</h2>
-          </div>
+            {/* Season Timeline */}
+            <div className={cardClass}>
+              <div className="flex items-center gap-2.5 mb-5">
+                <Calendar size={20} className="text-blue-600 flex-shrink-0" />
+                <h2 className="text-base font-bold text-gray-900">{SEASON_YEAR} Season Timeline</h2>
+              </div>
 
-          <div className="space-y-5 w-full">
-            <div className="border-b border-gray-100 pb-5">
-              <h3 className="text-base font-semibold text-gray-900 mb-1.5">Am I required to set a lineup each week?</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                No, setting a lineup is optional. If you don't set a lineup for a particular week, you simply won't score any points for that week.
-              </p>
-            </div>
+              {/* Legend */}
+              <div className="flex flex-wrap gap-3 mb-4">
+                <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <span className="w-2.5 h-2.5 rounded-full bg-orange-400 inline-block" />Pre-Season (no captain bonus)
+                </span>
+                <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Regular Season
+                </span>
+                <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />Playoffs / Championship
+                </span>
+              </div>
 
-            <div className="border-b border-gray-100 pb-5">
-              <h3 className="text-base font-semibold text-gray-900 mb-1.5">How does team scoring work?</h3>
-              <p className="text-gray-600 text-sm leading-relaxed mb-3">
-                Teams in your starting lineup accumulate points based on their real-world performance each week. Points can be positive or negative depending on how the team performs. For detailed scoring information:
-              </p>
-              <button
-                onClick={() => setShowScoringModal(true)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors text-sm"
-              >
-                View Detailed Scoring System
-              </button>
-            </div>
-
-            <div className="border-b border-gray-100 pb-5">
-              <h3 className="text-base font-semibold text-gray-900 mb-1.5">What is the captain system?</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                Starting in Week 2, you can designate one team in your lineup as captain. The captain receives double points (positive or negative) for their performance that week. Captain selection is available from Week 2 through the championship game.
-              </p>
-            </div>
-
-            <div className="border-b border-gray-100 pb-5">
-              <h3 className="text-base font-semibold text-gray-900 mb-1.5">Do I have to select a captain?</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                No, captain selection is optional. However, using the captain feature strategically can significantly boost your weekly score.
-              </p>
-            </div>
-
-            <div className="border-b border-gray-100 pb-5">
-              <h3 className="text-base font-semibold text-gray-900 mb-1.5">What are game bonuses and how do they work?</h3>
-              <p className="text-gray-600 text-sm leading-relaxed mb-3">
-                There are two types of game bonuses available:
-              </p>
-              <div className="ml-4 space-y-3">
-                <div>
-                  <p className="text-gray-800 font-medium text-sm mb-1">3x Play Chip (1 per season)</p>
-                  <p className="text-gray-600 text-xs leading-relaxed">
-                    Can be used from Week 4 until the week before playoffs begin. Multiplies a team's points by 3x. When combined with a captain, creates a 5x multiplier (2x captain + 3x chip).
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-800 font-medium text-sm mb-1">Freeze Play (3 per season)</p>
-                  <p className="text-gray-600 text-xs leading-relaxed">
-                    Locks in a team's current point total during the second half of their game. Once used, the freeze cannot be undone, and the team's score won't change regardless of subsequent performance.
-                  </p>
-                </div>
+              {/* Week rows */}
+              <div className="divide-y divide-gray-100 -mx-6">
+                {weeks.map((date, i) => {
+                  const phase = getWeekPhase(i);
+                  const isFreeAgencyClose = i === 9;
+                  const isNoFreeAgency = getWeekLabel(i).includes('Free Agency Closed');
+                  return (
+                    <div key={i} className="flex items-center gap-4 px-6 py-3 hover:bg-gray-50 transition-colors">
+                      <div className="w-12 flex-shrink-0">
+                        <span className="text-sm font-bold text-gray-900">Wk {i + 1}</span>
+                      </div>
+                      <div className="w-28 flex-shrink-0 hidden sm:block">
+                        <span className="text-xs text-gray-500">{date}</span>
+                      </div>
+                      <div className="flex-1 min-w-0 flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${phase.color}`}>
+                          {phase.label}
+                        </span>
+                        {isFreeAgencyClose && (
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                            Last FA week
+                          </span>
+                        )}
+                        {isNoFreeAgency && (
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                            FA closed
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-shrink-0 text-xs text-gray-400">
+                        {i === 0 ? 'No captain' : 'Captain ✓'}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="border-b border-gray-100 pb-5">
-              <h3 className="text-base font-semibold text-gray-900 mb-1.5">Can I combine different bonuses?</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                Yes! You can combine freeze plays with both captain bonuses and 3x play chips. However, you cannot use multiple bonuses of the same type on one team in a single week.
-              </p>
-            </div>
+            {/* FAQ */}
+            <div className={cardClass}>
+              <div className="flex items-center gap-2.5 mb-5">
+                <span className="text-lg">❓</span>
+                <h2 className="text-base font-bold text-gray-900">Frequently Asked Questions</h2>
+              </div>
 
-            <div className="border-b border-gray-100 pb-5">
-              <h3 className="text-base font-semibold text-gray-900 mb-1.5">How do playoffs work?</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                Unlike the regular season, playoffs are conducted head-to-head. You'll be matched against another manager, and whoever scores more points that week advances. The playoff format depends on your league size.
-              </p>
-            </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
 
-            <div>
-              <h3 className="text-base font-semibold text-gray-900 mb-1.5">When does free agency close?</h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                Free agency closes at the start of playoff weeks. Once playoffs begin, you cannot add or drop teams from your roster. Plan your roster moves accordingly during the regular season.
-              </p>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1.5">Do I have to set a lineup every week?</h3>
+                  <p className="text-gray-500 text-sm leading-relaxed">
+                    No — it's optional. If you skip a week, you simply score zero points for that week.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1.5">How does team scoring work?</h3>
+                  <p className="text-gray-500 text-sm leading-relaxed mb-2">
+                    Teams earn points based on real-world performance — wins, losses, and spread covers. Points can go negative.
+                  </p>
+                  <button
+                    onClick={() => setShowScoringModal(true)}
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                  >
+                    View full scoring breakdown →
+                  </button>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1.5">What is the captain system?</h3>
+                  <p className="text-gray-500 text-sm leading-relaxed">
+                    From Week 2 onwards, you can mark one starter as captain for 2x points (positive or negative). It's optional but high-upside.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1.5">What is the 3x Play Chip?</h3>
+                  <p className="text-gray-500 text-sm leading-relaxed">
+                    One per season. Use it from Week 4 to the week before playoffs to triple a starter's points. Stack with captain for a 5x total.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1.5">What is the Freeze Play?</h3>
+                  <p className="text-gray-500 text-sm leading-relaxed">
+                    You get 3 per season. Lock in a team's live score in the second half — their final fantasy total won't change after that. Cannot be undone.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1.5">Can I combine bonuses?</h3>
+                  <p className="text-gray-500 text-sm leading-relaxed">
+                    Yes. You can freeze a captain or a 3x Play team to lock in the multiplied score. You can't apply the same bonus type twice on one team.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1.5">How do playoffs work?</h3>
+                  <p className="text-gray-500 text-sm leading-relaxed">
+                    Head-to-head matchups replace cumulative scoring. Whoever scores more that week advances. Format depends on league size.
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-1.5">When does free agency close?</h3>
+                  <p className="text-gray-500 text-sm leading-relaxed">
+                    Free agency closes at the start of playoff weeks. Week 10 is the last week you can add or drop teams.
+                  </p>
+                </div>
+
+              </div>
             </div>
           </div>
         </div>
