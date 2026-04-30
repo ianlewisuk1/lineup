@@ -78,11 +78,9 @@ export default function DraftRoom() {
   const [starting, setStarting]       = useState(false);
   const [lastPickId, setLastPickId]   = useState(null);
   const [orderSaving, setOrderSaving] = useState(false);
-  // Local draft order for lobby — initialised from DB or member join order
-  const [lobbyOrder, setLobbyOrder] = useState([]);
+  const [lobbyOrder, setLobbyOrder]   = useState([]);
   const pickBoardRef = useRef(null);
 
-  // Sync lobbyOrder when members/draft loads
   useEffect(() => {
     if (members.length === 0) return;
     const dbOrder = draft?.draft_order ?? [];
@@ -115,11 +113,9 @@ export default function DraftRoom() {
   };
 
   const onlineIds = usePresence(leagueId, currentUserId);
-
   const secondsLeft = useCountdown(pickDeadline);
   const draftStartsAt = leagueData?.draft_date ? new Date(leagueData.draft_date) : null;
   const secondsUntilDraft = useCountdown(draftStartsAt);
-
   const currentPickIndex = draft?.current_pick_index ?? 0;
 
   const filteredTeams = availableTeams.filter((t) =>
@@ -127,7 +123,6 @@ export default function DraftRoom() {
     (t.conference ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
-  // Flash last pick
   useEffect(() => {
     if (picks.length === 0) return;
     setLastPickId(picks[picks.length - 1].id);
@@ -153,19 +148,19 @@ export default function DraftRoom() {
     if (result?.error) setActionError(result.error);
   };
 
-  // ── Loading / error ────────────────────────────────────────────────────────
+  // ── Loading / error ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-        <div className="text-white text-lg">Loading draft…</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-500 text-lg">Loading draft…</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-        <div className="text-red-400 text-lg">{error}</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-red-500 text-lg">{error}</div>
       </div>
     );
   }
@@ -180,20 +175,20 @@ export default function DraftRoom() {
     const waiting   = (leagueData?.max_managers ?? 0) - members.length;
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white pb-24">
+      <div className="min-h-screen bg-gray-50 pb-24">
         <LeagueNav />
 
         <div className="max-w-2xl mx-auto px-4 py-8">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-black mb-2">Draft Room</h1>
-            <p className="text-white/60">
+            <h1 className="text-3xl font-black text-gray-900 mb-2">Draft Room</h1>
+            <p className="text-gray-500">
               {allJoined ? 'All managers are in — ready to start!' : `Waiting for ${waiting} more manager${waiting !== 1 ? 's' : ''} to join`}
             </p>
             {secondsUntilDraft !== null && secondsUntilDraft > 0 && (
-              <div className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-white/10 border border-white/20 rounded-xl">
-                <Clock size={16} className="text-purple-400" />
-                <span className="text-sm text-white/60 mr-1">Draft starts in</span>
-                <span className="font-mono font-bold text-lg">
+              <div className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 rounded-xl shadow-sm">
+                <Clock size={16} className="text-blue-600" />
+                <span className="text-sm text-gray-500 mr-1">Draft starts in</span>
+                <span className="font-mono font-bold text-lg text-gray-900">
                   {secondsUntilDraft >= 3600
                     ? `${Math.floor(secondsUntilDraft / 3600)}h ${Math.floor((secondsUntilDraft % 3600) / 60)}m`
                     : `${String(Math.floor(secondsUntilDraft / 60)).padStart(2, '0')}:${String(secondsUntilDraft % 60).padStart(2, '0')}`
@@ -203,18 +198,17 @@ export default function DraftRoom() {
             )}
           </div>
 
-          {/* Start draft */}
           {isAdmin && allJoined && (
             <div className="mb-6">
               <button
                 onClick={handleStartDraft}
                 disabled={starting}
-                className="w-full py-4 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 rounded-xl font-bold text-lg transition-all duration-300 disabled:opacity-50"
+                className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-xl font-bold text-lg text-white transition-colors"
               >
                 {starting ? 'Starting…' : 'Start Draft'}
               </button>
               {secondsUntilDraft !== null && secondsUntilDraft > 0 && (
-                <p className="text-center text-white/40 text-xs mt-2">
+                <p className="text-center text-gray-400 text-xs mt-2">
                   Draft is scheduled to start in{' '}
                   {secondsUntilDraft >= 3600
                     ? `${Math.floor(secondsUntilDraft / 3600)}h ${Math.floor((secondsUntilDraft % 3600) / 60)}m`
@@ -226,19 +220,19 @@ export default function DraftRoom() {
           )}
 
           {/* Draft order */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-6">
+          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm mb-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Users size={18} className="text-purple-400" />
-                <h2 className="text-lg font-bold">
+                <Users size={18} className="text-blue-600" />
+                <h2 className="text-base font-bold text-gray-900">
                   Draft Order ({members.length}/{leagueData?.max_managers})
                 </h2>
-                {orderSaving && <span className="text-xs text-white/40">Saving…</span>}
+                {orderSaving && <span className="text-xs text-gray-400">Saving…</span>}
               </div>
               {isAdmin && (
                 <button
                   onClick={handleShuffle}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-semibold transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-semibold transition-colors"
                 >
                   <Shuffle size={14} />
                   Shuffle
@@ -251,41 +245,39 @@ export default function DraftRoom() {
                 const info     = memberMap[uid];
                 const isOnline = onlineIds.has(uid);
                 return (
-                  <div key={uid} className="flex items-center gap-3 bg-white/5 rounded-xl p-3 border border-white/10">
-                    {/* Pick position */}
-                    <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">
+                  <div key={uid} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0">
                       {i + 1}
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold flex items-center gap-2">
+                      <div className="font-semibold text-gray-900 flex items-center gap-2">
                         {info?.name ?? '—'}
                         <span
-                          className={`w-2 h-2 rounded-full flex-shrink-0 ${isOnline ? 'bg-green-400' : 'bg-white/20'}`}
+                          className={`w-2 h-2 rounded-full flex-shrink-0 ${isOnline ? 'bg-green-500' : 'bg-gray-200'}`}
                           title={isOnline ? 'In draft room' : 'Not in draft room'}
                         />
                       </div>
-                      <div className="text-sm text-white/60">{info?.teamName}</div>
+                      <div className="text-sm text-gray-500">{info?.teamName}</div>
                     </div>
 
                     {uid === currentUserId && (
-                      <span className="text-xs text-purple-300 font-semibold mr-1">You</span>
+                      <span className="text-xs text-blue-600 font-semibold mr-1">You</span>
                     )}
 
-                    {/* Admin reorder arrows */}
                     {isAdmin && (
                       <div className="flex flex-col gap-0.5">
                         <button
                           onClick={() => handleMove(i, -1)}
                           disabled={i === 0}
-                          className="p-0.5 hover:bg-white/20 rounded disabled:opacity-20 transition-colors"
+                          className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30 transition-colors text-gray-500"
                         >
                           <ChevronUp size={14} />
                         </button>
                         <button
                           onClick={() => handleMove(i, 1)}
                           disabled={i === lobbyOrder.length - 1}
-                          className="p-0.5 hover:bg-white/20 rounded disabled:opacity-20 transition-colors"
+                          className="p-0.5 hover:bg-gray-200 rounded disabled:opacity-30 transition-colors text-gray-500"
                         >
                           <ChevronDown size={14} />
                         </button>
@@ -297,14 +289,14 @@ export default function DraftRoom() {
             </div>
 
             {isAdmin && (
-              <p className="text-xs text-white/40 mt-3 text-center">
+              <p className="text-xs text-gray-400 mt-3 text-center">
                 Round 1 picks in this order · Round 2 reverses (snake draft)
               </p>
             )}
           </div>
 
           {actionError && (
-            <div className="bg-red-500/20 border border-red-400/30 rounded-xl px-4 py-3 text-red-300 text-sm mb-4">
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm mb-4">
               {actionError}
             </div>
           )}
@@ -323,25 +315,26 @@ export default function DraftRoom() {
     const pickInRound   = (currentPickIndex % (nManagers || 1)) + 1;
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white pb-24">
+      <div className="min-h-screen bg-gray-50 pb-24">
         <LeagueNav />
 
         <div className="max-w-4xl mx-auto px-4 py-4">
 
           {/* Status bar */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 mb-4">
+          <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm mb-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-white/60 text-sm">Round {round} · Pick {pickInRound}/{nManagers}</p>
-                <p className="text-white font-bold text-lg">
+                <p className="text-gray-500 text-sm">Round {round} · Pick {pickInRound}/{nManagers}</p>
+                <p className="text-gray-900 font-bold text-lg">
                   {isMyTurn ? '🟢 Your pick!' : `${currentPicker?.name ?? '—'} is picking…`}
                 </p>
               </div>
 
-              {/* Countdown */}
               {secondsLeft !== null && (
                 <div className={`flex items-center gap-2 px-4 py-2 rounded-xl font-mono font-bold text-xl ${
-                  secondsLeft <= 10 ? 'bg-red-500/30 text-red-300 border border-red-400/40' : 'bg-white/10 text-white'
+                  secondsLeft <= 10
+                    ? 'bg-red-50 text-red-600 border border-red-200'
+                    : 'bg-gray-100 text-gray-900'
                 }`}>
                   <Clock size={18} />
                   {String(Math.floor(secondsLeft / 60)).padStart(2, '0')}:{String(secondsLeft % 60).padStart(2, '0')}
@@ -360,13 +353,13 @@ export default function DraftRoom() {
                     key={uid}
                     className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
                       active
-                        ? 'bg-purple-500 text-white'
+                        ? 'bg-blue-600 text-white'
                         : uid === currentUserId
-                        ? 'bg-white/20 text-white'
-                        : 'bg-white/5 text-white/50'
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'bg-gray-100 text-gray-400'
                     }`}
                   >
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isOnline ? 'bg-green-400' : 'bg-white/20'}`} />
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isOnline ? 'bg-green-500' : 'bg-gray-300'}`} />
                     {info?.firstName || info?.teamName || '?'}
                   </div>
                 );
@@ -375,7 +368,7 @@ export default function DraftRoom() {
           </div>
 
           {actionError && (
-            <div className="bg-red-500/20 border border-red-400/30 rounded-xl px-4 py-3 text-red-300 text-sm mb-4">
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm mb-4">
               {actionError}
             </div>
           )}
@@ -384,10 +377,10 @@ export default function DraftRoom() {
 
             {/* ── Pick board ── */}
             <div className="lg:col-span-2">
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+              <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="font-bold text-lg">Available Teams</h2>
-                  <span className="text-white/50 text-sm">{availableTeams.length} remaining</span>
+                  <h2 className="font-bold text-lg text-gray-900">Available Teams</h2>
+                  <span className="text-gray-400 text-sm">{availableTeams.length} remaining</span>
                 </div>
 
                 <input
@@ -395,7 +388,7 @@ export default function DraftRoom() {
                   placeholder="Search teams…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 mb-3"
+                  className="w-full px-4 py-2 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-3"
                 />
 
                 <div ref={pickBoardRef} className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
@@ -406,27 +399,27 @@ export default function DraftRoom() {
                       disabled={!isMyTurn || picking}
                       className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all duration-150 ${
                         isMyTurn && !picking
-                          ? 'bg-white/5 border-white/10 hover:bg-purple-500/20 hover:border-purple-400/40 cursor-pointer'
-                          : 'bg-white/5 border-white/5 cursor-default opacity-70'
+                          ? 'bg-gray-50 border-gray-100 hover:bg-blue-50 hover:border-blue-200 cursor-pointer'
+                          : 'bg-gray-50 border-gray-100 cursor-default opacity-60'
                       }`}
                     >
                       {team.logo_filename && (
                         <img src={`/logos/${team.logo_filename}`} alt={team.school} className="w-8 h-8 object-contain flex-shrink-0" />
                       )}
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-sm truncate">{team.school}</div>
-                        <div className="text-xs text-white/50">{team.conference}</div>
+                        <div className="font-semibold text-sm text-gray-900 truncate">{team.school}</div>
+                        <div className="text-xs text-gray-400">{team.conference}</div>
                       </div>
                       {team.game_points != null && (
-                        <div className="text-xs text-white/40 flex-shrink-0">{team.game_points} pts</div>
+                        <div className="text-xs text-gray-400 flex-shrink-0">{team.game_points} pts</div>
                       )}
                       {isMyTurn && !picking && (
-                        <ChevronRight size={14} className="text-purple-400 flex-shrink-0" />
+                        <ChevronRight size={14} className="text-blue-500 flex-shrink-0" />
                       )}
                     </button>
                   ))}
                   {filteredTeams.length === 0 && (
-                    <p className="text-center text-white/40 py-6">No teams match your search</p>
+                    <p className="text-center text-gray-400 py-6">No teams match your search</p>
                   )}
                 </div>
               </div>
@@ -436,9 +429,9 @@ export default function DraftRoom() {
             <div className="space-y-4">
 
               {/* Recent picks */}
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-                <h2 className="font-bold mb-3 flex items-center gap-2">
-                  <Trophy size={16} className="text-yellow-400" />
+              <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
+                <h2 className="font-bold mb-3 flex items-center gap-2 text-gray-900">
+                  <Trophy size={16} className="text-yellow-500" />
                   Recent Picks
                 </h2>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -450,41 +443,41 @@ export default function DraftRoom() {
                       <div
                         key={pick.id}
                         className={`flex items-center gap-2 p-2 rounded-lg text-sm transition-all duration-500 ${
-                          flash ? 'bg-purple-500/30 border border-purple-400/40' : 'bg-white/5'
+                          flash ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
                         }`}
                       >
-                        {flash && <Check size={12} className="text-green-400 flex-shrink-0" />}
-                        <span className="text-white/50 text-xs w-5 flex-shrink-0">#{pick.pick_number}</span>
+                        {flash && <Check size={12} className="text-green-600 flex-shrink-0" />}
+                        <span className="text-gray-400 text-xs w-5 flex-shrink-0">#{pick.pick_number}</span>
                         {team?.logos?.[0] && (
                           <img src={team.logo_filename ? `/logos/${team.logo_filename}` : ''} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
                         )}
                         <div className="flex-1 min-w-0">
-                          <div className="truncate font-medium">{team?.school ?? pick.team_id}</div>
-                          <div className="text-white/40 text-xs truncate">{picker?.name}</div>
+                          <div className="truncate font-medium text-gray-900">{team?.school ?? pick.team_id}</div>
+                          <div className="text-gray-400 text-xs truncate">{picker?.name}</div>
                         </div>
                         {pick.auto_picked && (
-                          <span className="text-xs text-orange-400 flex-shrink-0">auto</span>
+                          <span className="text-xs text-orange-500 flex-shrink-0">auto</span>
                         )}
                       </div>
                     );
                   })}
                   {picks.length === 0 && (
-                    <p className="text-white/40 text-sm text-center py-2">No picks yet</p>
+                    <p className="text-gray-400 text-sm text-center py-2">No picks yet</p>
                   )}
                 </div>
               </div>
 
               {/* Your roster so far */}
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-                <h2 className="font-bold mb-3">Your Roster</h2>
+              <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
+                <h2 className="font-bold mb-3 text-gray-900">Your Roster</h2>
                 {(rosterByUser[currentUserId] ?? []).length === 0 ? (
-                  <p className="text-white/40 text-sm">No picks yet</p>
+                  <p className="text-gray-400 text-sm">No picks yet</p>
                 ) : (
                   <div className="space-y-1">
                     {(rosterByUser[currentUserId] ?? []).map((teamId) => {
                       const team = teams.find((t) => t.id === teamId);
                       return (
-                        <div key={teamId} className="flex items-center gap-2 text-sm">
+                        <div key={teamId} className="flex items-center gap-2 text-sm text-gray-900">
                           {team?.logos?.[0] && (
                             <img src={team.logo_filename ? `/logos/${team.logo_filename}` : ''} alt="" className="w-5 h-5 object-contain" />
                           )}
@@ -507,19 +500,19 @@ export default function DraftRoom() {
   // DRAFT COMPLETE
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white pb-24">
+    <div className="min-h-screen bg-gray-50 pb-24">
       <LeagueNav />
 
       <div className="max-w-2xl mx-auto px-4 py-8">
         <div className="text-center mb-8">
           <div className="text-5xl mb-4">🏆</div>
-          <h1 className="text-3xl font-black mb-2">Draft Complete!</h1>
-          <p className="text-white/60">All {totalPicks} picks have been made</p>
+          <h1 className="text-3xl font-black text-gray-900 mb-2">Draft Complete!</h1>
+          <p className="text-gray-500">All {totalPicks} picks have been made</p>
         </div>
 
         <button
           onClick={() => navigate(`/league/${leagueId}/my-lineup`)}
-          className="w-full py-3 mb-8 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 rounded-xl font-bold text-lg transition-all duration-300"
+          className="w-full py-3 mb-8 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg transition-colors"
         >
           Go to My Lineup
         </button>
@@ -527,28 +520,28 @@ export default function DraftRoom() {
         {/* Final rosters */}
         <div className="space-y-4">
           {members.map((m) => {
-            const info  = memberMap[m.user_id];
+            const info   = memberMap[m.user_id];
             const roster = rosterByUser[m.user_id] ?? [];
             return (
-              <div key={m.user_id} className="bg-white/10 backdrop-blur-lg rounded-2xl p-5 border border-white/20">
+              <div key={m.user_id} className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <div className="font-bold">{info?.name}</div>
-                    <div className="text-white/60 text-sm">{info?.teamName}</div>
+                    <div className="font-bold text-gray-900">{info?.name}</div>
+                    <div className="text-gray-500 text-sm">{info?.teamName}</div>
                   </div>
                   {m.user_id === currentUserId && (
-                    <span className="text-xs text-purple-300 font-semibold">You</span>
+                    <span className="text-xs text-blue-600 font-semibold">You</span>
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   {roster.map((teamId) => {
                     const team = teams.find((t) => t.id === teamId);
                     return (
-                      <div key={teamId} className="flex items-center gap-2 text-sm bg-white/5 rounded-lg p-2">
+                      <div key={teamId} className="flex items-center gap-2 text-sm bg-gray-50 rounded-lg p-2">
                         {team?.logos?.[0] && (
                           <img src={team.logo_filename ? `/logos/${team.logo_filename}` : ''} alt="" className="w-5 h-5 object-contain" />
                         )}
-                        <span className="truncate">{team?.school ?? teamId}</span>
+                        <span className="truncate text-gray-900">{team?.school ?? teamId}</span>
                       </div>
                     );
                   })}
