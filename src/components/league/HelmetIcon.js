@@ -13,7 +13,7 @@ const HelmetIcon = ({ color, alternate_color, size = 40 }) => {
 
   return (
     <svg
-      viewBox="0 0 100 100"
+      viewBox="-14 -12 128 118"
       width={size}
       height={size}
       xmlns="http://www.w3.org/2000/svg"
