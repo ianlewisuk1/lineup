@@ -14,10 +14,13 @@ const HelmetIcon = ({ color, alternate_color, size = 40 }) => {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="-10 -10 483.002 483.002"
+      viewBox="-50 -50 563.002 563.002"
       width={size}
       height={size}
     >
+      {/* Background fills facemask holes + earhole center with secondary color */}
+      <rect x="-50" y="-50" width="563.002" height="563.002" fill={secondary} />
+
       {/* Main helmet body */}
       <path
         fill={primary}
