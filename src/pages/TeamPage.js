@@ -7,6 +7,7 @@ import LeagueNav from "../components/LeagueNav";
 import { SEASON_YEAR } from "../utils/season";
 import { useModalState } from "../hooks/useModalState";
 import { parseGamesPlayed as parseRecord, calculateAverage } from "../utils/teamStats";
+import HelmetIcon from "../components/league/HelmetIcon";
 
 function TeamPage() {
   const { leagueId, teamName } = useParams();
@@ -641,18 +642,14 @@ function TeamPage() {
 
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="mb-4">
-            {teamInfo?.logo ? (
-              <img
-                src={teamInfo.logo}
-                alt={`${decodedTeamName} logo`}
-                className="w-16 h-16 sm:w-20 sm:h-20 rounded-full mx-auto border-2 border-white/20 bg-white/10 p-2"
+          <div className="mb-4 flex justify-center">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-white/20 bg-white/10 flex items-center justify-center overflow-hidden">
+              <HelmetIcon
+                color={teamInfo?.colors?.primary || teamInfo?.color}
+                alternate_color={teamInfo?.colors?.secondary || teamInfo?.alternate_color}
+                size={64}
               />
-            ) : (
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full mx-auto border-2 border-white/20 bg-white/10 flex items-center justify-center text-xl sm:text-2xl font-bold text-white/80">
-                {decodedTeamName.substring(0, 2).toUpperCase()}
-              </div>
-            )}
+            </div>
           </div>
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-2 leading-tight">
             <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">

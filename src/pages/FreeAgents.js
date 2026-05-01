@@ -8,6 +8,7 @@ import { useLeague } from "../context/LeagueContext";
 import { useModalState } from "../hooks/useModalState";
 import { parseGamesPlayed as parseRecord, calculateAverage } from "../utils/teamStats";
 import { useSeasonConfig } from "../hooks/useSeasonConfig";
+import HelmetIcon from "../components/league/HelmetIcon";
 
 // Compact Sort Button Component
 const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
@@ -511,17 +512,11 @@ function FreeAgents() {
         <div className="flex items-center gap-3 mb-3">
           {/* Team Logo */}
           <div className="w-8 h-8 rounded-full overflow-hidden border border-white/20 bg-white/5 flex-shrink-0 flex items-center justify-center">
-            {team.logo ? (
-              <img
-                src={team.logo}
-                alt={team.school}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="text-xs font-bold text-white/60">
-                {team.school ? team.school.split(' ').map(word => word[0]).join('').slice(0, 2) : '?'}
-              </div>
-            )}
+            <HelmetIcon
+              color={team.colors?.primary || team.color}
+              alternate_color={team.colors?.secondary || team.alternate_color}
+              size={28}
+            />
           </div>
 
           {/* Team Name */}

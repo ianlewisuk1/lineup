@@ -4,6 +4,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
 import { parseRecord } from "../utils/teamStats";
+import HelmetIcon from "../components/league/HelmetIcon";
 
 function Scouting() {
   const { leagueId } = useParams();
@@ -138,67 +139,18 @@ useEffect(() => {
 
   const TeamLogo = ({ teamName, size = 24, isDrafted = false }) => {
     const team = allTeams[teamName];
-    const logoUrl = team?.logo;
-
-    const logoStyle = {
-      width: size,
-      height: size,
-      borderRadius: "50%",
-      overflow: "hidden",
-      border: "1px solid #E5E7EB",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: "#F9FAFB",
-      flexShrink: 0,
-      opacity: isDrafted ? 0.4 : 1,
-      filter: isDrafted ? "grayscale(100%)" : "none"
-    };
-
-    if (logoUrl) {
-      return (
-        <div style={logoStyle}>
-          <img
-            src={logoUrl}
-            alt={teamName}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            onError={(e) => {
-              const fallbackUrl = null;
-              if (fallbackUrl && e.target.src !== fallbackUrl) {
-                e.target.src = fallbackUrl;
-              } else {
-                e.target.style.display = 'none';
-                e.target.nextSibling.style.display = 'flex';
-              }
-            }}
-          />
-          <div style={{
-            display: 'none',
-            width: '100%',
-            height: '100%',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '9px',
-            fontWeight: '600',
-            color: 'white',
-            textAlign: 'center',
-            background: 'linear-gradient(135deg, #0072BC 0%, #0ea5e9 100%)'
-          }}>
-            {teamName ? teamName.split(' ').map(word => word[0]).join('').slice(0, 2) : '?'}
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div style={{
-        ...logoStyle,
-        background: "linear-gradient(135deg, #0072BC 0%, #0ea5e9 100%)",
-        color: "white",
-        fontSize: '9px',
-        fontWeight: '600'
+        width: size, height: size, borderRadius: "50%", overflow: "hidden",
+        border: "1px solid #E5E7EB", display: "flex", alignItems: "center",
+        justifyContent: "center", backgroundColor: "#F9FAFB", flexShrink: 0,
+        opacity: isDrafted ? 0.4 : 1, filter: isDrafted ? "grayscale(100%)" : "none"
       }}>
-        {teamName ? teamName.split(' ').map(word => word[0]).join('').slice(0, 2) : '?'}
+        <HelmetIcon
+          color={team?.colors?.primary || team?.color}
+          alternate_color={team?.colors?.secondary || team?.alternate_color}
+          size={size * 0.85}
+        />
       </div>
     );
   };

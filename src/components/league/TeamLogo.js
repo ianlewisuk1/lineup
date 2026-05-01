@@ -1,6 +1,7 @@
 import React from "react";
 import { normalize, getScheduleEntry, isTeamOnBye } from "../../utils/scheduleUtils";
 import { getCurrentWeekNumber } from "../../utils/leagueUtils";
+import HelmetIcon from "./HelmetIcon";
 
 const TeamLogo = ({
   teamName,
@@ -15,8 +16,7 @@ const TeamLogo = ({
   currentWeek,
   onTeamClick,
 }) => {
-  const team = allTeams[normalize(teamName)];
-  const logoUrl = team?.logo;
+  const team = allTeams?.[normalize(teamName)];
   const scheduleGame = getScheduleEntry(scheduleData, teamName);
   const hasWeekSchedule = !scheduleLoading && Object.keys(scheduleData || {}).length > 0;
   const byeThisWeek = viewMode === 'current' && hasWeekSchedule && isTeamOnBye(teamName, scheduleData);
@@ -197,7 +197,7 @@ const TeamLogo = ({
 
   const spreadDisplay = getSpreadDisplay();
 
-  if (logoUrl) {
+  if (team) {
     return (
       <div style={{ position: "relative", display: "inline-block" }}>
         {/* Special 5X Combo Badge - appears when BOTH captain and trip play are active */}
@@ -356,38 +356,11 @@ const TeamLogo = ({
           }}
           title={clickable ? `Click to view ${teamName} details${isCaptain ? ' (Captain - 2x Points)' : ''}${isTripPlay ? ' (Trip Play - 3x Points)' : ''}${isCaptain && isTripPlay ? ' (5x Combo!)' : ''}` : teamName}
         >
-          <img
-            src={logoUrl}
-            alt={teamName}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover"
-            }}
-            onError={(e) => {
-              const fallbackUrl = team?.logos2;
-              if (fallbackUrl && e.target.src !== fallbackUrl) {
-                e.target.src = fallbackUrl;
-              } else {
-                e.target.style.display = 'none';
-                e.target.nextSibling.style.display = 'flex';
-              }
-            }}
+          <HelmetIcon
+            color={team.colors?.primary}
+            alternate_color={team.colors?.secondary}
+            size={size * 0.85}
           />
-          <div style={{
-            display: 'none',
-            width: '100%',
-            height: '100%',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: size < 30 ? '10px' : '12px',
-            fontWeight: '600',
-            color: 'white',
-            textAlign: 'center',
-            background: (isCaptain || isTripPlay) ? 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)' : 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)'
-          }}>
-            {teamName ? teamName.split(' ').map(word => word[0]).join('').slice(0, 3) : '?'}
-          </div>
         </div>
       </div>
     );
