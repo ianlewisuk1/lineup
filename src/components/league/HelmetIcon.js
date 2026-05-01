@@ -32,16 +32,21 @@ const HelmetIcon = ({ color, alternate_color, size = 40 }) => {
       />
 
       {/* Earhole */}
-      <circle cx="34" cy="52" r="11" fill="rgba(0,0,0,0.25)" />
+      <circle cx="34" cy="52" r="11" fill="rgba(0,0,0,0.28)" />
+      <circle cx="34" cy="52" r="7" fill="rgba(0,0,0,0.12)" />
 
-      {/* Facemask bars */}
-      <line x1="82" y1="41" x2="92" y2="38" stroke={secondary} strokeWidth="5.5" strokeLinecap="round" />
-      <line x1="83" y1="53" x2="92" y2="56" stroke={secondary} strokeWidth="5.5" strokeLinecap="round" />
+      {/* Facemask — 3 bars */}
+      <line x1="80" y1="41" x2="93" y2="37" stroke={secondary} strokeWidth="5" strokeLinecap="round" />
+      <line x1="81" y1="53" x2="94" y2="53" stroke={secondary} strokeWidth="5" strokeLinecap="round" />
+      <line x1="80" y1="65" x2="93" y2="69" stroke={secondary} strokeWidth="5" strokeLinecap="round" />
 
-      {/* Subtle dome highlight */}
+      {/* Facemask — vertical connector */}
+      <line x1="93" y1="37" x2="94" y2="69" stroke={secondary} strokeWidth="4" strokeLinecap="round" />
+
+      {/* Dome highlight */}
       <path
         d="M 22,28 Q 42,14 62,18"
-        stroke="rgba(255,255,255,0.18)"
+        stroke="rgba(255,255,255,0.2)"
         strokeWidth="5"
         fill="none"
         strokeLinecap="round"
