@@ -8,6 +8,8 @@ import { SEASON_YEAR } from "../utils/season";
 import { useModalState } from "../hooks/useModalState";
 import { parseGamesPlayed as parseRecord, calculateAverage } from "../utils/teamStats";
 import TeamLogoImage from "../components/league/TeamLogoImage";
+import { useLeague } from "../context/LeagueContext";
+import { useDraftContext } from "../context/DraftContext";
 
 function TeamPage() {
   const { leagueId, teamName } = useParams();
@@ -28,6 +30,9 @@ function TeamPage() {
   const [currentUser, setCurrentUser] = useState(null);
 
   const [showDropdown, setShowDropdown] = useState(false);
+
+  const { isDraftComplete } = useLeague();
+  const { pickedTeamIds } = useDraftContext();
 
   const {
     showSuccessModal, showErrorModal,
@@ -548,18 +553,42 @@ function TeamPage() {
   const renderOwnershipStatus = () => {
     const decodedTeamName = decodeURIComponent(teamName);
 
+    // Pre-draft: show draft availability, no add button
+    if (!isDraftComplete) {
+      const isDrafted = pickedTeamIds?.has(teamInfo?.id);
+      if (isDrafted) {
+        return (
+          <div className="bg-gray-100 border border-gray-300 rounded-2xl p-4 mb-6">
+            <div className="flex items-center gap-2">
+              <Trophy size={18} className="text-gray-500" />
+              <span className="font-semibold text-gray-600">Already Drafted</span>
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-6">
+          <div className="flex items-center gap-2">
+            <Users size={18} className="text-blue-600" />
+            <span className="font-semibold text-blue-700">Available for Draft</span>
+          </div>
+        </div>
+      );
+    }
+
+    // Post-draft: show ownership / free agent status with add button
     if (!ownershipInfo) {
       return (
-        <div className="bg-green-500/20 border-2 border-green-400/50 rounded-2xl p-4 mb-6">
+        <div className="bg-green-50 border border-green-200 rounded-2xl p-4 mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Users size={18} className="text-green-300" />
-              <span className="font-semibold text-green-200">Status: Free Agent</span>
+              <Users size={18} className="text-green-600" />
+              <span className="font-semibold text-green-700">Status: Free Agent</span>
             </div>
             {currentUser && (
               <button
                 onClick={() => handleAddTeam(decodedTeamName)}
-                className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 rounded-xl text-white font-medium transition-all duration-200 transform hover:scale-105"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-xl text-white font-medium transition-colors text-sm"
               >
                 <Plus size={14} />
                 Add Team
@@ -575,40 +604,34 @@ function TeamPage() {
     const statusText = isStarting ? "Starting Lineup" : "Riding the Bench";
 
     return (
-      <div className={`border-2 rounded-2xl p-4 mb-6 ${
+      <div className={`border rounded-2xl p-4 mb-6 ${
         isStarting
-          ? 'bg-blue-500/20 border-blue-400/50'
-          : 'bg-yellow-500/20 border-yellow-400/50'
+          ? 'bg-blue-50 border-blue-200'
+          : 'bg-yellow-50 border-yellow-200'
       }`}>
         <div className="flex items-center gap-2 mb-1">
-          <Trophy size={18} className={isStarting ? 'text-blue-300' : 'text-yellow-300'} />
-          <span className={`font-semibold ${
-            isStarting ? 'text-blue-200' : 'text-yellow-200'
-          }`}>
+          <Trophy size={18} className={isStarting ? 'text-blue-600' : 'text-yellow-600'} />
+          <span className={`font-semibold ${isStarting ? 'text-blue-700' : 'text-yellow-700'}`}>
             Status: {statusText}
           </span>
         </div>
-        <div className={`ml-6 text-sm ${
-          isStarting ? 'text-blue-200/80' : 'text-yellow-200/80'
-        }`}>
-          Owned by <strong>{ownerName}</strong> ({ownerTeamName})
-        </div>
+        <p className="text-sm text-gray-500 ml-6">
+          Owned by <span className="font-medium text-gray-700">{ownerName}</span>
+          {ownerTeamName && ` · ${ownerTeamName}`}
+        </p>
       </div>
     );
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
-        {/* Animated Background Elements */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
-        </div>
-        <div className="relative z-10 flex items-center justify-center min-h-screen">
+      <div className="min-h-screen bg-gray-50">
+        <LeagueNav />
+        <BottomNavBar />
+        <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
-            <div className="text-4xl mb-4 animate-spin">⚡</div>
-            <p className="text-xl text-white/80 mb-2">Loading {decodeURIComponent(teamName)}...</p>
-            <p className="text-sm text-white/60">{loadingStage}</p>
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+            <p className="text-gray-500 text-sm">{loadingStage}</p>
           </div>
         </div>
       </div>
@@ -618,31 +641,23 @@ function TeamPage() {
   const decodedTeamName = decodeURIComponent(teamName);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-20 left-4 sm:left-10 w-48 sm:w-72 h-48 sm:h-72 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-4 sm:right-10 w-56 sm:w-96 h-56 sm:h-96 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
-      </div>
-
+    <div className="min-h-screen bg-gray-50">
       <BottomNavBar />
-
       <LeagueNav />
 
-      {/* Main Content */}
-      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-28">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 pb-28">
         {/* Back Button */}
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 mb-6 px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/30 rounded-xl text-white hover:bg-white/20 transition-all duration-300"
+          className="flex items-center gap-2 mb-6 px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors text-sm font-medium shadow-sm"
         >
           <ArrowLeft size={16} />
           Back
         </button>
 
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="mb-4 flex justify-center">
+        <div className="text-center mb-6">
+          <div className="mb-3 flex justify-center">
             <TeamLogoImage
               teamId={teamInfo?.id}
               teamName={decodedTeamName}
@@ -650,13 +665,9 @@ function TeamPage() {
               size={64}
             />
           </div>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-2 leading-tight">
-            <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              {decodedTeamName}
-            </span>
-          </h1>
+          <h1 className="text-3xl font-black text-gray-900 mb-1">{decodedTeamName}</h1>
           {teamInfo && (
-            <p className="text-lg sm:text-xl text-white/80">
+            <p className="text-gray-500">
               {teamInfo.conference || "Independent"} • {teamInfo.record || "0-0"}
             </p>
           )}
@@ -667,37 +678,37 @@ function TeamPage() {
 
         {/* Team Stats */}
         {teamInfo && (
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
-            <h3 className="flex items-center gap-2 text-xl font-bold text-white mb-6">
-              <TrendingUp size={20} />
+          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm mb-6">
+            <h3 className="flex items-center gap-2 text-base font-bold text-gray-900 mb-5">
+              <TrendingUp size={18} className="text-blue-600" />
               {SEASON_YEAR} Season Stats
             </h3>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              <div className="bg-white/5 rounded-xl p-3 text-center">
-                <div className="text-xs text-white/60 font-medium mb-1">Conference Record</div>
-                <div className="text-lg font-bold text-white">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Conference Record</div>
+                <div className="text-lg font-bold text-gray-900">
                   {teamInfo.conf_record || "0-0"}
                 </div>
               </div>
 
-              <div className="bg-white/5 rounded-xl p-3 text-center">
-                <div className="text-xs text-white/60 font-medium mb-1">ATS Record</div>
-                <div className="text-lg font-bold text-white">
+              <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">ATS Record</div>
+                <div className="text-lg font-bold text-gray-900">
                   {teamInfo.ats_record || "0-0"}
                 </div>
               </div>
 
-              <div className="bg-white/5 rounded-xl p-3 text-center">
-                <div className="text-xs text-white/60 font-medium mb-1">Fantasy Points</div>
-                <div className="text-lg font-bold text-green-300">
+              <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Fantasy Points</div>
+                <div className="text-lg font-bold text-green-600">
                   {teamInfo.game_points || 0}
                 </div>
               </div>
 
-              <div className="bg-white/5 rounded-xl p-3 text-center">
-                <div className="text-xs text-white/60 font-medium mb-1">Avg Weekly Fantasy</div>
-                <div className="text-lg font-bold text-blue-300">
+              <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Avg Weekly Fantasy</div>
+                <div className="text-lg font-bold text-blue-600">
                   {(() => {
                     const gamesPlayed = parseRecord(teamInfo.record);
                     const gamePoints = teamInfo.game_points || 0;
@@ -706,43 +717,43 @@ function TeamPage() {
                 </div>
               </div>
 
-              <div className="bg-white/5 rounded-xl p-3 text-center">
-                <div className="text-xs text-white/60 font-medium mb-1">Games Played</div>
-                <div className="text-lg font-bold text-white">
+              <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Games Played</div>
+                <div className="text-lg font-bold text-gray-900">
                   {parseRecord(teamInfo.record)}
                 </div>
               </div>
 
-              <div className="bg-white/5 rounded-xl p-3 text-center">
-                <div className="text-xs text-white/60 font-medium mb-1">SOS Rank</div>
-                <div className="text-lg font-bold text-purple-300">
+              <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">SOS Rank</div>
+                <div className="text-lg font-bold text-gray-900">
                   {teamInfo.sos_rank ?? "—"}
                 </div>
               </div>
 
-              <div className="bg-white/5 rounded-xl p-3 text-center">
-                <div className="text-xs text-white/60 font-medium mb-1">Phil Metrics</div>
-                <div className="text-lg font-bold text-purple-300">
+              <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Phil Metrics</div>
+                <div className="text-lg font-bold text-gray-900">
                   {teamInfo.phil_metrics ?? "—"}
                 </div>
               </div>
 
-              <div className="bg-white/5 rounded-xl p-3 text-center">
-                <div className="text-xs text-white/60 font-medium mb-1">Prev Year Pts</div>
-                <div className="text-lg font-bold text-white">
+              <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Prev Year Pts</div>
+                <div className="text-lg font-bold text-gray-900">
                   {teamInfo.prev_year_points ?? "—"}
                 </div>
               </div>
             </div>
 
-            {/* Week X Game - Updated Section */}
-            <div className="mt-4 bg-white/5 rounded-xl p-4 text-center">
-              <div className="text-xs text-white/60 font-medium mb-2">Week {currentWeek} Game</div>
-              <div className="text-lg font-bold text-white">
+            {/* Week X Game */}
+            <div className="mt-3 bg-gray-50 rounded-xl p-4 text-center border border-gray-100">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Week {currentWeek} Game</div>
+              <div className="text-base font-bold text-gray-900">
                 {formatWeekGame(currentWeekGame, decodedTeamName)}
               </div>
               {currentWeekGame && (currentWeekGame.date || currentWeekGame.game_time) && (
-                <div className="text-sm text-white/60 mt-1">
+                <div className="text-sm text-gray-400 mt-1">
                   {new Date(currentWeekGame.date || currentWeekGame.game_time).toLocaleDateString('en-US', {
                     weekday: 'short',
                     month: 'short',
@@ -755,29 +766,29 @@ function TeamPage() {
         )}
 
         {/* Schedule */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 overflow-hidden">
-          <div className="p-6 border-b border-white/10">
-            <h3 className="flex items-center gap-2 text-xl font-bold text-white">
-              <Calendar size={20} />
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-gray-100">
+            <h3 className="flex items-center gap-2 text-base font-bold text-gray-900">
+              <Calendar size={18} className="text-blue-600" />
               {SEASON_YEAR} Schedule ({schedule.length} games)
             </h3>
           </div>
 
           {schedule.length === 0 ? (
-            <div className="p-8 text-center text-white/60">
+            <div className="p-8 text-center text-gray-400">
               No schedule found for {decodedTeamName}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-white/5">
-                    <th className="px-2 py-3 text-center text-xs font-semibold text-white/80 w-16">Wk</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/80 w-24">Date</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/80">Opponent</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/80">Venue</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/80">Result</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/80 w-20">Fantasy Pts</th>
+                  <tr style={{ backgroundColor: "#0072BC" }}>
+                    <th style={{ color: "white", fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px", padding: "11px 8px", textAlign: "center" }}>Wk</th>
+                    <th style={{ color: "white", fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px", padding: "11px 16px", textAlign: "center" }}>Date</th>
+                    <th style={{ color: "white", fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px", padding: "11px 16px", textAlign: "center" }}>Opponent</th>
+                    <th style={{ color: "white", fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px", padding: "11px 16px", textAlign: "center" }}>Venue</th>
+                    <th style={{ color: "white", fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px", padding: "11px 16px", textAlign: "center" }}>Result</th>
+                    <th style={{ color: "white", fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px", padding: "11px 16px", textAlign: "center" }}>Fantasy Pts</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -790,49 +801,48 @@ function TeamPage() {
                     return (
                       <tr
                         key={index}
-                        className={`border-b border-white/5 hover:bg-white/5 transition-colors duration-200 ${
-                          index % 2 === 0 ? 'bg-white/2' : ''
-                        }`}
+                        style={{ backgroundColor: index % 2 === 0 ? "#FFFFFF" : "#F9FAFB" }}
+                        className="border-b border-gray-100 hover:bg-blue-50 transition-colors duration-150"
                       >
-                        <td className="px-2 py-3 font-semibold text-white text-center">
+                        <td className="px-2 py-3 font-semibold text-gray-900 text-center text-sm">
                           {game.week}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <div className="text-sm text-white">{dateInfo.weekday}</div>
-                          <div className="text-xs text-white/60">{dateInfo.date}</div>
+                          <div className="text-sm text-gray-900">{dateInfo.weekday}</div>
+                          <div className="text-xs text-gray-400">{dateInfo.date}</div>
                         </td>
                         <td className="px-4 py-3 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            <span className="text-xs text-white/60 font-medium">
+                            <span className="text-xs text-gray-400 font-medium">
                               {opponentInfo.prefix}
                             </span>
-                            <span className="text-sm font-semibold text-white">
+                            <span className="text-sm font-semibold text-gray-900">
                               {opponentInfo.opponent}
                             </span>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <MapPin size={12} className="text-white/40" />
-                            <span className="text-sm text-white/60">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <MapPin size={12} className="text-gray-300" />
+                            <span className="text-sm text-gray-400">
                               {game.venue || "TBD"}
                             </span>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-center">
                           {gameResult ? (
-                            <div className={`inline-flex items-center justify-center px-3 py-2 rounded-lg text-sm font-semibold min-w-[80px] ${
+                            <div className={`inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-semibold min-w-[80px] ${
                               gameResult.won
-                                ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                                : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                                ? 'bg-green-50 text-green-700 border border-green-200'
+                                : 'bg-red-50 text-red-700 border border-red-200'
                             }`}>
                               <div className="text-center">
                                 <div className="text-xs font-bold mb-0.5">{gameResult.result}</div>
-                                <div className="text-xs opacity-90">{gameResult.score}</div>
+                                <div className="text-xs">{gameResult.score}</div>
                               </div>
                             </div>
                           ) : (
-                            <span className="text-white/40 text-sm">TBD</span>
+                            <span className="text-gray-300 text-sm">TBD</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-center">
@@ -842,13 +852,13 @@ function TeamPage() {
                               const weeklyPoints = teamInfo.weekly_points[weekKey];
                               if (weeklyPoints !== undefined && weeklyPoints !== null) {
                                 return (
-                                  <span className="text-green-300 text-sm font-semibold">
+                                  <span className="text-green-600 text-sm font-semibold">
                                     {weeklyPoints}
                                   </span>
                                 );
                               }
                             }
-                            return <span className="text-white/40 text-sm">—</span>;
+                            return <span className="text-gray-300 text-sm">—</span>;
                           })()}
                         </td>
                       </tr>
@@ -863,14 +873,16 @@ function TeamPage() {
 
       {/* Add Team Modal */}
       {showAddModal && teamToAdd && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full border border-gray-200 shadow-xl">
             <div className="text-center">
-              <div className="text-4xl mb-4">🏈</div>
-              <h3 className="text-xl font-bold text-white mb-4">
+              <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Plus size={24} className="text-blue-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
                 Add {teamToAdd.school}?
               </h3>
-              <p className="text-white/80 mb-6">
+              <p className="text-gray-500 mb-6">
                 This will add them to your lineup.
               </p>
               <div className="flex gap-3">
@@ -879,13 +891,13 @@ function TeamPage() {
                     setShowAddModal(false);
                     setTeamToAdd(null);
                   }}
-                  className="flex-1 px-4 py-3 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all duration-300"
+                  className="flex-1 px-4 py-3 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-gray-700 font-medium transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={confirmAddTeam}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-white font-bold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-green-500/40"
+                  className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl text-white font-bold transition-colors"
                 >
                   Add Team
                 </button>
@@ -897,35 +909,37 @@ function TeamPage() {
 
       {/* Swap UI Modal */}
       {showSwapUI && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full border border-gray-200 shadow-xl">
             <div className="text-center">
-              <div className="text-4xl mb-4">🔄</div>
-              <h3 className="text-xl font-bold text-white mb-4">
+              <div className="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trophy size={24} className="text-orange-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
                 Add {pendingAddTeam}
               </h3>
-              <p className="text-white/80 mb-6">
+              <p className="text-gray-500 mb-6">
                 Your roster is full. Select a team to drop:
               </p>
 
-              <div data-dropdown className="relative mb-6">
+              <div data-dropdown className="relative mb-6 text-left">
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="w-full p-4 bg-white/10 backdrop-blur-sm border-2 border-white/30 rounded-xl text-white focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 focus:outline-none flex items-center justify-between transition-all duration-300"
+                  className="w-full px-4 py-2.5 text-gray-900 bg-white border border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 flex items-center justify-between transition-colors"
                 >
-                  <span className={selectedDropTeam ? 'text-white' : 'text-white/50'}>
+                  <span className={selectedDropTeam ? 'text-gray-900' : 'text-gray-400'}>
                     {selectedDropTeam ? denormalizeTeamName(selectedDropTeam) : "Choose a team to drop"}
                   </span>
                   <ChevronDown
                     size={16}
-                    className={`text-white/60 transition-transform duration-200 ${
+                    className={`text-gray-400 transition-transform duration-200 ${
                       showDropdown ? 'rotate-180' : 'rotate-0'
                     }`}
                   />
                 </button>
 
                 {showDropdown && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white/10 backdrop-blur-lg border-2 border-white/20 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto">
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto">
                     {userTeams.filter(Boolean).map((team, index) => (
                       <button
                         key={team}
@@ -933,12 +947,12 @@ function TeamPage() {
                           setSelectedDropTeam(team);
                           setShowDropdown(false);
                         }}
-                        className={`w-full p-3 text-left transition-all duration-150 ${
+                        className={`w-full px-4 py-3 text-left transition-colors ${
                           selectedDropTeam === team
-                            ? 'bg-blue-500/20 text-blue-200 font-semibold'
-                            : 'text-white hover:bg-white/10'
+                            ? 'bg-blue-50 text-blue-700 font-semibold'
+                            : 'text-gray-700 hover:bg-gray-50'
                         } ${index === 0 ? 'rounded-t-xl' : ''} ${
-                          index === userTeams.filter(Boolean).length - 1 ? 'rounded-b-xl' : 'border-b border-white/10'
+                          index === userTeams.filter(Boolean).length - 1 ? 'rounded-b-xl' : 'border-b border-gray-100'
                         }`}
                       >
                         {denormalizeTeamName(team)}
@@ -951,20 +965,14 @@ function TeamPage() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowSwapUI(false)}
-                  className="flex-1 px-4 py-3 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all duration-300"
+                  className="flex-1 px-4 py-3 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-gray-700 font-medium transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleConfirmSwap}
                   disabled={!selectedDropTeam}
-                  className={`
-                    flex-1 px-4 py-3 rounded-xl font-bold transition-all duration-300 transform
-                    ${selectedDropTeam
-                      ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white hover:scale-105 shadow-lg hover:shadow-green-500/40'
-                      : 'bg-white/20 text-white/40 cursor-not-allowed'
-                    }
-                  `}
+                  className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-white font-bold transition-colors"
                 >
                   Confirm Swap
                 </button>
@@ -974,25 +982,22 @@ function TeamPage() {
         </div>
       )}
 
-      {/* Custom Success Modal */}
+      {/* Success Modal */}
       {showSuccessModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full text-center shadow-2xl">
-            <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <div className="text-white text-2xl font-bold">✓</div>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full border border-gray-200 shadow-xl text-center">
+            <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="text-green-600 text-2xl font-bold">✓</div>
             </div>
-
-            <h3 className="text-xl font-bold text-white mb-2">
+            <h3 className="text-xl font-bold text-gray-900 mb-2">
               {modalTitle}
             </h3>
-
-            <p className="text-white/80 mb-6">
+            <p className="text-gray-500 mb-6">
               {modalMessage}
             </p>
-
             <button
               onClick={closeModals}
-              className="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 rounded-xl text-white font-bold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-green-500/40"
+              className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl text-white font-bold transition-colors"
             >
               Awesome!
             </button>
@@ -1000,25 +1005,22 @@ function TeamPage() {
         </div>
       )}
 
-      {/* Custom Error Modal */}
+      {/* Error Modal */}
       {showErrorModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 max-w-md w-full text-center shadow-2xl">
-            <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              <div className="text-white text-2xl font-bold">!</div>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full border border-gray-200 shadow-xl text-center">
+            <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="text-red-600 text-2xl font-bold">!</div>
             </div>
-
-            <h3 className="text-xl font-bold text-white mb-2">
+            <h3 className="text-xl font-bold text-gray-900 mb-2">
               {modalTitle}
             </h3>
-
-            <p className="text-white/80 mb-6">
+            <p className="text-gray-500 mb-6">
               {modalMessage}
             </p>
-
             <button
               onClick={closeModals}
-              className="w-full px-4 py-3 bg-white/20 hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all duration-300"
+              className="w-full px-4 py-3 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-gray-700 font-medium transition-colors"
             >
               Got it
             </button>
