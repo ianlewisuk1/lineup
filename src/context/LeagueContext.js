@@ -22,29 +22,17 @@ export function LeagueProvider({ children }) {
     const [{ data: league }, { data: memberRows }] = await Promise.all([
       supabase.from("leagues").select("*").eq("id", leagueId).single(),
       supabase.from("league_members")
-        .select("id, user_id, team_name, points, avatar_url")
+        .select("id, user_id, team_name, points, avatar_url, users(first_name, last_name)")
         .eq("league_id", leagueId),
     ]);
 
     if (league) setLeagueData(league);
 
-    if (memberRows?.length) {
-      const userIds = memberRows.map((m) => m.user_id);
-      const { data: usersData } = await supabase
-        .from("users")
-        .select("id, first_name, last_name")
-        .in("id", userIds);
-      const userMap = Object.fromEntries((usersData || []).map((u) => [u.id, u]));
-      const enriched = memberRows
-        .map((m) => ({
-          ...m,
-          first_name: userMap[m.user_id]?.first_name || "",
-          last_name: userMap[m.user_id]?.last_name || "",
-        }));
-      setMembers(enriched);
-    } else {
-      setMembers([]);
-    }
+    setMembers((memberRows || []).map((m) => ({
+      ...m,
+      first_name: m.users?.first_name || "",
+      last_name: m.users?.last_name || "",
+    })));
 
     setLoading(false);
   }, [leagueId]);

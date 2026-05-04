@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabase/supabase";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Navigate } from "react-router-dom";
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
 import { parseRecord } from "../utils/teamStats";
 import TeamLogoImage from "../components/league/TeamLogoImage";
+import SplashScreen from "../components/SplashScreen";
+import { useLeague } from "../context/LeagueContext";
 
 function Scouting() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
+  const { isDraftComplete } = useLeague();
   const [teams, setTeams] = useState([]);
   const [allTeams, setAllTeams] = useState({});
   const [draftedTeams, setDraftedTeams] = useState(new Set());
@@ -146,20 +149,8 @@ useEffect(() => {
     );
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <BottomNavBar />
-        <LeagueNav />
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <div className="text-4xl mb-4 animate-spin">⚡</div>
-            <p className="text-lg text-gray-500">Loading team database...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (isDraftComplete) return <Navigate to="/home" />;
+  if (loading) return <SplashScreen />;
 
   const availableCount = teams.filter(team => !team.isDrafted).length;
   const draftedCount = teams.filter(team => team.isDrafted).length;

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import lineupLogo from "./assets/logo-full-name.png";
+import SplashScreen from "./components/SplashScreen";
 import {
   BrowserRouter as Router,
   Routes,
@@ -28,7 +28,6 @@ import TeamPage from "./pages/TeamPage";
 import ConfirmAddTeam from "./pages/ConfirmAddTeam";
 import ConfirmSwapTeam from "./pages/ConfirmSwapTeam";
 import Scouting from "./pages/Scouting";
-import PreDraftOnly from "./components/PreDraftOnly";
 import PrivateRoute from "./components/PrivateRoute";
 import LeagueLayout from "./components/LeagueLayout";
 import AdminPanel from "./pages/AdminPanel";
@@ -42,30 +41,6 @@ function AppWrapper() {
     <Router>
       <App />
     </Router>
-  );
-}
-
-// main loading screen logo, forced on first load, used when other pages load
-function SplashScreen() {
-  return (
-    <div style={{
-      position: 'fixed', inset: 0,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      backgroundColor: '#ffffff',
-      gap: 32,
-    }}>
-      <img src={lineupLogo} alt="Lineup" style={{ width: 250, marginBottom: 32 }} />
-      <div style={{ display: 'flex', gap: 6 }}>
-        {[0, 1, 2].map(i => (
-          <div key={i} style={{
-            width: 8, height: 8, borderRadius: '50%', backgroundColor: '#0072BC',
-            animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite`,
-            opacity: 0.7,
-          }} />
-        ))}
-      </div>
-      <style>{`@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.4; } 50% { transform: scale(1.4); opacity: 1; } }`}</style>
-    </div>
   );
 }
 
@@ -113,7 +88,7 @@ function App() {
         <Route path="draft-room" element={<DraftRoom />} />
         <Route path="league-rules" element={<LeagueRules />} />
         <Route path="members" element={<LeagueMembers />} />
-        <Route path="scouting" element={<PreDraftOnly><Scouting /></PreDraftOnly>} />
+        <Route path="scouting" element={<Scouting />} />
         <Route path="team/:teamName" element={<TeamPage />} />
         <Route path="my-lineup" element={<DraftGuard><MyLineup /></DraftGuard>} />
         <Route path="free-agents" element={<DraftGuard><FreeAgents /></DraftGuard>} />
