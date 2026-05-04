@@ -356,11 +356,19 @@ const TeamLogo = ({
           }}
           title={clickable ? `Click to view ${teamName} details${isCaptain ? ' (Captain - 2x Points)' : ''}${isTripPlay ? ' (Trip Play - 3x Points)' : ''}${isCaptain && isTripPlay ? ' (5x Combo!)' : ''}` : teamName}
         >
-          <HelmetIcon
-            color={team.colors?.primary}
-            alternate_color={team.colors?.secondary}
-            size={size * 0.85}
-          />
+          <div style={{ position: "relative", width: size * 0.85, height: size * 0.85 }}>
+            <HelmetIcon
+              color={team.colors?.primary}
+              alternate_color={team.colors?.secondary}
+              size={size * 0.85}
+            />
+            <img
+              src={`/logos/${normalize(teamName)}.png`}
+              alt={teamName}
+              style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "contain" }}
+              onError={e => { e.target.style.display = "none"; }}
+            />
+          </div>
         </div>
       </div>
     );
