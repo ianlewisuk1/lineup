@@ -12,10 +12,10 @@ const TeamLogoImage = ({ teamId, teamName, primaryColor, size = 32 }) => {
   return (
     <div style={{
       width: size, height: size, borderRadius: "50%", overflow: "hidden",
-      position: "relative", backgroundColor: primaryColor || "#374151",
+      position: "relative", backgroundColor: "white",
       display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
     }}>
-      <span style={{ color: "white", fontSize: size * 0.28, fontWeight: "700", letterSpacing: "0.5px", userSelect: "none" }}>
+      <span style={{ color: primaryColor || "#374151", fontSize: size * 0.28, fontWeight: "700", letterSpacing: "0.5px", userSelect: "none" }}>
         {initials}
       </span>
       <img
