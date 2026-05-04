@@ -4,10 +4,8 @@ import {
   BrowserRouter as Router,
   Routes,
   Route,
-  Outlet,
 } from "react-router-dom";
 import { supabase } from "./supabase/supabase";
-import { DraftProvider, useDraftContext } from "./context/DraftContext";
 
 import SignUp from "./pages/SignUp";
 import VerifyEmail from "./pages/VerifyEmail";
@@ -37,20 +35,6 @@ import AdminLeagueDetail from "./pages/AdminLeagueDetail";
 import AdminTeamsPanel from "./pages/AdminTeamsPanel";
 import AdminSchedulePanel from "./pages/AdminSchedulePanel";
 import LeagueMembers from "./pages/LeagueMembers";
-
-function DraftLayoutInner() {
-  const { loading } = useDraftContext();
-  if (loading) return <SplashScreen />;
-  return <Outlet />;
-}
-
-function DraftLayout() {
-  return (
-    <DraftProvider>
-      <DraftLayoutInner />
-    </DraftProvider>
-  );
-}
 
 function AppWrapper() {
   return (
@@ -99,12 +83,10 @@ function App() {
       <Route path="/admin/teams" element={<AdminTeamsPanel />} />
       <Route path="/admin/schedule" element={<AdminSchedulePanel />} />
 
-      {/* League Pages — all share LeagueProvider via LeagueLayout */}
+      {/* League Pages — all share LeagueProvider + DraftProvider via LeagueLayout */}
       <Route path=":leagueId" element={<PrivateRoute><LeagueLayout /></PrivateRoute>}>
-        <Route element={<DraftLayout />}>
-          <Route path="draft-room" element={<DraftRoom />} />
-          <Route path="scouting" element={<Scouting />} />
-        </Route>
+        <Route path="draft-room" element={<DraftRoom />} />
+        <Route path="scouting" element={<Scouting />} />
         <Route path="league-rules" element={<LeagueRules />} />
         <Route path="members" element={<LeagueMembers />} />
         <Route path="team/:teamName" element={<TeamPage />} />

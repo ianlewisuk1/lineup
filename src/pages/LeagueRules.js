@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabase/supabase";
 import { useLeague } from "../context/LeagueContext";
+import { useDraftContext } from "../context/DraftContext";
 import {
   Settings,
   Calendar,
@@ -26,12 +27,14 @@ function LeagueRules() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
   const { leagueData, members: contextMembers, isAdmin } = useLeague();
-  const [adminName, setAdminName] = useState("");
+  const { draft } = useDraftContext();
   const [formState, setFormState] = useState({});
   const [draftOrder, setDraftOrder] = useState([]);
   const [error, setError] = useState("");
-  const [draftStarted, setDraftStarted] = useState(false);
-  const [loading, setLoading] = useState(true);
+
+  const draftStarted = draft?.status === 'active' || draft?.status === 'complete' || leagueData?.draft_complete || false;
+  const adminMember = contextMembers.find((m) => m.user_id === leagueData?.created_by);
+  const adminName = adminMember ? `${adminMember.first_name} ${adminMember.last_name}`.trim() : "";
 
   const members = useMemo(() =>
     contextMembers.map((m) => ({
@@ -75,30 +78,6 @@ function LeagueRules() {
     });
   }, [leagueData]);
 
-  useEffect(() => {
-    if (!leagueData?.id) return;
-    const fetchPageData = async () => {
-      try {
-        const [{ data: draftRow }, adminResult] = await Promise.all([
-          supabase.from('drafts').select('id, status').eq('league_id', leagueId).single(),
-          leagueData.created_by
-            ? supabase.from('users').select('first_name, last_name').eq('id', leagueData.created_by).single()
-            : Promise.resolve({ data: null }),
-        ]);
-        setDraftStarted(
-          draftRow?.status === 'active' || draftRow?.status === 'complete' || leagueData.draft_complete
-        );
-        if (adminResult.data) {
-          setAdminName(`${adminResult.data.first_name || ""} ${adminResult.data.last_name || ""}`.trim());
-        }
-        setLoading(false);
-      } catch (err) {
-        console.error("Error fetching league page data:", err);
-        setLoading(false);
-      }
-    };
-    fetchPageData();
-  }, [leagueData?.id, leagueData?.created_by, leagueData?.draft_complete, leagueId]);
 
   useEffect(() => {
     if (leagueData?.draft_order_type === "admin" && members.length > 0 && !draftStarted) {
@@ -260,21 +239,6 @@ function LeagueRules() {
       default:       return draftType;
     }
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 overflow-x-hidden">
-        <LeagueNav />
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <div className="text-4xl mb-4 animate-spin">⚙️</div>
-            <p className="text-lg text-gray-500">Loading league settings...</p>
-          </div>
-        </div>
-        <BottomNavBar />
-      </div>
-    );
-  }
 
   if (!leagueData) {
     return (

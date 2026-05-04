@@ -1,18 +1,13 @@
 import { Outlet } from "react-router-dom";
-import { LeagueProvider } from "../context/LeagueContext";
-import { useLeague } from "../context/LeagueContext";
+import { LeagueProvider, useLeague } from "../context/LeagueContext";
+import { DraftProvider, useDraftContext } from "../context/DraftContext";
+import SplashScreen from "./SplashScreen";
 
 function LeagueLayoutInner() {
-  const { loading } = useLeague();
+  const { loading: leagueLoading } = useLeague();
+  const { loading: draftLoading } = useDraftContext();
 
-  if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2.5px solid #0072BC', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
-  }
+  if (leagueLoading || draftLoading) return <SplashScreen />;
 
   return <Outlet />;
 }
@@ -20,7 +15,9 @@ function LeagueLayoutInner() {
 function LeagueLayout() {
   return (
     <LeagueProvider>
-      <LeagueLayoutInner />
+      <DraftProvider>
+        <LeagueLayoutInner />
+      </DraftProvider>
     </LeagueProvider>
   );
 }
