@@ -24,7 +24,6 @@ import DraftGuard from "./components/DraftGuard";
 import HowToPlay from "./pages/HowToPlay";
 import LeagueRules from "./pages/LeagueRules";
 import Stats from "./pages/Stats";
-import TeamPage from "./pages/TeamPage";
 import ConfirmAddTeam from "./pages/ConfirmAddTeam";
 import ConfirmSwapTeam from "./pages/ConfirmSwapTeam";
 import Scouting from "./pages/Scouting";
@@ -89,8 +88,7 @@ function App() {
         <Route path="scouting" element={<Scouting />} />
         <Route path="league-rules" element={<LeagueRules />} />
         <Route path="members" element={<LeagueMembers />} />
-        <Route path="team/:teamName" element={<TeamPage />} />
-        <Route path="my-lineup" element={<DraftGuard><MyLineup /></DraftGuard>} />
+<Route path="my-lineup" element={<DraftGuard><MyLineup /></DraftGuard>} />
         <Route path="free-agents" element={<DraftGuard><FreeAgents /></DraftGuard>} />
         <Route path="my-league" element={<DraftGuard><MyLeague /></DraftGuard>} />
         <Route path="stats" element={<DraftGuard><Stats /></DraftGuard>} />

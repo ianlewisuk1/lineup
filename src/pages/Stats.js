@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useRef } from "react";
 import { supabase } from "../supabase/supabase";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { Search, Filter, ChevronDown, BarChart3, ChevronUp } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
+import TeamDrawer from "../components/league/TeamDrawer";
 
 function Stats() {
   const { leagueId } = useParams();
-  const navigate = useNavigate();
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [conferenceList, setConferenceList] = useState([]);
@@ -16,6 +16,7 @@ function Stats() {
   const [selectedStat, setSelectedStat] = useState("gamePoints");
   const [sortColumn, setSortColumn] = useState("gamePoints");
   const [sortDirection, setSortDirection] = useState("descending");
+  const [drawerTeam, setDrawerTeam] = useState(null);
 
   // ADDED: Helper functions from TeamPage to calculate averages properly
   const parseRecord = (record) => {
@@ -159,7 +160,7 @@ function Stats() {
   });
 
   const handleTeamClick = (teamName) => {
-    navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
+    setDrawerTeam(teamName);
   };
 
   const handleColumnSort = (column) => {
@@ -430,6 +431,7 @@ function Stats() {
           </div>
         )}
       </div>
+      <TeamDrawer teamName={drawerTeam} onClose={() => setDrawerTeam(null)} />
     </div>
   );
 }

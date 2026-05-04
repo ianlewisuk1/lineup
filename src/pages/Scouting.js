@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { useParams, useNavigate, Navigate } from "react-router-dom";
+import { useParams, Navigate } from "react-router-dom";
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
 import { parseRecord } from "../utils/teamStats";
@@ -7,10 +7,10 @@ import TeamLogoImage from "../components/league/TeamLogoImage";
 import { useLeague } from "../context/LeagueContext";
 import { useAuth } from "../context/AuthContext";
 import { useDraftContext } from "../context/DraftContext";
+import TeamDrawer from "../components/league/TeamDrawer";
 
 function Scouting() {
   const { leagueId } = useParams();
-  const navigate = useNavigate();
   const { isDraftComplete } = useLeague();
   const { teams: authTeams } = useAuth();
   const { pickedTeamIds } = useDraftContext();
@@ -18,6 +18,7 @@ function Scouting() {
   const [sortConfig, setSortConfig] = useState({ key: "philMetricDraftRank", direction: "asc" });
   const [conferenceFilter, setConferenceFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
+  const [drawerTeam, setDrawerTeam] = useState(null);
 
   const teams = useMemo(() =>
     Object.values(authTeams)
@@ -42,7 +43,7 @@ function Scouting() {
   if (isDraftComplete) return <Navigate to="/home" />;
 
   const handleTeamClick = (teamName) => {
-    navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
+    setDrawerTeam(teamName);
   };
 
   const sortBy = (key) => {
@@ -358,6 +359,7 @@ function Scouting() {
           )}
         </div>
       </div>
+      <TeamDrawer teamName={drawerTeam} onClose={() => setDrawerTeam(null)} />
     </div>
   );
 }

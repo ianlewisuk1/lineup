@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { supabase } from "../supabase/supabase";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { Plus, Search, Filter, ChevronDown } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
@@ -9,6 +9,7 @@ import { useModalState } from "../hooks/useModalState";
 import { parseGamesPlayed as parseRecord, calculateAverage } from "../utils/teamStats";
 import { useSeasonConfig } from "../hooks/useSeasonConfig";
 import TeamLogoImage from "../components/league/TeamLogoImage";
+import TeamDrawer from "../components/league/TeamDrawer";
 
 // Compact Sort Button Component
 const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
@@ -31,7 +32,6 @@ const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
 
 function FreeAgents() {
   const { leagueId } = useParams();
-  const navigate = useNavigate();
   const { currentUserId, currentMemberId, currentWeek } = useLeague();
   const [teamsByConference, setTeamsByConference] = useState({});
   const [conferenceList, setConferenceList] = useState([]);
@@ -39,6 +39,7 @@ function FreeAgents() {
   const [draftedTeams, setDraftedTeams] = useState({});
   const [loading, setLoading] = useState(true);
   const [userTeams, setUserTeams] = useState([]);
+  const [drawerTeam, setDrawerTeam] = useState(null);
   const [selectedDropTeam, setSelectedDropTeam] = useState("");
   const [pendingAddTeam, setPendingAddTeam] = useState("");
   const [showSwapUI, setShowSwapUI] = useState(false);
@@ -152,7 +153,7 @@ function FreeAgents() {
   }, [leagueId]);
 
   const handleTeamClick = (teamName) => {
-    navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
+    setDrawerTeam(teamName);
   };
 
   // MODIFIED: Added free agency lock check
@@ -903,6 +904,7 @@ function FreeAgents() {
           </div>
         )}
       </div>
+      <TeamDrawer teamName={drawerTeam} onClose={() => setDrawerTeam(null)} />
     </div>
   );
 }

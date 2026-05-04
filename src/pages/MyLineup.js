@@ -8,6 +8,7 @@ import WeeklyLineupManager from "../components/WeeklyLineupManager";
 import { useLeague } from "../context/LeagueContext";
 import { useTeams } from "../hooks/useTeams";
 import { Calendar, ChevronDown, ChevronUp } from "lucide-react";
+import TeamDrawer from "../components/league/TeamDrawer";
 import { SEASON_YEAR } from "../utils/season";
 
 function MyLineup() {
@@ -29,6 +30,7 @@ function MyLineup() {
   const [currentWeekRank, setCurrentWeekRank] = useState(null);
   const [rankChange, setRankChange] = useState(0);
   const [loadingRank, setLoadingRank] = useState(false);
+  const [drawerTeam, setDrawerTeam] = useState(null);
 
   const getOrdinalSuffix = (rank) => {
     if (rank >= 11 && rank <= 13) return 'th';
@@ -163,7 +165,7 @@ function MyLineup() {
 
     const handleClick = () => {
       if (clickable && teamName) {
-        navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
+        setDrawerTeam(teamName);
       }
     };
 
@@ -651,7 +653,7 @@ function MyLineup() {
   }, [leagueId]);
 
   const handleTeamClick = (teamName) => {
-    navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
+    setDrawerTeam(teamName);
   };
 
   const handleSaveSmackTalk = async () => {
@@ -833,6 +835,7 @@ function MyLineup() {
 
       {/* Success Modal */}
       <SuccessModal />
+      <TeamDrawer teamName={drawerTeam} onClose={() => setDrawerTeam(null)} />
     </div>
   );
 }
