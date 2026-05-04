@@ -6,7 +6,7 @@ import { useLeague } from '../context/LeagueContext';
 import { supabase } from '../supabase/supabase';
 import BottomNavBar from '../components/BottomNavBar';
 import LeagueNav from '../components/LeagueNav';
-import HelmetIcon from '../components/league/HelmetIcon';
+import TeamLogoImage from '../components/league/TeamLogoImage';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Presence — tracks who is currently in the draft room
@@ -404,7 +404,7 @@ export default function DraftRoom() {
                           : 'bg-gray-50 border-gray-100 cursor-default opacity-60'
                       }`}
                     >
-                      <HelmetIcon color={team.color} alternate_color={team.alternate_color} size={30} />
+                      <TeamLogoImage teamId={team.id} teamName={team.school} primaryColor={team.color} size={30} />
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-sm text-gray-900 truncate">{team.school}</div>
                         <div className="text-xs text-gray-400">{team.conference}</div>
@@ -447,7 +447,7 @@ export default function DraftRoom() {
                       >
                         {flash && <Check size={12} className="text-green-600 flex-shrink-0" />}
                         <span className="text-gray-400 text-xs w-5 flex-shrink-0">#{pick.pick_number}</span>
-                        <HelmetIcon color={team?.color} alternate_color={team?.alternate_color} size={18} />
+                        <TeamLogoImage teamId={team?.id} teamName={team?.school} primaryColor={team?.color} size={18} />
                         <div className="flex-1 min-w-0">
                           <div className="truncate font-medium text-gray-900">{team?.school ?? pick.team_id}</div>
                           <div className="text-gray-400 text-xs truncate">{picker?.name}</div>
@@ -535,7 +535,7 @@ export default function DraftRoom() {
                     const team = teams.find((t) => t.id === teamId);
                     return (
                       <div key={teamId} className="flex items-center gap-2 text-sm bg-gray-50 rounded-lg p-2">
-                        <HelmetIcon color={team?.color} alternate_color={team?.alternate_color} size={18} />
+                        <TeamLogoImage teamId={team?.id} teamName={team?.school} primaryColor={team?.color} size={18} />
                         <span className="truncate text-gray-900">{team?.school ?? teamId}</span>
                       </div>
                     );

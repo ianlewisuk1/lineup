@@ -1,13 +1,7 @@
 import React from "react";
 import { normalize, getScheduleEntry, isTeamOnBye } from "../../utils/scheduleUtils";
 import { getCurrentWeekNumber } from "../../utils/leagueUtils";
-
-const getInitials = (name) => {
-  if (!name) return "?";
-  const words = name.trim().split(/\s+/);
-  if (words.length === 1) return name.slice(0, 2).toUpperCase();
-  return words.map(w => w[0]).join("").slice(0, 2).toUpperCase();
-};
+import TeamLogoImage from "./TeamLogoImage";
 
 const TeamLogo = ({
   teamName,
@@ -111,7 +105,6 @@ const TeamLogo = ({
 
   const spreadDisplay = getSpreadDisplay();
   const primaryColor = team?.colors?.primary || "#374151";
-  const initials = getInitials(teamName);
 
   return (
     <div style={{ position: "relative", display: "inline-block" }}>
@@ -198,21 +191,7 @@ const TeamLogo = ({
         }}
         title={clickable ? `Click to view ${teamName} details${isCaptain ? " (Captain - 2x Points)" : ""}${isTripPlay ? " (Trip Play - 3x Points)" : ""}${isCaptain && isTripPlay ? " (5x Combo!)" : ""}` : teamName}
       >
-        {/* Initials fallback — PNG overlays this when available */}
-        <div style={{
-          width: "100%", height: "100%", backgroundColor: primaryColor,
-          display: "flex", alignItems: "center", justifyContent: "center"
-        }}>
-          <span style={{ color: "white", fontSize: size * 0.28, fontWeight: "700", letterSpacing: "0.5px", userSelect: "none" }}>
-            {initials}
-          </span>
-        </div>
-        <img
-          src={`/logos/${normalize(teamName)}.png`}
-          alt={teamName}
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }}
-          onError={e => { e.target.style.display = "none"; }}
-        />
+        <TeamLogoImage teamId={normalize(teamName)} teamName={teamName} primaryColor={primaryColor} size={size} />
       </div>
     </div>
   );

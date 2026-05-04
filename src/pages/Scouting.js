@@ -4,7 +4,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
 import { parseRecord } from "../utils/teamStats";
-import HelmetIcon from "../components/league/HelmetIcon";
+import TeamLogoImage from "../components/league/TeamLogoImage";
 
 function Scouting() {
   const { leagueId } = useParams();
@@ -140,17 +140,8 @@ useEffect(() => {
   const TeamLogo = ({ teamName, size = 24, isDrafted = false }) => {
     const team = allTeams[teamName];
     return (
-      <div style={{
-        width: size, height: size, borderRadius: "50%", overflow: "hidden",
-        border: "1px solid #E5E7EB", display: "flex", alignItems: "center",
-        justifyContent: "center", backgroundColor: "#F9FAFB", flexShrink: 0,
-        opacity: isDrafted ? 0.4 : 1, filter: isDrafted ? "grayscale(100%)" : "none"
-      }}>
-        <HelmetIcon
-          color={team?.colors?.primary || team?.color}
-          alternate_color={team?.colors?.secondary || team?.alternate_color}
-          size={size * 0.85}
-        />
+      <div style={{ opacity: isDrafted ? 0.4 : 1, filter: isDrafted ? "grayscale(100%)" : "none", flexShrink: 0 }}>
+        <TeamLogoImage teamId={team?.id} teamName={teamName} primaryColor={team?.colors?.primary || team?.color} size={size} />
       </div>
     );
   };

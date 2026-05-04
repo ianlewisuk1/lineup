@@ -8,7 +8,7 @@ import { useLeague } from "../context/LeagueContext";
 import { useModalState } from "../hooks/useModalState";
 import { parseGamesPlayed as parseRecord, calculateAverage } from "../utils/teamStats";
 import { useSeasonConfig } from "../hooks/useSeasonConfig";
-import HelmetIcon from "../components/league/HelmetIcon";
+import TeamLogoImage from "../components/league/TeamLogoImage";
 
 // Compact Sort Button Component
 const SortButton = ({ label, sortKey, sortConfig, onSort }) => (
@@ -511,13 +511,7 @@ function FreeAgents() {
         {/* Header with team info, sort data, and add button */}
         <div className="flex items-center gap-3 mb-3">
           {/* Team Logo */}
-          <div className="w-8 h-8 rounded-full overflow-hidden border border-white/20 bg-white/5 flex-shrink-0 flex items-center justify-center">
-            <HelmetIcon
-              color={team.colors?.primary || team.color}
-              alternate_color={team.colors?.secondary || team.alternate_color}
-              size={28}
-            />
-          </div>
+          <TeamLogoImage teamId={team.id} teamName={team.school} primaryColor={team.colors?.primary || team.color} size={32} />
 
           {/* Team Name */}
           <div className="flex-1 min-w-0">
