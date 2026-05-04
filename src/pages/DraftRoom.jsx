@@ -1,16 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Clock, Users, Trophy, ChevronRight, Check, Shuffle, ChevronUp, ChevronDown } from 'lucide-react';
-import { useDraft } from '../hooks/useDraft';
+import { useDraftContext } from '../context/DraftContext';
 import { useLeague } from '../context/LeagueContext';
 import { supabase } from '../supabase/supabase';
 import BottomNavBar from '../components/BottomNavBar';
 import LeagueNav from '../components/LeagueNav';
 import TeamLogoImage from '../components/league/TeamLogoImage';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Presence — tracks who is currently in the draft room
-// ─────────────────────────────────────────────────────────────────────────────
+// Tracks who is currently in the draft room
 function usePresence(leagueId, currentUserId) {
   const [onlineIds, setOnlineIds] = useState(new Set());
 
@@ -38,9 +36,6 @@ function usePresence(leagueId, currentUserId) {
   return onlineIds;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Countdown — derived entirely from pick_deadline, no syncing needed
-// ─────────────────────────────────────────────────────────────────────────────
 function useCountdown(deadline) {
   const [secondsLeft, setSecondsLeft] = useState(null);
 
@@ -58,20 +53,17 @@ function useCountdown(deadline) {
   return secondsLeft;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DraftRoom
-// ─────────────────────────────────────────────────────────────────────────────
 export default function DraftRoom() {
   const { leagueId } = useParams();
-  const { leagueData, isAdmin } = useLeague();
+  const { leagueData, isAdmin, members } = useLeague();
   const navigate = useNavigate();
   const {
-    draft, picks, members, teams, availableTeams,
+    draft, picks, teams, availableTeams,
     currentPickerUid, isMyTurn, pickDeadline,
     totalPicks, nManagers, rosterByUser, memberMap,
-    currentUserId, loading, error,
+    currentUserId, error,
     makePick, startDraft, saveDraftOrder,
-  } = useDraft(leagueId);
+  } = useDraftContext();
 
   const [search, setSearch]           = useState('');
   const [actionError, setActionError] = useState('');
@@ -148,15 +140,6 @@ export default function DraftRoom() {
     setStarting(false);
     if (result?.error) setActionError(result.error);
   };
-
-  // ── Loading / error ──────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500 text-lg">Loading draft…</div>
-      </div>
-    );
-  }
 
   if (error) {
     return (
@@ -409,8 +392,8 @@ export default function DraftRoom() {
                         <div className="font-semibold text-sm text-gray-900 truncate">{team.school}</div>
                         <div className="text-xs text-gray-400">{team.conference}</div>
                       </div>
-                      {team.game_points != null && (
-                        <div className="text-xs text-gray-400 flex-shrink-0">{team.game_points} pts</div>
+                      {team.currentSeason?.gamePoints != null && (
+                        <div className="text-xs text-gray-400 flex-shrink-0">{team.currentSeason.gamePoints} pts</div>
                       )}
                       {isMyTurn && !picking && (
                         <ChevronRight size={14} className="text-blue-500 flex-shrink-0" />
@@ -475,9 +458,7 @@ export default function DraftRoom() {
                       const team = teams.find((t) => t.id === teamId);
                       return (
                         <div key={teamId} className="flex items-center gap-2 text-sm text-gray-900">
-                          {team?.logos?.[0] && (
-                            <img src={team.logo_filename ? `/logos/${team.logo_filename}` : ''} alt="" className="w-5 h-5 object-contain" />
-                          )}
+                          <TeamLogoImage teamId={team?.id} teamName={team?.school} primaryColor={team?.color} size={18} />
                           <span>{team?.school ?? teamId}</span>
                         </div>
                       );

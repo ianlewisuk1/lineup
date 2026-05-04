@@ -68,7 +68,7 @@ export function LeagueProvider({ children }) {
     : null;
 
   return (
-    <LeagueContext.Provider value={{ leagueData, members, isAdmin, isDraftComplete, currentUserId, currentMemberId, currentWeek, loading }}>
+    <LeagueContext.Provider value={{ leagueId, leagueData, members, isAdmin, isDraftComplete, currentUserId, currentMemberId, currentWeek, loading }}>
       {children}
     </LeagueContext.Provider>
   );

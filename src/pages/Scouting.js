@@ -1,87 +1,45 @@
-import React, { useEffect, useState } from "react";
-import { supabase } from "../supabase/supabase";
+import React, { useMemo, useState } from "react";
 import { useParams, useNavigate, Navigate } from "react-router-dom";
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
 import { parseRecord } from "../utils/teamStats";
 import TeamLogoImage from "../components/league/TeamLogoImage";
-import SplashScreen from "../components/SplashScreen";
 import { useLeague } from "../context/LeagueContext";
+import { useAuth } from "../context/AuthContext";
+import { useDraftContext } from "../context/DraftContext";
 
 function Scouting() {
   const { leagueId } = useParams();
   const navigate = useNavigate();
   const { isDraftComplete } = useLeague();
-  const [teams, setTeams] = useState([]);
-  const [allTeams, setAllTeams] = useState({});
-  const [draftedTeams, setDraftedTeams] = useState(new Set());
-  const [loading, setLoading] = useState(true);
+  const { teams: authTeams } = useAuth();
+  const { pickedTeamIds } = useDraftContext();
+
   const [sortConfig, setSortConfig] = useState({ key: "philMetricDraftRank", direction: "asc" });
   const [conferenceFilter, setConferenceFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
 
-useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const { data: teamsData, error: teamsError } = await supabase.from('teams').select('*, team_season_stats(*)');
-        if (teamsError) throw teamsError;
+  if (isDraftComplete) return <Navigate to="/home" />;
 
-        const teamsMap = {};
-        (teamsData || []).forEach(teamData => {
-          if (teamData.school) {
-            const stats = teamData.team_season_stats?.[0] || {};
-            teamsMap[teamData.school] = {
-              logo: teamData.logo_filename ? `/logos/${teamData.logo_filename}` : null,
-              color: teamData.color || null,
-              ...teamData,
-              game_points: stats.game_points || 0,
-              record: stats.record || null,
-              sos_rank: stats.sos_rank || null,
-              prev_year_points: stats.prev_year_points || 0,
-              is_on_bye: stats.is_on_bye || false,
-              next_opponent: stats.next_opponent || null,
-            };
-          }
-        });
-        setAllTeams(teamsMap);
+  const teams = useMemo(() =>
+    Object.values(authTeams)
+      .filter((t) => (t.classification || "").toLowerCase() === "fbs")
+      .map((t) => ({
+        ...t,
+        logo: t.logo_filename ? `/logos/${t.logo_filename}` : null,
+        game_points: t.currentSeason?.gamePoints || 0,
+        record: t.currentSeason?.record || null,
+        sos_rank: t.currentSeason?.sosRank || null,
+        prev_year_points: t.currentSeason?.prevYearPoints || 0,
+        is_on_bye: t.currentSeason?.isOnBye || false,
+        next_opponent: t.currentSeason?.nextOpponent || null,
+        isDrafted: pickedTeamIds.has(t.id),
+      })),
+  [authTeams, pickedTeamIds]);
 
-        const draftedTeamsSet = new Set();
-        if (leagueId) {
-          const { data: picks } = await supabase
-            .from('draft_picks')
-            .select('team_id')
-            .eq('league_id', leagueId);
-          (picks ?? []).forEach((p) => draftedTeamsSet.add(p.team_id));
-        }
-        setDraftedTeams(draftedTeamsSet);
-
-        const fbsTeams = (teamsData || [])
-          .filter((team) => (team.classification || "").toLowerCase() === "fbs")
-          .map(team => {
-            const stats = team.team_season_stats?.[0] || {};
-            return {
-              ...team,
-              logo: team.logo_filename ? `/logos/${team.logo_filename}` : null,
-              game_points: stats.game_points || 0,
-              record: stats.record || null,
-              sos_rank: stats.sos_rank || null,
-              prev_year_points: stats.prev_year_points || 0,
-              is_on_bye: stats.is_on_bye || false,
-              next_opponent: stats.next_opponent || null,
-              isDrafted: draftedTeamsSet.has(team.id)
-            };
-          });
-
-        setTeams(fbsTeams);
-        setLoading(false);
-      } catch (error) {
-        console.error("Error fetching data:", error);
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [leagueId]);
+  const allTeams = useMemo(() =>
+    Object.fromEntries(teams.map((t) => [t.school, t])),
+  [teams]);
 
   const handleTeamClick = (teamName) => {
     navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
@@ -114,11 +72,9 @@ useEffect(() => {
     if (bValue == null) return -1;
 
     if (sortConfig.key === "school") {
-      const aSchool = a.school || "";
-      const bSchool = b.school || "";
       return sortConfig.direction === "asc"
-        ? aSchool.localeCompare(bSchool)
-        : bSchool.localeCompare(aSchool);
+        ? a.school.localeCompare(b.school)
+        : b.school.localeCompare(a.school);
     }
 
     if (sortConfig.key === "prevYearRecord" || sortConfig.key === "prevYearAts") {
@@ -139,6 +95,8 @@ useEffect(() => {
   });
 
   const uniqueConferences = [...new Set(teams.map((team) => team.conference))].sort();
+  const availableCount = teams.filter((t) => !t.isDrafted).length;
+  const draftedCount   = teams.filter((t) => t.isDrafted).length;
 
   const TeamLogo = ({ teamName, size = 24, isDrafted = false }) => {
     const team = allTeams[teamName];
@@ -148,12 +106,6 @@ useEffect(() => {
       </div>
     );
   };
-
-  if (isDraftComplete) return <Navigate to="/home" />;
-  if (loading) return <SplashScreen />;
-
-  const availableCount = teams.filter(team => !team.isDrafted).length;
-  const draftedCount = teams.filter(team => team.isDrafted).length;
 
   return (
     <div className="min-h-screen bg-gray-50">
