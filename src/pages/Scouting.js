@@ -19,8 +19,6 @@ function Scouting() {
   const [conferenceFilter, setConferenceFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
 
-  if (isDraftComplete) return <Navigate to="/home" />;
-
   const teams = useMemo(() =>
     Object.values(authTeams)
       .filter((t) => (t.classification || "").toLowerCase() === "fbs")
@@ -40,6 +38,8 @@ function Scouting() {
   const allTeams = useMemo(() =>
     Object.fromEntries(teams.map((t) => [t.school, t])),
   [teams]);
+
+  if (isDraftComplete) return <Navigate to="/home" />;
 
   const handleTeamClick = (teamName) => {
     navigate(`/${leagueId}/team/${encodeURIComponent(teamName)}`);
