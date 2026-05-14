@@ -93,6 +93,20 @@ function ScheduleStrip({ schedule, teamName, currentWeek, allTeams }) {
   );
 }
 
+const _scheduleCache = new Map();
+
+async function fetchSchedule(schoolName) {
+  if (_scheduleCache.has(schoolName)) return _scheduleCache.get(schoolName);
+  const { data, error } = await supabase
+    .from("games")
+    .select("*")
+    .or(`home_team.eq.${schoolName},away_team.eq.${schoolName}`);
+  if (error) { console.error("Schedule fetch error:", error); return []; }
+  const sorted = (data || []).sort((a, b) => (parseInt(a.week) || 0) - (parseInt(b.week) || 0));
+  _scheduleCache.set(schoolName, sorted);
+  return sorted;
+}
+
 export default function TeamDrawer({ teamName, onClose }) {
   const { teams: allTeams, currentUser, seasonConfig } = useAuth();
   const { leagueId, isDraftComplete, currentWeek } = useLeague();
@@ -163,15 +177,6 @@ export default function TeamDrawer({ teamName, onClose }) {
     run();
     return () => { cancelled = true; };
   }, [teamName, leagueId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function fetchSchedule(schoolName) {
-    const { data, error } = await supabase
-      .from("games")
-      .select("*")
-      .or(`home_team.eq.${schoolName},away_team.eq.${schoolName}`);
-    if (error) { console.error("Schedule fetch error:", error); return []; }
-    return (data || []).sort((a, b) => (parseInt(a.week) || 0) - (parseInt(b.week) || 0));
-  }
 
   async function fetchOwnership(schoolName, weekNum) {
     const normalized = normalizeTeamName(schoolName);

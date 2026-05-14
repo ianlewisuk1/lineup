@@ -1,19 +1,19 @@
 import React, { useMemo, useState } from "react";
-import { useParams, Navigate } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
-import { parseRecord } from "../utils/teamStats";
 import TeamLogoImage from "../components/league/TeamLogoImage";
 import { useLeague } from "../context/LeagueContext";
 import { useAuth } from "../context/AuthContext";
 import { useDraftContext } from "../context/DraftContext";
+import { usePreseasonStats } from "../hooks/usePreseasonStats";
 import TeamDrawer from "../components/league/TeamDrawer";
 
 function Scouting() {
-  const { leagueId } = useParams();
   const { isDraftComplete } = useLeague();
   const { teams: authTeams } = useAuth();
   const { pickedTeamIds } = useDraftContext();
+  const { preseasonData } = usePreseasonStats();
 
   const [sortConfig, setSortConfig] = useState({ key: "philMetricDraftRank", direction: "asc" });
   const [conferenceFilter, setConferenceFilter] = useState("All");
@@ -23,18 +23,19 @@ function Scouting() {
   const teams = useMemo(() =>
     Object.values(authTeams)
       .filter((t) => (t.classification || "").toLowerCase() === "fbs")
-      .map((t) => ({
-        ...t,
-        logo: t.logo_filename ? `/logos/${t.logo_filename}` : null,
-        game_points: t.currentSeason?.gamePoints || 0,
-        record: t.currentSeason?.record || null,
-        sos_rank: t.currentSeason?.sosRank || null,
-        prev_year_points: t.currentSeason?.prevYearPoints || 0,
-        is_on_bye: t.currentSeason?.isOnBye || false,
-        next_opponent: t.currentSeason?.nextOpponent || null,
-        isDrafted: pickedTeamIds.has(t.id),
-      })),
-  [authTeams, pickedTeamIds]);
+      .map((t) => {
+        const pre = preseasonData[t.id] || {};
+        return {
+          ...t,
+          isDrafted:           pickedTeamIds.has(t.id),
+          sos_rank:            t.currentSeason?.sosRank ?? null,
+          prev_year_points:    pre.prev_year_points ?? null,
+          confOdds:            pre.conf_odds ?? null,
+          philMetricDraftRank: pre.phil_metric_rank ?? null,
+          predictedWins:       pre.predicted_wins ?? null,
+        };
+      }),
+  [authTeams, pickedTeamIds, preseasonData]);
 
   const allTeams = useMemo(() =>
     Object.fromEntries(teams.map((t) => [t.school, t])),
@@ -42,16 +43,11 @@ function Scouting() {
 
   if (isDraftComplete) return <Navigate to="/home" />;
 
-  const handleTeamClick = (teamName) => {
-    setDrawerTeam(teamName);
-  };
-
   const sortBy = (key) => {
-    let direction = "asc";
-    if (sortConfig.key === key && sortConfig.direction === "asc") {
-      direction = "desc";
-    }
-    setSortConfig({ key, direction });
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+    }));
   };
 
   const filteredTeams = teams.filter((team) => {
@@ -76,14 +72,6 @@ function Scouting() {
       return sortConfig.direction === "asc"
         ? a.school.localeCompare(b.school)
         : b.school.localeCompare(a.school);
-    }
-
-    if (sortConfig.key === "prevYearRecord" || sortConfig.key === "prevYearAts") {
-      const [aWins, aLosses] = parseRecord(aValue);
-      const [bWins, bLosses] = parseRecord(bValue);
-      const aPct = aWins + aLosses > 0 ? aWins / (aWins + aLosses) : 0;
-      const bPct = bWins + bLosses > 0 ? bWins / (bWins + bLosses) : 0;
-      return sortConfig.direction === "asc" ? aPct - bPct : bPct - aPct;
     }
 
     if (typeof aValue === "number" && typeof bValue === "number") {
@@ -174,7 +162,7 @@ function Scouting() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[1000px]" style={{ borderCollapse: "collapse" }}>
+            <table className="w-full text-sm min-w-[700px]" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ backgroundColor: "#0072BC", color: "white" }}>
                   <th style={{
@@ -221,15 +209,11 @@ function Scouting() {
                     </span>
                   </th>
 
-                  <Th label="Conf Odds" sortKey="confOdds" sortBy={sortBy} sortConfig={sortConfig} />
                   <Th label="PhilMetrics" sortKey="philMetricDraftRank" sortBy={sortBy} sortConfig={sortConfig} />
-                  <Th label="Power Rank" sortKey="powerRank" sortBy={sortBy} sortConfig={sortConfig} />
-                  <Th label="Ret. Starters" sortKey="retStarters" sortBy={sortBy} sortConfig={sortConfig} />
-                  <Th label="SOS Rank" sortKey="sosRank" sortBy={sortBy} sortConfig={sortConfig} />
-                  <Th label="2024 Pts" sortKey="prevYearPoints" sortBy={sortBy} sortConfig={sortConfig} />
-                  <Th label="2024 Record" sortKey="prevYearRecord" sortBy={sortBy} sortConfig={sortConfig} />
-                  <Th label="2024 ATS" sortKey="prevYearAts" sortBy={sortBy} sortConfig={sortConfig} />
-                  <Th label="Pred. Wins" sortKey="predictedWins" sortBy={sortBy} sortConfig={sortConfig} />
+                  <Th label="Conf Odds"   sortKey="confOdds"            sortBy={sortBy} sortConfig={sortConfig} />
+                  <Th label="SOS Rank"    sortKey="sos_rank"            sortBy={sortBy} sortConfig={sortConfig} />
+                  <Th label="Pred. Wins"  sortKey="predictedWins"       sortBy={sortBy} sortConfig={sortConfig} />
+                  <Th label="2025 Pts"    sortKey="prev_year_points"    sortBy={sortBy} sortConfig={sortConfig} />
                 </tr>
               </thead>
               <tbody>
@@ -271,7 +255,7 @@ function Scouting() {
                       <div>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "2px" }}>
                           <div
-                            onClick={() => handleTeamClick(team.school)}
+                            onClick={() => setDrawerTeam(team.school)}
                             style={{
                               cursor: "pointer",
                               color: team.isDrafted ? "#9CA3AF" : "#0072BC",
@@ -304,6 +288,21 @@ function Scouting() {
                     </td>
 
                     <td style={tdStyle}>
+                      {team.philMetricDraftRank != null ? (
+                        <span style={{
+                          backgroundColor: team.philMetricDraftRank <= 25 ? "#DCFCE7" : team.philMetricDraftRank <= 50 ? "#FEF3C7" : "#F3F4F6",
+                          color: team.philMetricDraftRank <= 25 ? "#166534" : team.philMetricDraftRank <= 50 ? "#92400E" : "#374151",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          fontSize: "12px",
+                          fontWeight: "600",
+                        }}>
+                          #{team.philMetricDraftRank}
+                        </span>
+                      ) : "-"}
+                    </td>
+
+                    <td style={tdStyle}>
                       {team.confOdds != null ? (
                         <span style={{
                           backgroundColor: team.confOdds >= 20 ? "#DCFCE7" : team.confOdds >= 10 ? "#FEF3C7" : "#FEE2E2",
@@ -317,33 +316,18 @@ function Scouting() {
                         </span>
                       ) : "-"}
                     </td>
-                    <td style={tdStyle}>
-                      {team.philMetricDraftRank ? (
-                        <span style={{
-                          backgroundColor: team.philMetricDraftRank <= 25 ? "#DCFCE7" : team.philMetricDraftRank <= 50 ? "#FEF3C7" : "#F3F4F6",
-                          color: team.philMetricDraftRank <= 25 ? "#166534" : team.philMetricDraftRank <= 50 ? "#92400E" : "#374151",
-                          padding: "2px 6px",
-                          borderRadius: "4px",
-                          fontSize: "12px",
-                          fontWeight: "600",
-                        }}>
-                          #{team.philMetricDraftRank}
-                        </span>
-                      ) : "-"}
-                    </td>
-                    <td style={tdStyle}>{team.powerRank ?? "-"}</td>
-                    <td style={tdStyle}>{team.retStarters ? `${team.retStarters}%` : "-"}</td>
+
                     <td style={tdStyle}>{team.sos_rank ?? "-"}</td>
+
                     <td style={tdStyle}>
-                      {team.prev_year_points
-                        ? <span style={{ fontWeight: "600", color: "#111827" }}>{team.prev_year_points}</span>
+                      {team.predictedWins != null
+                        ? <span style={{ fontWeight: "600", color: "#111827" }}>{team.predictedWins}</span>
                         : "-"}
                     </td>
-                    <td style={tdStyle}>{team.prevYearRecord || "-"}</td>
-                    <td style={tdStyle}>{team.prevYearAts || "-"}</td>
+
                     <td style={tdStyle}>
-                      {team.predictedWins
-                        ? <span style={{ fontWeight: "600", color: "#111827" }}>{team.predictedWins}</span>
+                      {team.prev_year_points != null
+                        ? <span style={{ fontWeight: "600", color: "#111827" }}>{team.prev_year_points}</span>
                         : "-"}
                     </td>
                   </tr>
