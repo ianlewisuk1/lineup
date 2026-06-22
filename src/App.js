@@ -5,7 +5,7 @@ import {
   Routes,
   Route,
 } from "react-router-dom";
-import { supabase } from "./supabase/supabase";
+import { useAuth } from "./context/AuthContext";
 
 import SignUp from "./pages/SignUp";
 import VerifyEmail from "./pages/VerifyEmail";
@@ -44,26 +44,15 @@ function AppWrapper() {
 }
 
 function App() {
-  const [authLoading, setAuthLoading] = useState(true);
+  const { loading: authLoading } = useAuth();
+  const [minDelayDone, setMinDelayDone] = useState(false);
 
   useEffect(() => {
-    // Force a 1.5s minimum splash screen on cold start.
-    // User data, teams, and config are loaded in AuthContext in parallel during this wait.
-    const minDelay = new Promise(resolve => setTimeout(resolve, 1500));
-
-    supabase.auth.getSession().then(async () => {
-      await minDelay;
-      setAuthLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      // Auth state changes are handled by AuthContext
-    });
-
-    return () => subscription.unsubscribe();
+    const timer = setTimeout(() => setMinDelayDone(true), 1500);
+    return () => clearTimeout(timer);
   }, []);
 
-  if (authLoading) return <SplashScreen />;
+  if (!minDelayDone || authLoading) return <SplashScreen />;
 
   return (
     <Routes>
