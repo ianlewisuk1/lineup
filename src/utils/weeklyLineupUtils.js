@@ -15,7 +15,7 @@ teams table: id (text slug), school, mascot, color, classification, conference, 
 team_season_stats table: team_id (FK→teams.id), season_year, record, conf_record, ats_record,
   ats_wins, ats_losses, game_points, weekly_points (jsonb), game_status, game_complete,
   is_on_bye, next_opponent, next_game_is_home, next_opponent_spread, next_opponent_spread_display,
-  total_points_for, total_points_against, sos_rank, prev_year_points
+  total_points_for, total_points_against, sos_rank
 */
 
 // Utility functions for managing weekly lineups

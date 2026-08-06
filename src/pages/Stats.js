@@ -42,7 +42,6 @@ function Stats() {
     { value: "avgPointsFor", label: "Avg Points For", type: "number" },
     { value: "avgPointsAgainst", label: "Avg Points Against", type: "number" },
     { value: "sosRank", label: "SOS Rank", type: "number" },
-    { value: "prevYearPoints", label: "2024 Points", type: "number" },
     { value: "nextOpponent", label: "Next Opponent", type: "string" }
   ];
 
@@ -71,13 +70,11 @@ function Stats() {
               totalPointsFor: stats.total_points_for || 0,
               totalPointsAgainst: stats.total_points_against || 0,
               sosRank: stats.sos_rank || null,
-              prevYearPoints: stats.prev_year_points || 0,
               nextOpponent: stats.next_opponent || null,
               isOnBye: stats.is_on_bye || false,
             },
             // Keep flat references for sort fallback compatibility
             sos_rank: stats.sos_rank || null,
-            prev_year_points: stats.prev_year_points || 0,
             next_opponent: stats.next_opponent || null,
           });
           if (team.conference) confSet.add(team.conference);
@@ -121,8 +118,6 @@ function Stats() {
           return Number(calculateAverage(totalPointsAgainst, gamesPlayedAgainst)) || 0;
         case "sosRank":
           return Number(team.sos_rank) || 999;
-        case "prevYearPoints":
-          return Number(team.prev_year_points) || 0;
         case "nextOpponent":
           return team.next_opponent || "zzz";
         case "record":
@@ -209,8 +204,6 @@ function Stats() {
         return calculateAverage(totalPointsAgainst, gamesPlayedAgainst);
       case "sosRank":
         return team.sos_rank ?? "—";
-      case "prevYearPoints":
-        return team.prev_year_points ?? "—";
       case "nextOpponent":
         return formatNextOpponent(team);
       case "record":
@@ -226,7 +219,6 @@ function Stats() {
   const getStatColor = (statKey, value) => {
     switch (statKey) {
       case "gamePoints":
-      case "prevYearPoints":
       case "avgPointsFor":
         return "text-green-400"; // Green for positive stats
       case "avgPointsAgainst":

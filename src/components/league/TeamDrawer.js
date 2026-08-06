@@ -451,7 +451,6 @@ export default function TeamDrawer({ teamName, onClose }) {
               {[
                 { label: "Fantasy Pts", value: cs.gamePoints ?? "—", color: "text-green-600" },
                 { label: "Avg Weekly", value: avgPts, color: "text-blue-600" },
-                { label: "Prev Yr Pts", value: cs.prevYearPoints ?? "—", color: "text-gray-900" },
                 { label: "ATS Record", value: cs.atsRecord || "—", color: "text-gray-900" },
                 { label: "SOS Rank", value: cs.sosRank ?? "—", color: "text-gray-900" },
                 { label: "Conf Record", value: cs.confRecord || "—", color: "text-gray-900" },

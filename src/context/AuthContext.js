@@ -38,7 +38,6 @@ const buildTeamsMap = (rows) => {
         totalPointsFor: stats.total_points_for || 0,
         totalPointsAgainst: stats.total_points_against || 0,
         sosRank: stats.sos_rank || null,
-        prevYearPoints: stats.prev_year_points || 0,
         isOnBye: stats.is_on_bye || false,
       },
     };

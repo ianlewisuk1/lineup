@@ -29,7 +29,6 @@ function Scouting() {
           ...t,
           isDrafted:           pickedTeamIds.has(t.id),
           sos_rank:            t.currentSeason?.sosRank ?? null,
-          prev_year_points:    pre.prev_year_points ?? null,
           prev_year_record:    pre.prev_year_record ?? null,
           prev_year_ats:       pre.prev_year_ats ?? null,
           confOdds:            pre.conf_odds ?? null,
@@ -215,11 +214,10 @@ function Scouting() {
                   <Th label="Conf Odds"    sortKey="confOdds"            sortBy={sortBy} sortConfig={sortConfig} />
                   <Th label="Power Rank"   sortKey="powerRank"           sortBy={sortBy} sortConfig={sortConfig} />
                   <Th label="SOS Rank"     sortKey="sos_rank"            sortBy={sortBy} sortConfig={sortConfig} />
-                  <Th label="Ret. Starters" sortKey="retStarters"        sortBy={sortBy} sortConfig={sortConfig} />
+                  <Th label="Ret. Starters (%)" sortKey="retStarters"    sortBy={sortBy} sortConfig={sortConfig} />
                   <Th label="Pred. Wins"   sortKey="predictedWins"       sortBy={sortBy} sortConfig={sortConfig} />
                   <Th label="2025 Record"  sortKey="prev_year_record"    sortBy={sortBy} sortConfig={sortConfig} />
                   <Th label="2025 ATS"     sortKey="prev_year_ats"       sortBy={sortBy} sortConfig={sortConfig} />
-                  <Th label="2025 Pts"     sortKey="prev_year_points"    sortBy={sortBy} sortConfig={sortConfig} />
                 </tr>
               </thead>
               <tbody>
@@ -323,12 +321,6 @@ function Scouting() {
                     <td style={tdStyle}>{team.prev_year_record ?? "-"}</td>
 
                     <td style={tdStyle}>{team.prev_year_ats ?? "-"}</td>
-
-                    <td style={tdStyle}>
-                      {team.prev_year_points != null
-                        ? <span style={{ fontWeight: "600", color: "#111827" }}>{team.prev_year_points}</span>
-                        : "-"}
-                    </td>
                   </tr>
                 ))}
               </tbody>

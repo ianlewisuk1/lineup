@@ -32,7 +32,6 @@ function AdminTeamsPanel() {
           predicted_wins:   preseasonMap[t.id]?.predicted_wins   ?? null,
           prev_year_record: preseasonMap[t.id]?.prev_year_record ?? "",
           prev_year_ats:    preseasonMap[t.id]?.prev_year_ats    ?? "",
-          prev_year_points: preseasonMap[t.id]?.prev_year_points ?? null,
         }));
 
       setTeams(merged);
@@ -56,7 +55,7 @@ function AdminTeamsPanel() {
     // teams.id must be the canonical slug — it is the join key for rosters and logos
     const id = normalizeTeamName(newTeam.school);
     await supabase.from("teams").upsert({ id, school: newTeam.school, conference: newTeam.conference, classification: "FBS" });
-    setTeams(prev => [...prev, { id, ...newTeam, conf_odds: null, power_rank: null, ret_starters: null, predicted_wins: null, prev_year_record: "", prev_year_ats: "", prev_year_points: null }]);
+    setTeams(prev => [...prev, { id, ...newTeam, conf_odds: null, power_rank: null, ret_starters: null, predicted_wins: null, prev_year_record: "", prev_year_ats: "" }]);
     setNewTeam({ school: "", conference: "" });
   };
 
@@ -84,7 +83,7 @@ function AdminTeamsPanel() {
   );
 
   const exportToCSV = () => {
-    const headers = ["school", "conference", "conf_odds", "power_rank", "ret_starters", "predicted_wins", "prev_year_record", "prev_year_ats", "prev_year_points"];
+    const headers = ["school", "conference", "conf_odds", "power_rank", "ret_starters", "predicted_wins", "prev_year_record", "prev_year_ats"];
     const rows = filteredTeams.map(team => headers.map(h => team[h] ?? "").join(","));
     const csv = [headers.join(","), ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -99,7 +98,7 @@ function AdminTeamsPanel() {
 
   if (loading) return <p>Loading teams...</p>;
 
-  const numericFields = ["conf_odds", "power_rank", "ret_starters", "predicted_wins", "prev_year_points"];
+  const numericFields = ["conf_odds", "power_rank", "ret_starters", "predicted_wins"];
   const textFields    = ["prev_year_record", "prev_year_ats"];
 
   return (
@@ -141,11 +140,10 @@ function AdminTeamsPanel() {
             <th onClick={() => handleSort("conference")} style={thStyle}>Conf</th>
             <th onClick={() => handleSort("conf_odds")} style={thStyle}>Conf Odds</th>
             <th onClick={() => handleSort("power_rank")} style={thStyle}>Power Rank</th>
-            <th onClick={() => handleSort("ret_starters")} style={thStyle}>Ret Starters</th>
+            <th onClick={() => handleSort("ret_starters")} style={thStyle}>Ret Starters (%)</th>
             <th onClick={() => handleSort("predicted_wins")} style={thStyle}>Pred Wins</th>
             <th onClick={() => handleSort("prev_year_record")} style={thStyle}>Prev Record</th>
             <th onClick={() => handleSort("prev_year_ats")} style={thStyle}>Prev ATS</th>
-            <th onClick={() => handleSort("prev_year_points")} style={thStyle}>Prev Pts</th>
           </tr>
         </thead>
         <tbody>

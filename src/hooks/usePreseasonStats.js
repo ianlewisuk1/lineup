@@ -11,8 +11,9 @@ export function usePreseasonStats() {
   });
   const [loading, setLoading] = useState(!data);
 
+  // Always refetch. The cache is only a first-paint shortcut — preseason rows
+  // get edited between seasons, and an empty/stale map must not stick forever.
   useEffect(() => {
-    if (data) return;
     supabase
       .from("team_preseason_stats")
       .select("*")
