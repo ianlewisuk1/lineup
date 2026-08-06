@@ -387,7 +387,7 @@ export default function DraftRoom() {
                           : 'bg-gray-50 border-gray-100 cursor-default opacity-60'
                       }`}
                     >
-                      <TeamLogoImage teamId={team.id} teamName={team.school} primaryColor={team.color} size={30} />
+                      <TeamLogoImage teamName={team.school} primaryColor={team.color} size={30} />
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-sm text-gray-900 truncate">{team.school}</div>
                         <div className="text-xs text-gray-400">{team.conference}</div>
@@ -430,7 +430,7 @@ export default function DraftRoom() {
                       >
                         {flash && <Check size={12} className="text-green-600 flex-shrink-0" />}
                         <span className="text-gray-400 text-xs w-5 flex-shrink-0">#{pick.pick_number}</span>
-                        <TeamLogoImage teamId={team?.id} teamName={team?.school} primaryColor={team?.color} size={18} />
+                        <TeamLogoImage teamName={team?.school} primaryColor={team?.color} size={18} />
                         <div className="flex-1 min-w-0">
                           <div className="truncate font-medium text-gray-900">{team?.school ?? pick.team_id}</div>
                           <div className="text-gray-400 text-xs truncate">{picker?.name}</div>
@@ -458,7 +458,7 @@ export default function DraftRoom() {
                       const team = teams.find((t) => t.id === teamId);
                       return (
                         <div key={teamId} className="flex items-center gap-2 text-sm text-gray-900">
-                          <TeamLogoImage teamId={team?.id} teamName={team?.school} primaryColor={team?.color} size={18} />
+                          <TeamLogoImage teamName={team?.school} primaryColor={team?.color} size={18} />
                           <span>{team?.school ?? teamId}</span>
                         </div>
                       );
@@ -516,7 +516,7 @@ export default function DraftRoom() {
                     const team = teams.find((t) => t.id === teamId);
                     return (
                       <div key={teamId} className="flex items-center gap-2 text-sm bg-gray-50 rounded-lg p-2">
-                        <TeamLogoImage teamId={team?.id} teamName={team?.school} primaryColor={team?.color} size={18} />
+                        <TeamLogoImage teamName={team?.school} primaryColor={team?.color} size={18} />
                         <span className="truncate text-gray-900">{team?.school ?? teamId}</span>
                       </div>
                     );

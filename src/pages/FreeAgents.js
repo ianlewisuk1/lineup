@@ -9,6 +9,7 @@ import { useModalState } from "../hooks/useModalState";
 import { parseGamesPlayed as parseRecord, calculateAverage } from "../utils/teamStats";
 import { useSeasonConfig } from "../hooks/useSeasonConfig";
 import TeamLogoImage from "../components/league/TeamLogoImage";
+import { teamLogoUrl } from "../utils/teamLogo";
 import TeamDrawer from "../components/league/TeamDrawer";
 
 // Compact Sort Button Component
@@ -113,7 +114,7 @@ function FreeAgents() {
         teamsMap[conf].push({
           id: data.id,
           ...data,
-          logo: data.logo_filename ? `/logos/${data.logo_filename}` : null,
+          logo: teamLogoUrl(data.school),
           color: data.color || null,
           currentSeason: {}
         });
@@ -512,7 +513,7 @@ function FreeAgents() {
         {/* Header with team info, sort data, and add button */}
         <div className="flex items-center gap-3 mb-3">
           {/* Team Logo */}
-          <TeamLogoImage teamId={team.id} teamName={team.school} primaryColor={team.colors?.primary || team.color} size={32} />
+          <TeamLogoImage teamName={team.school} primaryColor={team.colors?.primary || team.color} size={32} />
 
           {/* Team Name */}
           <div className="flex-1 min-w-0">

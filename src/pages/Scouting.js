@@ -91,7 +91,7 @@ function Scouting() {
     const team = allTeams[teamName];
     return (
       <div style={{ opacity: isDrafted ? 0.4 : 1, filter: isDrafted ? "grayscale(100%)" : "none", flexShrink: 0 }}>
-        <TeamLogoImage teamId={team?.id} teamName={teamName} primaryColor={team?.colors?.primary || team?.color} size={size} />
+        <TeamLogoImage teamName={teamName} primaryColor={team?.colors?.primary || team?.color} size={size} />
       </div>
     );
   };

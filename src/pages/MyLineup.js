@@ -10,6 +10,7 @@ import { useTeams } from "../hooks/useTeams";
 import { Calendar, ChevronDown, ChevronUp } from "lucide-react";
 import TeamDrawer from "../components/league/TeamDrawer";
 import { SEASON_YEAR } from "../utils/season";
+import { teamLogoUrl } from "../utils/teamLogo";
 
 function MyLineup() {
   const { leagueId } = useParams();
@@ -153,15 +154,7 @@ function MyLineup() {
 
   // Team Logo Component
   const TeamLogo = ({ teamName, size = 48, clickable = false }) => {
-    const normalize = (name) =>
-      name
-        ?.toLowerCase()
-        .replace(/\s+/g, "-")
-        .replace(/&/g, "")
-        .replace(/[^a-z0-9\-]/g, "");
-
-    const team = allTeams[normalize(teamName)];
-    const logoUrl = team?.logo;
+    const logoUrl = teamLogoUrl(teamName);
 
     const handleClick = () => {
       if (clickable && teamName) {
@@ -188,76 +181,12 @@ function MyLineup() {
       backdropFilter: "blur(10px)"
     };
 
-    if (logoUrl) {
-      return (
-        <div style={{ position: "relative", display: "inline-block" }}>
-          
-          <div 
-            style={logoStyle}
-            onClick={handleClick}
-            onMouseEnter={(e) => {
-              if (clickable) {
-                e.currentTarget.style.transform = "scale(1.05)";
-                e.currentTarget.style.boxShadow = "0 6px 20px rgba(59, 130, 246, 0.3)";
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (clickable) {
-                e.currentTarget.style.transform = "scale(1)";
-                e.currentTarget.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.1)";
-              }
-            }}
-            title={clickable ? `Click to view ${teamName} details` : teamName}
-          >
-            <img 
-              src={logoUrl} 
-              alt={teamName}
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover"
-              }}
-              onError={(e) => {
-                const fallbackUrl = team?.logos2;
-                if (fallbackUrl && e.target.src !== fallbackUrl) {
-                  e.target.src = fallbackUrl;
-                } else {
-                  e.target.style.display = 'none';
-                  e.target.nextSibling.style.display = 'flex';
-                }
-              }}
-            />
-            <div style={{
-              display: 'none',
-              width: '100%',
-              height: '100%',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: size < 30 ? '10px' : '12px',
-              fontWeight: '600',
-              color: '#1e293b',
-              textAlign: 'center',
-              background: 'white'
-            }}>
-              {teamName ? teamName.split(' ').map(word => word[0]).join('').slice(0, 3) : '?'}
-            </div>
-          </div>
-        </div>
-      );
-    }
+    const initials = teamName ? teamName.split(' ').map(word => word[0]).join('').slice(0, 3) : '?';
 
-    // Fallback placeholder
     return (
       <div style={{ position: "relative", display: "inline-block" }}>
-        
-        <div 
-          style={{
-            ...logoStyle,
-            background: "white",
-            color: "#1e293b",
-            fontSize: size < 30 ? '10px' : '12px',
-            fontWeight: '600'
-          }}
+        <div
+          style={logoStyle}
           onClick={handleClick}
           onMouseEnter={(e) => {
             if (clickable) {
@@ -273,7 +202,29 @@ function MyLineup() {
           }}
           title={clickable ? `Click to view ${teamName} details` : teamName}
         >
-          {teamName ? teamName.split(' ').map(word => word[0]).join('').slice(0, 3) : '?'}
+          {/* Initials sit underneath and show through when the logo file is missing */}
+          <span style={{
+            position: "absolute",
+            fontSize: size < 30 ? '10px' : '12px',
+            fontWeight: '600',
+            color: '#1e293b',
+          }}>
+            {initials}
+          </span>
+          {logoUrl && (
+            <img
+              src={logoUrl}
+              alt={teamName}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover"
+              }}
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
+          )}
         </div>
       </div>
     );

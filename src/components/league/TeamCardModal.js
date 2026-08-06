@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "../../supabase/supabase";
 import { SEASON_YEAR } from "../../utils/season";
 import { getCurrentWeekNumber } from "../../utils/leagueUtils";
+import { teamLogoUrl } from "../../utils/teamLogo";
 
 const TeamCardModal = ({ team, onClose, currentWeek }) => {
   const [isFlipped, setIsFlipped] = useState(false);
@@ -214,32 +215,34 @@ const TeamCardModal = ({ team, onClose, currentWeek }) => {
                 border: "3px solid rgba(255, 255, 255, 0.3)",
                 margin: "0 auto 10px",
                 backgroundColor: "rgba(255, 255, 255, 0.1)",
-                backdropFilter: "blur(10px)"
+                backdropFilter: "blur(10px)",
+                position: "relative"
               }}>
-                {team.logo ? (
-                  <img
-                    src={team.logo}
-                    alt={team.name}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover"
-                    }}
-                  />
-                ) : (
-                  <div style={{
+                {/* Initials sit underneath and show through when the logo file is missing */}
+                <div style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "16px",
+                  fontWeight: "700",
+                  color: "white"
+                }}>
+                  {team.name ? team.name.split(' ').map(word => word[0]).join('').slice(0, 3) : '?'}
+                </div>
+                <img
+                  src={teamLogoUrl(team.name)}
+                  alt={team.name}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
                     width: "100%",
                     height: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "16px",
-                    fontWeight: "700",
-                    color: "white"
-                  }}>
-                    {team.name ? team.name.split(' ').map(word => word[0]).join('').slice(0, 3) : '?'}
-                  </div>
-                )}
+                    objectFit: "cover"
+                  }}
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
               </div>
               <h2 style={{
                 fontSize: "18px",

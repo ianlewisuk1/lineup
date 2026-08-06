@@ -191,7 +191,7 @@ const TeamLogo = ({
         }}
         title={clickable ? `Click to view ${teamName} details${isCaptain ? " (Captain - 2x Points)" : ""}${isTripPlay ? " (Trip Play - 3x Points)" : ""}${isCaptain && isTripPlay ? " (5x Combo!)" : ""}` : teamName}
       >
-        <TeamLogoImage teamId={normalize(teamName)} teamName={teamName} primaryColor={primaryColor} size={size} />
+        <TeamLogoImage teamName={teamName} primaryColor={primaryColor} size={size} />
       </div>
     </div>
   );

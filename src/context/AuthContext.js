@@ -1,12 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../supabase/supabase";
 import { initPushNotifications } from "../capacitor/pushNotifications";
+import { normalizeTeamSlug as normalizeTeamName, teamLogoUrl } from "../utils/teamLogo";
 
 const AuthContext = createContext();
-
-// Normalizes a team name to a consistent key format (e.g. "Ohio State" → "ohio-state")
-const normalizeTeamName = (name) =>
-  name?.toLowerCase().replace(/\s+/g, "-").replace(/&/g, "").replace(/[^a-z0-9-]/g, "");
 
 // Builds the normalized teams map from raw DB rows (teams joined with team_season_stats)
 const buildTeamsMap = (rows) => {
@@ -17,9 +14,7 @@ const buildTeamsMap = (rows) => {
     const stats = t.team_season_stats?.[0] || {};
     map[normalizeTeamName(t.school)] = {
       ...t,
-      logo: t.logo_filename ? `/logos/${t.logo_filename}` : null,
-      logos1: t.logo_filename ? `/logos/${t.logo_filename}` : null,
-      logos2: null,
+      logo: teamLogoUrl(t.school),
       colors: { primary: t.color, secondary: t.alternate_color },
       conference: t.conference || "Unknown",
       mascot: t.mascot || "",

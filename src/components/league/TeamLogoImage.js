@@ -1,4 +1,5 @@
 import React from "react";
+import { teamLogoUrl } from "../../utils/teamLogo";
 
 const getInitials = (name) => {
   if (!name) return "?";
@@ -7,7 +8,9 @@ const getInitials = (name) => {
   return words.map(w => w[0]).join("").slice(0, 2).toUpperCase();
 };
 
-const TeamLogoImage = ({ teamId, teamName, primaryColor, size = 32 }) => {
+// Resolves the logo from teamName, not the DB id — the two disagree for at
+// least one team (Texas A&M is id "texas-a-m" but school "Texas A&M").
+const TeamLogoImage = ({ teamName, primaryColor, size = 32 }) => {
   const initials = getInitials(teamName);
   return (
     <div style={{
@@ -19,7 +22,7 @@ const TeamLogoImage = ({ teamId, teamName, primaryColor, size = 32 }) => {
         {initials}
       </span>
       <img
-        src={`/logos/${teamId}.png`}
+        src={teamLogoUrl(teamName)}
         alt={teamName}
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }}
         onError={e => { e.target.style.display = "none"; }}

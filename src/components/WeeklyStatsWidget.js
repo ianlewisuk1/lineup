@@ -1,6 +1,6 @@
 import React from "react";
 import { TrendingUp, TrendingDown } from "lucide-react";
-import { useAuth } from "../context/AuthContext";
+import { teamLogoUrl } from "../utils/teamLogo";
 
 // TODO: Replace all dummy data with real platform-wide aggregated stats from the DB
 // Trending = net roster change (additions - drops) over the current week across all leagues
@@ -22,26 +22,29 @@ const DUMMY_MOST_OWNED = [
   { name: "Georgia",      pct: 99.8 },
   { name: "Notre Dame",   pct: 99.4 },
   { name: "North Texas",  pct: 99.1 },
-  { name: "JMU",          pct: 99.0 },
+  { name: "Duke",         pct: 99.0 },
   { name: "Indiana",      pct: 98.7 },
 ];
 
-// Normalize a team name to match the key format used in the teams map
-const normalize = (name) =>
-  name?.toLowerCase().replace(/\s+/g, "-").replace(/&/g, "").replace(/[^a-z0-9-]/g, "");
+// Logo over a neutral circle, which shows through if the PNG is missing
+function Logo({ name, size }) {
+  return (
+    <div style={{ width: size, height: size, borderRadius: '50%', backgroundColor: '#F3F4F6', flexShrink: 0, position: 'relative' }}>
+      <img
+        src={teamLogoUrl(name)}
+        alt={name}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }}
+        onError={(e) => { e.target.style.display = 'none'; }}
+      />
+    </div>
+  );
+}
 
-function TeamRow({ name, teams, right }) {
-  const team = teams[normalize(name)];
-  const logo = team?.logo || null;
-
+function TeamRow({ name, right }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {logo ? (
-          <img src={logo} alt={name} style={{ width: 24, height: 24, objectFit: 'contain', flexShrink: 0 }} />
-        ) : (
-          <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: '#F3F4F6', flexShrink: 0 }} />
-        )}
+        <Logo name={name} size={24} />
         <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{name}</span>
       </div>
       {right}
@@ -50,7 +53,6 @@ function TeamRow({ name, teams, right }) {
 }
 
 function WeeklyStatsWidget() {
-  const { teams } = useAuth();
 
   return (
     <div style={{ marginBottom: 24 }}>
@@ -72,7 +74,7 @@ function WeeklyStatsWidget() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {DUMMY_TRENDING_UP.map((t, i) => (
-                <TeamRow key={i} name={t.name} teams={teams} right={
+                <TeamRow key={i} name={t.name} right={
                   <span style={{ fontSize: 11, color: '#16A34A', fontWeight: 700 }}>▲</span>
                 } />
               ))}
@@ -87,7 +89,7 @@ function WeeklyStatsWidget() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {DUMMY_TRENDING_DOWN.map((t, i) => (
-                <TeamRow key={i} name={t.name} teams={teams} right={
+                <TeamRow key={i} name={t.name} right={
                   <span style={{ fontSize: 11, color: '#DC2626', fontWeight: 700 }}>▼</span>
                 } />
               ))}
@@ -102,19 +104,13 @@ function WeeklyStatsWidget() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {DUMMY_MOST_OWNED.map((t, i) => {
-              const team = teams[normalize(t.name)];
-              const logo = team?.logo || null;
               // Scale bar relative to the top entry so differences are visible
               const barWidth = (t.pct / DUMMY_MOST_OWNED[0].pct) * 100;
               return (
                 <div key={i}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {logo ? (
-                        <img src={logo} alt={t.name} style={{ width: 20, height: 20, objectFit: 'contain', flexShrink: 0 }} />
-                      ) : (
-                        <div style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: '#F3F4F6', flexShrink: 0 }} />
-                      )}
+                      <Logo name={t.name} size={20} />
                       <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{t.name}</span>
                     </div>
                     <span style={{ fontSize: 12, fontWeight: 700, color: '#0072BC' }}>{t.pct}%</span>
