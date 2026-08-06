@@ -30,8 +30,12 @@ function Scouting() {
           isDrafted:           pickedTeamIds.has(t.id),
           sos_rank:            t.currentSeason?.sosRank ?? null,
           prev_year_points:    pre.prev_year_points ?? null,
+          prev_year_record:    pre.prev_year_record ?? null,
+          prev_year_ats:       pre.prev_year_ats ?? null,
           confOdds:            pre.conf_odds ?? null,
           predictedWins:       pre.predicted_wins ?? null,
+          powerRank:           pre.power_rank ?? null,
+          retStarters:         pre.ret_starters ?? null,
         };
       }),
   [authTeams, pickedTeamIds, preseasonData]);
@@ -60,8 +64,8 @@ function Scouting() {
   });
 
   const sortedTeams = [...filteredTeams].sort((a, b) => {
-    const aValue = a[sortConfig.key];
-    const bValue = b[sortConfig.key];
+    const aValue = sortValue(a[sortConfig.key], sortConfig.key);
+    const bValue = sortValue(b[sortConfig.key], sortConfig.key);
 
     if (aValue == null && bValue == null) return 0;
     if (aValue == null) return 1;
@@ -161,7 +165,7 @@ function Scouting() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[700px]" style={{ borderCollapse: "collapse" }}>
+            <table className="w-full text-sm min-w-[1050px]" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ backgroundColor: "#0072BC", color: "white" }}>
                   <th style={{
@@ -208,10 +212,14 @@ function Scouting() {
                     </span>
                   </th>
 
-                  <Th label="Conf Odds"   sortKey="confOdds"            sortBy={sortBy} sortConfig={sortConfig} />
-                  <Th label="SOS Rank"    sortKey="sos_rank"            sortBy={sortBy} sortConfig={sortConfig} />
-                  <Th label="Pred. Wins"  sortKey="predictedWins"       sortBy={sortBy} sortConfig={sortConfig} />
-                  <Th label="2025 Pts"    sortKey="prev_year_points"    sortBy={sortBy} sortConfig={sortConfig} />
+                  <Th label="Conf Odds"    sortKey="confOdds"            sortBy={sortBy} sortConfig={sortConfig} />
+                  <Th label="Power Rank"   sortKey="powerRank"           sortBy={sortBy} sortConfig={sortConfig} />
+                  <Th label="SOS Rank"     sortKey="sos_rank"            sortBy={sortBy} sortConfig={sortConfig} />
+                  <Th label="Ret. Starters" sortKey="retStarters"        sortBy={sortBy} sortConfig={sortConfig} />
+                  <Th label="Pred. Wins"   sortKey="predictedWins"       sortBy={sortBy} sortConfig={sortConfig} />
+                  <Th label="2025 Record"  sortKey="prev_year_record"    sortBy={sortBy} sortConfig={sortConfig} />
+                  <Th label="2025 ATS"     sortKey="prev_year_ats"       sortBy={sortBy} sortConfig={sortConfig} />
+                  <Th label="2025 Pts"     sortKey="prev_year_points"    sortBy={sortBy} sortConfig={sortConfig} />
                 </tr>
               </thead>
               <tbody>
@@ -300,13 +308,21 @@ function Scouting() {
                       ) : "-"}
                     </td>
 
+                    <td style={tdStyle}>{team.powerRank ?? "-"}</td>
+
                     <td style={tdStyle}>{team.sos_rank ?? "-"}</td>
+
+                    <td style={tdStyle}>{team.retStarters ?? "-"}</td>
 
                     <td style={tdStyle}>
                       {team.predictedWins != null
                         ? <span style={{ fontWeight: "600", color: "#111827" }}>{team.predictedWins}</span>
                         : "-"}
                     </td>
+
+                    <td style={tdStyle}>{team.prev_year_record ?? "-"}</td>
+
+                    <td style={tdStyle}>{team.prev_year_ats ?? "-"}</td>
 
                     <td style={tdStyle}>
                       {team.prev_year_points != null
@@ -330,6 +346,18 @@ function Scouting() {
     </div>
   );
 }
+
+// "9-3" / "9-3-1" sort by win pct, not alphabetically ("10-3" < "9-3" as text).
+const RECORD_KEYS = new Set(["prev_year_record", "prev_year_ats"]);
+
+const sortValue = (value, key) => {
+  if (!RECORD_KEYS.has(key) || typeof value !== "string") return value;
+  const parts = value.split("-").map(Number);
+  if (parts.length < 2 || parts.some(Number.isNaN)) return value;
+  const [wins, losses, ties = 0] = parts;
+  const games = wins + losses + ties;
+  return games > 0 ? (wins + ties * 0.5) / games : null;
+};
 
 const Th = ({ label, sortKey, sortBy, sortConfig }) => (
   <th
