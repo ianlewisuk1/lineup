@@ -1,5 +1,6 @@
 // weeklyLineupUtils.js - Utility functions for weekly lineup management
 import { supabase } from '../supabase/supabase';
+import { normalizeTeamName } from './teamName';
 
 /*
 Database Structure for Weekly Lineups (Supabase):
@@ -8,7 +9,9 @@ weekly_lineups table: id, league_id, member_id, week, starters (text[]), bench (
   captain, trip_play_team, frozen_teams, team_points, points
 league_members table: id, league_id, user_id, team_name, avatar_url, points,
   has_trip_play, trip_play_used_week, freezes_remaining
-teams table: id (text slug), school, mascot, logo_filename, color, classification, conference, ...
+teams table: id (text slug), school, mascot, color, classification, conference, ...
+  (logo_filename exists but is null on every row and is not read — logos come
+   from /public/logos via utils/teamLogo.js)
 team_season_stats table: team_id (FK→teams.id), season_year, record, conf_record, ats_record,
   ats_wins, ats_losses, game_points, weekly_points (jsonb), game_status, game_complete,
   is_on_bye, next_opponent, next_game_is_home, next_opponent_spread, next_opponent_spread_display,
@@ -53,11 +56,7 @@ export const weeklyLineupUtils = {
   // Normalize team name for storage
   normalizeTeamName: (team) => {
     if (!team?.school) return null;
-    return team.school
-      .toLowerCase()
-      .replace(/\s+/g, "-")
-      .replace(/&/g, "-")
-      .replace(/[^a-z0-9\-]/g, "");
+    return normalizeTeamName(team.school);
   },
 
   // Calculate points for a specific week's lineup

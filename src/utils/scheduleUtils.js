@@ -1,9 +1,8 @@
-export const normalize = (name) =>
-  name
-    ?.toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/&/g, "-")
-    .replace(/[^a-z0-9\-]/g, "");
+// Re-exported for the many call sites that import { normalize } from here.
+// The implementation lives in utils/teamName.js — see that file before changing it.
+import { normalizeTeamName } from "./teamName";
+
+export const normalize = normalizeTeamName;
 
 export const canonicalizeTeam = (name) => {
   if (!name) return "";

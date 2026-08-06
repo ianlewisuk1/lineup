@@ -11,6 +11,7 @@ import { Calendar, ChevronDown, ChevronUp } from "lucide-react";
 import TeamDrawer from "../components/league/TeamDrawer";
 import { SEASON_YEAR } from "../utils/season";
 import { teamLogoUrl } from "../utils/teamLogo";
+import { normalizeTeamName } from "../utils/teamName";
 
 function MyLineup() {
   const { leagueId } = useParams();
@@ -312,15 +313,9 @@ function MyLineup() {
     ].filter(teamName => teamName !== null);
 
     // Resolve team names to team objects
-    const rosterTeams = allRosterTeams.map(teamName => {
-      const normalize = (name) =>
-        name?.toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/&/g, "")
-          .replace(/[^a-z0-9\-]/g, "");
-      
-      return allTeams[normalize(teamName)];
-    }).filter(team => team !== null);
+    const rosterTeams = allRosterTeams
+      .map(teamName => allTeams[normalizeTeamName(teamName)])
+      .filter(team => team !== null);
 
     // Helper function to find team's game for a specific week
     const findTeamGame = (teamName, week) => {

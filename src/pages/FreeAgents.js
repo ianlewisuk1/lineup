@@ -10,6 +10,7 @@ import { parseGamesPlayed as parseRecord, calculateAverage } from "../utils/team
 import { useSeasonConfig } from "../hooks/useSeasonConfig";
 import TeamLogoImage from "../components/league/TeamLogoImage";
 import { teamLogoUrl } from "../utils/teamLogo";
+import { normalizeTeamName } from "../utils/teamName";
 import TeamDrawer from "../components/league/TeamDrawer";
 
 // Compact Sort Button Component
@@ -211,11 +212,7 @@ function FreeAgents() {
       const bench = [...(lineupRow?.bench || Array(2).fill(null))];
 
       // NORMALIZE THE TEAM NAME BEFORE SAVING
-      const normalizedTeamName = teamToAdd.school
-        .toLowerCase()
-        .replace(/\s+/g, "-")
-        .replace(/&/g, "-")
-        .replace(/[^a-z0-9\-]/g, "");
+      const normalizedTeamName = normalizeTeamName(teamToAdd.school);
 
       const emptyStarterIndex = starters.findIndex(t => !t);
       const emptyBenchIndex = bench.findIndex(t => !t);
@@ -313,11 +310,7 @@ function FreeAgents() {
       const bench = [...(lineupRow?.bench || Array(2).fill(null))];
 
       // NORMALIZE THE NEW TEAM NAME
-      const normalizedNewTeam = pendingAddTeam
-        .toLowerCase()
-        .replace(/\s+/g, "-")
-        .replace(/&/g, "-")
-        .replace(/[^a-z0-9\-]/g, "");
+      const normalizedNewTeam = normalizeTeamName(pendingAddTeam);
 
       const starterIndex = starters.findIndex(t => t === selectedDropTeam);
       const benchIndex = bench.findIndex(t => t === selectedDropTeam);
@@ -341,10 +334,7 @@ function FreeAgents() {
 
       // Get display name for dropped team
       const droppedTeamData = Object.values(teamsByConference).flat().find(team =>
-        team.school?.toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/&/g, "-")
-          .replace(/[^a-z0-9\-]/g, "") === selectedDropTeam
+        normalizeTeamName(team.school) === selectedDropTeam
       );
       const droppedTeamName = droppedTeamData?.school || selectedDropTeam;
 
@@ -404,11 +394,7 @@ function FreeAgents() {
     // Filter out drafted teams by matching school names
     const teams = allTeams.filter(team => {
       // Normalize the team's school name to match the format in drafted teams
-      const normalizedSchoolName = team.school
-        ?.toLowerCase()
-        .replace(/\s+/g, "-")
-        .replace(/&/g, "-")
-        .replace(/[^a-z0-9\-]/g, "");
+      const normalizedSchoolName = normalizeTeamName(team.school);
 
       // Check if this normalized school name is in the drafted teams
       const isDrafted = draftedTeams[normalizedSchoolName];
@@ -810,10 +796,7 @@ function FreeAgents() {
                   {userTeams.filter(Boolean).map((teamId) => {
                     // Get the actual school name from allTeams using the teamId
                     const teamData = Object.values(teamsByConference).flat().find(team =>
-                      team.school?.toLowerCase()
-                        .replace(/\s+/g, "-")
-                        .replace(/&/g, "-")
-                        .replace(/[^a-z0-9\-]/g, "") === teamId
+                      normalizeTeamName(team.school) === teamId
                     );
                     const displayName = teamData?.school || teamId;
 

@@ -8,9 +8,7 @@ import { useModalState } from "../../hooks/useModalState";
 import { parseGamesPlayed, parseRecord, calculateAverage } from "../../utils/teamStats";
 import { SEASON_YEAR } from "../../utils/season";
 import TeamLogoImage from "./TeamLogoImage";
-
-const normalizeTeamName = (name) =>
-  name?.toLowerCase().replace(/\s+/g, "-").replace(/&/g, "").replace(/[^a-z0-9-]/g, "");
+import { normalizeTeamName } from "../../utils/teamName";
 
 const denormalizeTeamName = (slug) => {
   if (!slug) return slug;

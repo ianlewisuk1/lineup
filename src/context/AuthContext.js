@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../supabase/supabase";
 import { initPushNotifications } from "../capacitor/pushNotifications";
-import { normalizeTeamSlug as normalizeTeamName, teamLogoUrl } from "../utils/teamLogo";
+import { normalizeTeamName } from "../utils/teamName";
+import { teamLogoUrl } from "../utils/teamLogo";
 
 const AuthContext = createContext();
 

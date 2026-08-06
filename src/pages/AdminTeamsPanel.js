@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabase/supabase";
 import { SEASON_YEAR } from "../utils/season";
+import { normalizeTeamName } from "../utils/teamName";
 
 function AdminTeamsPanel() {
   const [teams, setTeams] = useState([]);
@@ -53,7 +54,8 @@ function AdminTeamsPanel() {
 
   const handleAddTeam = async () => {
     if (!newTeam.school) return;
-    const id = newTeam.school.toLowerCase().replace(/\s+/g, "-").replace(/&/g, "").replace(/[^a-z0-9-]/g, "");
+    // teams.id must be the canonical slug — it is the join key for rosters and logos
+    const id = normalizeTeamName(newTeam.school);
     await supabase.from("teams").upsert({ id, school: newTeam.school, conference: newTeam.conference, classification: "FBS" });
     setTeams(prev => [...prev, { id, ...newTeam, conf_odds: null, phil_metric_rank: null, power_rank: null, ret_starters: null, predicted_wins: null, prev_year_record: "", prev_year_ats: "", prev_year_points: null }]);
     setNewTeam({ school: "", conference: "" });
