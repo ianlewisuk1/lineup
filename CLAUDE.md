@@ -59,10 +59,19 @@ Frontend imports `supabase` from `src/supabase/supabase.js` (anon key). Backend 
 
 ### Team name normalization
 
-Teams are stored in the DB by school name (e.g. `"Ohio State"`). When stored in `weekly_lineups` arrays (starters/bench), names are normalized to slugs: lowercase, spaces→dashes, `&` removed, non-alphanumeric stripped. This normalization happens in multiple places — always apply it before writing to or comparing against lineup arrays:
+Teams are stored in the DB by school name (e.g. `"Ohio State"`). The **slug** is the join key everywhere: it keys the `AuthContext` teams map, it is what gets written into `weekly_lineups` starters/bench arrays, it equals `teams.id`, and it names the logo file in `public/logos`.
+
+**Import `normalizeTeamName` from `src/utils/teamName.js`. Never hand-roll the regex.** Eleven divergent copies previously existed in two incompatible variants, which made Texas A&M miss every teams-map lookup.
+
 ```js
-name.toLowerCase().replace(/\s+/g, "-").replace(/&/g, "").replace(/[^a-z0-9\-]/g, "")
+name.toLowerCase().replace(/\s+/g, "-").replace(/&/g, "-").replace(/[^a-z0-9-]/g, "")
 ```
+
+Note `&` becomes `-`, not `""` — `"Texas A&M"` → `texas-a-m`, matching `teams.id`. Stripping it yields `texas-am`, which silently fails to match stored roster data.
+
+Logo URLs come from `teamLogoUrl()` in `src/utils/teamLogo.js`, which additionally folds accents (`"San José State"` → `san-jose-state.png`). That folding is deliberately *not* in `normalizeTeamName`, since slugs must keep matching the accent-stripped `teams.id`.
+
+Run `npm run check:logos` after adding teams or changing FBS membership — it diffs the DB against `public/logos` on both lookup paths and fails on a miss.
 
 ### Design system
 
