@@ -15,7 +15,7 @@ function Scouting() {
   const { pickedTeamIds } = useDraftContext();
   const { preseasonData } = usePreseasonStats();
 
-  const [sortConfig, setSortConfig] = useState({ key: "philMetricDraftRank", direction: "asc" });
+  const [sortConfig, setSortConfig] = useState({ key: "confOdds", direction: "desc" });
   const [conferenceFilter, setConferenceFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [drawerTeam, setDrawerTeam] = useState(null);
@@ -31,7 +31,6 @@ function Scouting() {
           sos_rank:            t.currentSeason?.sosRank ?? null,
           prev_year_points:    pre.prev_year_points ?? null,
           confOdds:            pre.conf_odds ?? null,
-          philMetricDraftRank: pre.phil_metric_rank ?? null,
           predictedWins:       pre.predicted_wins ?? null,
         };
       }),
@@ -209,7 +208,6 @@ function Scouting() {
                     </span>
                   </th>
 
-                  <Th label="PhilMetrics" sortKey="philMetricDraftRank" sortBy={sortBy} sortConfig={sortConfig} />
                   <Th label="Conf Odds"   sortKey="confOdds"            sortBy={sortBy} sortConfig={sortConfig} />
                   <Th label="SOS Rank"    sortKey="sos_rank"            sortBy={sortBy} sortConfig={sortConfig} />
                   <Th label="Pred. Wins"  sortKey="predictedWins"       sortBy={sortBy} sortConfig={sortConfig} />
@@ -285,21 +283,6 @@ function Scouting() {
                           {team.conference}
                         </div>
                       </div>
-                    </td>
-
-                    <td style={tdStyle}>
-                      {team.philMetricDraftRank != null ? (
-                        <span style={{
-                          backgroundColor: team.philMetricDraftRank <= 25 ? "#DCFCE7" : team.philMetricDraftRank <= 50 ? "#FEF3C7" : "#F3F4F6",
-                          color: team.philMetricDraftRank <= 25 ? "#166534" : team.philMetricDraftRank <= 50 ? "#92400E" : "#374151",
-                          padding: "2px 6px",
-                          borderRadius: "4px",
-                          fontSize: "12px",
-                          fontWeight: "600",
-                        }}>
-                          #{team.philMetricDraftRank}
-                        </span>
-                      ) : "-"}
                     </td>
 
                     <td style={tdStyle}>

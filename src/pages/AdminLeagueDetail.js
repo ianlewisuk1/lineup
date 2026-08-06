@@ -189,25 +189,8 @@ function AdminLeagueDetail() {
           break;
         }
 
-        // ✅ MATCH DRAFTROOM: Use exact same team selection logic as handleAutoPick
-        const teamRankings = {};
-
-        availableTeams.forEach(teamId => {
-          const teamData = allTeamsData[teamId];
-          if (teamData && teamData.philMetricDraftRank !== undefined) {
-            teamRankings[teamId] = teamData.philMetricDraftRank;
-          }
-        });
-
-        const availableTeamsWithRanks = availableTeams
-          .map(teamId => ({
-            id: teamId,
-            rank: teamRankings[teamId] || 999
-          }))
-          .sort((a, b) => a.rank - b.rank);
-
-        const bestTeam = availableTeamsWithRanks[0];
-        const pickedTeam = bestTeam.id; // ✅ Use document ID
+        // Simulation auto-pick: take the next available team in order.
+        const pickedTeam = availableTeams[0];
 
         // Add to selected teams
         selectedTeams[currentUid].push(pickedTeam);
@@ -291,25 +274,8 @@ function AdminLeagueDetail() {
           break;
         }
 
-        // ✅ MATCH DRAFTROOM: Use exact same team selection logic as handleAutoPick
-        const teamRankings = {};
-
-        availableTeams.forEach(teamId => {
-          const teamData = allTeamsData[teamId];
-          if (teamData && teamData.philMetricDraftRank !== undefined) {
-            teamRankings[teamId] = teamData.philMetricDraftRank;
-          }
-        });
-
-        const availableTeamsWithRanks = availableTeams
-          .map(teamId => ({
-            id: teamId,
-            rank: teamRankings[teamId] || 999
-          }))
-          .sort((a, b) => a.rank - b.rank);
-
-        const bestTeam = availableTeamsWithRanks[0];
-        const pickedTeam = bestTeam.id; // ✅ Use document ID
+        // Simulation auto-pick: take the next available team in order.
+        const pickedTeam = availableTeams[0];
 
         // Add to selected teams
         selectedTeams[currentUid].push(pickedTeam);
@@ -431,21 +397,7 @@ function AdminLeagueDetail() {
         }
 
         // 🔧 FIX 6: Use current workingAvailableTeams, not original availableTeams
-        const teamRankings = {};
-
-        workingAvailableTeams.forEach(teamId => {
-          const teamData = allTeamsData[teamId];
-          if (teamData && teamData.philMetricDraftRank !== undefined) {
-            teamRankings[teamId] = teamData.philMetricDraftRank;
-          }
-        });
-
-        const availableTeamsWithRanks = workingAvailableTeams
-          .map(teamId => ({
-            id: teamId,
-            rank: teamRankings[teamId] || 999
-          }))
-          .sort((a, b) => a.rank - b.rank);
+        const availableTeamsWithRanks = workingAvailableTeams.map(teamId => ({ id: teamId }));
 
         if (availableTeamsWithRanks.length === 0) {
           console.error(`❌ No teams with ranks available at pick ${pickIndex + 1}`);

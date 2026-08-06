@@ -456,7 +456,6 @@ export default function TeamDrawer({ teamName, onClose }) {
                 { label: "SOS Rank", value: cs.sosRank ?? "—", color: "text-gray-900" },
                 { label: "Conf Record", value: cs.confRecord || "—", color: "text-gray-900" },
                 { label: "Games Played", value: gamesPlayed || "—", color: "text-gray-900" },
-                { label: "Phil Metrics", value: team?.phil_metrics ?? "—", color: "text-gray-900" },
               ].map(({ label, value, color }) => (
                 <div key={label} className="bg-gray-50 rounded-xl p-2 text-center border border-gray-100">
                   <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide leading-tight mb-1">{label}</div>

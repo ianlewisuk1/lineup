@@ -27,7 +27,6 @@ function AdminTeamsPanel() {
           school:           t.school,
           conference:       t.conference,
           conf_odds:        preseasonMap[t.id]?.conf_odds        ?? null,
-          phil_metric_rank: preseasonMap[t.id]?.phil_metric_rank ?? null,
           power_rank:       preseasonMap[t.id]?.power_rank       ?? null,
           ret_starters:     preseasonMap[t.id]?.ret_starters     ?? null,
           predicted_wins:   preseasonMap[t.id]?.predicted_wins   ?? null,
@@ -57,7 +56,7 @@ function AdminTeamsPanel() {
     // teams.id must be the canonical slug — it is the join key for rosters and logos
     const id = normalizeTeamName(newTeam.school);
     await supabase.from("teams").upsert({ id, school: newTeam.school, conference: newTeam.conference, classification: "FBS" });
-    setTeams(prev => [...prev, { id, ...newTeam, conf_odds: null, phil_metric_rank: null, power_rank: null, ret_starters: null, predicted_wins: null, prev_year_record: "", prev_year_ats: "", prev_year_points: null }]);
+    setTeams(prev => [...prev, { id, ...newTeam, conf_odds: null, power_rank: null, ret_starters: null, predicted_wins: null, prev_year_record: "", prev_year_ats: "", prev_year_points: null }]);
     setNewTeam({ school: "", conference: "" });
   };
 
@@ -85,7 +84,7 @@ function AdminTeamsPanel() {
   );
 
   const exportToCSV = () => {
-    const headers = ["school", "conference", "conf_odds", "phil_metric_rank", "power_rank", "ret_starters", "predicted_wins", "prev_year_record", "prev_year_ats", "prev_year_points"];
+    const headers = ["school", "conference", "conf_odds", "power_rank", "ret_starters", "predicted_wins", "prev_year_record", "prev_year_ats", "prev_year_points"];
     const rows = filteredTeams.map(team => headers.map(h => team[h] ?? "").join(","));
     const csv = [headers.join(","), ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -100,7 +99,7 @@ function AdminTeamsPanel() {
 
   if (loading) return <p>Loading teams...</p>;
 
-  const numericFields = ["conf_odds", "phil_metric_rank", "power_rank", "ret_starters", "predicted_wins", "prev_year_points"];
+  const numericFields = ["conf_odds", "power_rank", "ret_starters", "predicted_wins", "prev_year_points"];
   const textFields    = ["prev_year_record", "prev_year_ats"];
 
   return (
@@ -140,7 +139,6 @@ function AdminTeamsPanel() {
           <tr style={{ background: "#f0f0f0", cursor: "pointer" }}>
             <th onClick={() => handleSort("school")} style={thStyle}>School</th>
             <th onClick={() => handleSort("conference")} style={thStyle}>Conf</th>
-            <th onClick={() => handleSort("phil_metric_rank")} style={thStyle}>Phil Rank</th>
             <th onClick={() => handleSort("conf_odds")} style={thStyle}>Conf Odds</th>
             <th onClick={() => handleSort("power_rank")} style={thStyle}>Power Rank</th>
             <th onClick={() => handleSort("ret_starters")} style={thStyle}>Ret Starters</th>

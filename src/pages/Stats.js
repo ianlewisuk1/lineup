@@ -42,7 +42,6 @@ function Stats() {
     { value: "avgPointsFor", label: "Avg Points For", type: "number" },
     { value: "avgPointsAgainst", label: "Avg Points Against", type: "number" },
     { value: "sosRank", label: "SOS Rank", type: "number" },
-    { value: "philMetrics", label: "Phil Metrics Score", type: "number" },
     { value: "prevYearPoints", label: "2024 Points", type: "number" },
     { value: "nextOpponent", label: "Next Opponent", type: "string" }
   ];
@@ -78,7 +77,6 @@ function Stats() {
             },
             // Keep flat references for sort fallback compatibility
             sos_rank: stats.sos_rank || null,
-            phil_metrics: null,
             prev_year_points: stats.prev_year_points || 0,
             next_opponent: stats.next_opponent || null,
           });
@@ -123,8 +121,6 @@ function Stats() {
           return Number(calculateAverage(totalPointsAgainst, gamesPlayedAgainst)) || 0;
         case "sosRank":
           return Number(team.sos_rank) || 999;
-        case "philMetrics":
-          return Number(team.phil_metrics) || 999;
         case "prevYearPoints":
           return Number(team.prev_year_points) || 0;
         case "nextOpponent":
@@ -213,8 +209,6 @@ function Stats() {
         return calculateAverage(totalPointsAgainst, gamesPlayedAgainst);
       case "sosRank":
         return team.sos_rank ?? "—";
-      case "philMetrics":
-        return team.phil_metrics !== undefined && team.phil_metrics !== null ? team.phil_metrics : "—";
       case "prevYearPoints":
         return team.prev_year_points ?? "—";
       case "nextOpponent":
@@ -238,7 +232,6 @@ function Stats() {
       case "avgPointsAgainst":
         return "text-red-400"; // Red for points against
       case "sosRank":
-      case "philMetrics":
         return "text-purple-400"; // Purple for rankings
       default:
         return "text-white"; // Default white
