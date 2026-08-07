@@ -38,6 +38,19 @@ import AdminTeamsPanel from "./pages/AdminTeamsPanel";
 import AdminSchedulePanel from "./pages/AdminSchedulePanel";
 import LeagueMembers from "./pages/LeagueMembers";
 
+// A recovery link is worth exactly one redirect per page load. Returns true to
+// the first caller that finds one, false to every caller after it.
+let recoveryRedirectClaimed = false;
+
+function claimRecoveryRedirect() {
+  if (recoveryRedirectClaimed) return false;
+  const fromRecoveryLink =
+    initialAuthLink.isRecovery || initialAuthLink.errorCode === "otp_expired";
+  if (!fromRecoveryLink) return false;
+  recoveryRedirectClaimed = true;
+  return true;
+}
+
 function AppWrapper() {
   return (
     <Router>
@@ -59,12 +72,16 @@ function App() {
   // A recovery link can land on any route, so route it to the reset form from
   // wherever it arrives. Signup verification uses a code rather than a link, so
   // an expired-link error is treated as a failed recovery too — /reset-password
-  // explains it and offers a fresh link. `navigate` is stable, so this runs once.
+  // explains it and offers a fresh link.
+  //
+  // The redirect is claimed rather than merely performed: `useNavigate` returns
+  // a fresh identity on every location change, so this effect re-runs on each
+  // navigation, and the link details describe the page load rather than the
+  // current route. Without the claim, every attempt to leave /reset-password —
+  // including the redirect after a successful save — bounced straight back.
   useEffect(() => {
-    const fromRecoveryLink =
-      initialAuthLink.isRecovery || initialAuthLink.errorCode === "otp_expired";
-
-    if (fromRecoveryLink && window.location.pathname !== "/reset-password") {
+    if (!claimRecoveryRedirect()) return;
+    if (window.location.pathname !== "/reset-password") {
       navigate("/reset-password", { replace: true });
     }
   }, [navigate]);
