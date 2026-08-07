@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
+import { Navigate, useParams } from "react-router-dom";
+import { Star } from "lucide-react";
 import BottomNavBar from "../components/BottomNavBar";
 import LeagueNav from "../components/LeagueNav";
 import TeamLogoImage from "../components/league/TeamLogoImage";
@@ -7,18 +8,33 @@ import { useLeague } from "../context/LeagueContext";
 import { useAuth } from "../context/AuthContext";
 import { useDraftContext } from "../context/DraftContext";
 import { usePreseasonStats } from "../hooks/usePreseasonStats";
+import { useBigBoard } from "../hooks/useBigBoard";
 import TeamDrawer from "../components/league/TeamDrawer";
 
+// conf_odds is stored as a raw American moneyline. Negatives already carry their sign;
+// positives need one added back for display.
+const formatAmericanOdds = (odds) => (odds > 0 ? `+${odds}` : `${odds}`);
+
 function Scouting() {
+  const { leagueId } = useParams();
   const { isDraftComplete } = useLeague();
   const { teams: authTeams } = useAuth();
   const { pickedTeamIds } = useDraftContext();
   const { preseasonData } = usePreseasonStats();
+  const { count, limit, isOnBoard, rankOf, toggle } = useBigBoard(leagueId, pickedTeamIds);
 
-  const [sortConfig, setSortConfig] = useState({ key: "confOdds", direction: "desc" });
+  // Ascending on American odds = best price (biggest favorite) first.
+  const [sortConfig, setSortConfig] = useState({ key: "confOdds", direction: "asc" });
   const [conferenceFilter, setConferenceFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [drawerTeam, setDrawerTeam] = useState(null);
+  const [boardNotice, setBoardNotice] = useState("");
+
+  useEffect(() => {
+    if (!boardNotice) return;
+    const id = setTimeout(() => setBoardNotice(""), 3000);
+    return () => clearTimeout(id);
+  }, [boardNotice]);
 
   const teams = useMemo(() =>
     Object.values(authTeams)
@@ -28,6 +44,7 @@ function Scouting() {
         return {
           ...t,
           isDrafted:           pickedTeamIds.has(t.id),
+          boardRank:           rankOf(t.id),
           sos_rank:            t.currentSeason?.sosRank ?? null,
           prev_year_record:    pre.prev_year_record ?? null,
           prev_year_ats:       pre.prev_year_ats ?? null,
@@ -37,13 +54,22 @@ function Scouting() {
           retStarters:         pre.ret_starters ?? null,
         };
       }),
-  [authTeams, pickedTeamIds, preseasonData]);
+  [authTeams, pickedTeamIds, preseasonData, rankOf]);
 
   const allTeams = useMemo(() =>
     Object.fromEntries(teams.map((t) => [t.school, t])),
   [teams]);
 
   if (isDraftComplete) return <Navigate to="/home" />;
+
+  const handleToggleBoard = (team) => {
+    const result = toggle(team.id);
+    if (!result.ok && result.reason === "full") {
+      setBoardNotice(`Big board is full (${limit} teams) — remove one before adding ${team.school}.`);
+    } else {
+      setBoardNotice("");
+    }
+  };
 
   const sortBy = (key) => {
     setSortConfig(prev => ({
@@ -59,6 +85,7 @@ function Scouting() {
     if (conferenceFilter === "P4") return matchesSearch && p4.includes(team.conference);
     if (conferenceFilter === "Available") return matchesSearch && !team.isDrafted;
     if (conferenceFilter === "Drafted") return matchesSearch && team.isDrafted;
+    if (conferenceFilter === "Board") return matchesSearch && team.boardRank != null;
     return matchesSearch && team.conference === conferenceFilter;
   });
 
@@ -113,9 +140,15 @@ function Scouting() {
             <h1 className="text-2xl font-black text-gray-900">Team Scouting</h1>
           </div>
           <p className="text-sm text-gray-500 pl-10">
-            {filteredTeams.length} teams · {availableCount} available, {draftedCount} drafted
+            {filteredTeams.length} teams · {availableCount} available, {draftedCount} drafted · big board {count}/{limit}
           </p>
         </div>
+
+        {boardNotice && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-700 text-sm mb-4">
+            {boardNotice}
+          </div>
+        )}
 
         {/* Filters */}
         <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm mb-5">
@@ -146,6 +179,7 @@ function Scouting() {
                 <option value="P4">Power 4 Only</option>
                 <option value="Available">Available Only</option>
                 <option value="Drafted">Drafted Only</option>
+                <option value="Board">My Big Board</option>
                 {uniqueConferences.map((conf) => (
                   <option key={conf} value={conf}>{conf}</option>
                 ))}
@@ -159,20 +193,35 @@ function Scouting() {
           <div className="p-5 border-b border-gray-100 bg-gray-50">
             <h3 className="text-base font-bold text-gray-900 mb-0.5">FBS Team Database</h3>
             <p className="text-xs text-gray-500">
-              Click any column header to sort · Click team name to view details · Greyed out teams are drafted
+              Click any column header to sort · Click team name to view details · Greyed out teams are drafted ·
+              Star up to {limit} teams to build your big board
             </p>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[1050px]" style={{ borderCollapse: "collapse" }}>
+            <table className="w-full text-sm min-w-[1180px]" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ backgroundColor: "#0072BC", color: "white" }}>
                   <th style={{
                     ...thStyle,
                     textAlign: "center",
                     width: "40px",
+                    padding: "11px 4px",
                     position: "sticky",
                     left: "0",
+                    zIndex: "20",
+                    backgroundColor: "#0072BC",
+                    borderRight: "none"
+                  }}>
+                    ★
+                  </th>
+
+                  <th style={{
+                    ...thStyle,
+                    textAlign: "center",
+                    width: "40px",
+                    position: "sticky",
+                    left: "40px",
                     zIndex: "20",
                     backgroundColor: "#0072BC",
                     borderRight: "none"
@@ -211,6 +260,7 @@ function Scouting() {
                     </span>
                   </th>
 
+                  <Th label="Board"        sortKey="boardRank"           sortBy={sortBy} sortConfig={sortConfig} />
                   <Th label="Conf Odds"    sortKey="confOdds"            sortBy={sortBy} sortConfig={sortConfig} />
                   <Th label="Power Rank"   sortKey="powerRank"           sortBy={sortBy} sortConfig={sortConfig} />
                   <Th label="SOS Rank"     sortKey="sos_rank"            sortBy={sortBy} sortConfig={sortConfig} />
@@ -244,9 +294,26 @@ function Scouting() {
                       ...tdStyle,
                       textAlign: "center",
                       width: "40px",
-                      paddingRight: "4px",
+                      padding: "11px 4px",
                       position: "sticky",
                       left: "0",
+                      zIndex: "1",
+                      backgroundColor: "inherit",
+                    }}>
+                      <BoardStar
+                        team={team}
+                        starred={isOnBoard(team.id)}
+                        onToggle={handleToggleBoard}
+                      />
+                    </td>
+
+                    <td style={{
+                      ...tdStyle,
+                      textAlign: "center",
+                      width: "40px",
+                      paddingRight: "4px",
+                      position: "sticky",
+                      left: "40px",
                       zIndex: "1",
                       backgroundColor: "inherit",
                     }}>
@@ -292,16 +359,31 @@ function Scouting() {
                     </td>
 
                     <td style={tdStyle}>
+                      {team.boardRank != null ? (
+                        <span style={{
+                          backgroundColor: "#DBEAFE",
+                          color: "#1D4ED8",
+                          padding: "2px 7px",
+                          borderRadius: "4px",
+                          fontSize: "12px",
+                          fontWeight: "700",
+                        }}>
+                          #{team.boardRank}
+                        </span>
+                      ) : "-"}
+                    </td>
+
+                    <td style={tdStyle}>
                       {team.confOdds != null ? (
                         <span style={{
-                          backgroundColor: team.confOdds >= 20 ? "#DCFCE7" : team.confOdds >= 10 ? "#FEF3C7" : "#FEE2E2",
-                          color: team.confOdds >= 20 ? "#166534" : team.confOdds >= 10 ? "#92400E" : "#991B1B",
+                          backgroundColor: team.confOdds <= 500 ? "#DCFCE7" : team.confOdds <= 2500 ? "#FEF3C7" : "#FEE2E2",
+                          color: team.confOdds <= 500 ? "#166534" : team.confOdds <= 2500 ? "#92400E" : "#991B1B",
                           padding: "2px 6px",
                           borderRadius: "4px",
                           fontSize: "12px",
                           fontWeight: "600",
                         }}>
-                          {team.confOdds}%
+                          {formatAmericanOdds(team.confOdds)}
                         </span>
                       ) : "-"}
                     </td>
@@ -350,6 +432,37 @@ const sortValue = (value, key) => {
   const games = wins + losses + ties;
   return games > 0 ? (wins + ties * 0.5) / games : null;
 };
+
+// A drafted team can't be starred — the 018 trigger strips it from every board
+// in the league the moment the pick lands.
+const BoardStar = ({ team, starred, onToggle }) => (
+  <button
+    onClick={() => onToggle(team)}
+    disabled={team.isDrafted}
+    title={
+      team.isDrafted ? "Already drafted"
+        : starred ? "Remove from big board"
+        : "Add to big board"
+    }
+    style={{
+      background: "none",
+      border: "none",
+      padding: "2px",
+      cursor: team.isDrafted ? "not-allowed" : "pointer",
+      opacity: team.isDrafted ? 0.25 : 1,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      margin: "0 auto",
+    }}
+  >
+    <Star
+      size={16}
+      color={starred ? "#2563EB" : "#D1D5DB"}
+      fill={starred ? "#2563EB" : "none"}
+    />
+  </button>
+);
 
 const Th = ({ label, sortKey, sortBy, sortConfig }) => (
   <th

@@ -7,6 +7,8 @@ import { supabase } from '../supabase/supabase';
 import BottomNavBar from '../components/BottomNavBar';
 import LeagueNav from '../components/LeagueNav';
 import TeamLogoImage from '../components/league/TeamLogoImage';
+import BigBoardPanel from '../components/league/BigBoardPanel';
+import { useBigBoard } from '../hooks/useBigBoard';
 
 // Tracks who is currently in the draft room
 function usePresence(leagueId, currentUserId) {
@@ -58,12 +60,14 @@ export default function DraftRoom() {
   const { leagueData, isAdmin, members } = useLeague();
   const navigate = useNavigate();
   const {
-    draft, picks, teams, availableTeams,
+    draft, picks, teams, availableTeams, pickedTeamIds,
     currentPickerUid, isMyTurn, pickDeadline,
     totalPicks, nManagers, rosterByUser, memberMap,
     currentUserId, error,
     makePick, startDraft, saveDraftOrder,
   } = useDraftContext();
+
+  const { board, limit: boardLimit, remove: removeFromBoard } = useBigBoard(leagueId, pickedTeamIds);
 
   const [search, setSearch]           = useState('');
   const [actionError, setActionError] = useState('');
@@ -279,6 +283,16 @@ export default function DraftRoom() {
             )}
           </div>
 
+          {/* Big board */}
+          <div className="mb-6">
+            <BigBoardPanel
+              board={board}
+              teams={teams}
+              limit={boardLimit}
+              onRemove={removeFromBoard}
+            />
+          </div>
+
           {actionError && (
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm mb-4">
               {actionError}
@@ -407,8 +421,15 @@ export default function DraftRoom() {
               </div>
             </div>
 
-            {/* ── Pick log + rosters ── */}
+            {/* ── Big board + pick log + rosters ── */}
             <div className="space-y-4">
+
+              <BigBoardPanel
+                board={board}
+                teams={teams}
+                limit={boardLimit}
+                onRemove={removeFromBoard}
+              />
 
               {/* Recent picks */}
               <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
