@@ -40,14 +40,21 @@ const resizeImage = (file, maxWidth = 200, maxHeight = 200, quality = 0.8) => {
   });
 };
 
-// Uploads a Blob to Supabase Storage under avatars/{uid}/avatar.{ext} and returns the public URL
+// Uploads a Blob to the `avatars` bucket under {uid}/avatar.{ext} and returns the public URL.
+// The uid must stay the first path segment — the storage RLS policies in migration 026
+// authorize writes on (storage.foldername(name))[1] = auth.uid().
 const uploadAvatar = async (blob, uid) => {
   const contentType = blob.type || 'image/jpeg';
   const ext = contentType.split('/')[1] === 'jpeg' ? 'jpg' : (contentType.split('/')[1] || 'jpg');
-  const path = `avatars/${uid}/avatar.${ext}`;
+  const path = `${uid}/avatar.${ext}`;
   const { error } = await supabase.storage.from('avatars').upload(path, blob, { contentType, upsert: true });
   if (error) throw error;
-  return supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+  // Every upload overwrites the same object, so the public URL is stable and browsers
+  // keep serving the previous image for the bucket's cache lifetime. The ?v= stamp makes
+  // each upload a distinct URL; storage ignores the query string. It is persisted to
+  // league_members.avatar_url, so other members see the new avatar too.
+  const { publicUrl } = supabase.storage.from('avatars').getPublicUrl(path).data;
+  return `${publicUrl}?v=${Date.now()}`;
 };
 
 const EditProfileModal = ({ onClose }) => {
