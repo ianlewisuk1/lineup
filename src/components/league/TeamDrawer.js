@@ -516,7 +516,7 @@ export default function TeamDrawer({ teamName, onClose }) {
                     {schedule.map((game, i) => {
                       const result = formatGameResult(game);
                       const { prefix, opponent } = formatOpponent(game);
-                      const dateStr = game.date || game.game_time;
+                      const dateStr = game.date;
                       const weeklyPts = (game.game_complete || game.gameComplete) && team?.currentSeason?.weekly_points
                         ? team.currentSeason.weekly_points[`week${game.week}`]
                         : null;

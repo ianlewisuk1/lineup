@@ -226,6 +226,36 @@ router.post('/advance-playoff-week', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /admin/import-schedule
+// Populates games from CFBD. Safe to re-run — upserts on cfbd_game_id and
+// touches schedule columns only, never live scores.
+//
+// Body: { year?: number, dryRun?: boolean }
+// ---------------------------------------------------------------------------
+router.post('/import-schedule', async (req, res) => {
+  try {
+    const { year, dryRun } = req.body || {};
+
+    let season = year;
+    if (!season) {
+      const { data: configRow } = await supabase
+        .from('config')
+        .select('value')
+        .eq('key', 'season')
+        .single();
+      season = configRow?.value?.year || new Date().getFullYear();
+    }
+
+    const { importSchedule } = require('./schedule');
+    const result = await importSchedule(season, { dryRun: Boolean(dryRun) });
+    res.json({ ok: true, year: season, ...result });
+  } catch (err) {
+    console.error('[import-schedule]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // DELETE /admin/user/:uid
 // ---------------------------------------------------------------------------
 router.delete('/user/:uid', async (req, res) => {

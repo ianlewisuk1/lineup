@@ -279,7 +279,7 @@ function MyLineup() {
             const weekGames = (gamesData || []).map(gameData => ({
               homeTeam: gameData.home_team,
               awayTeam: gameData.away_team,
-              date: gameData.game_time,
+              date: gameData.date,
               gameComplete: gameData.game_complete || false,
               homeScore: gameData.home_score ?? null,
               awayScore: gameData.away_score ?? null,

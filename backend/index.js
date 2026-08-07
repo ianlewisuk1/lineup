@@ -16,6 +16,7 @@ const { ingestESPNScores } = require('./espn');
 const { ingestCFBDLines } = require('./cfbd');
 const { backfillRecentGames, updateTeamRecords } = require('./scoring');
 const { runAutoPickJobs, runAutoStartJobs } = require('./draft');
+const { refreshSchedule } = require('./schedule');
 const adminRouter = require('./admin');
 
 const app = express();
@@ -72,6 +73,22 @@ cron.schedule('0 8 * * *', async () => {
   }
 }, { timezone: 'America/New_York' });
 
+// Tuesdays at 5 AM — refresh the schedule.
+//
+// Not a one-shot import. Roughly half the season's kickoff times are TBD when
+// first published and firm up about 12 days out, and the postseason schedule
+// does not exist until December. Both arrive through this same upsert.
+//
+// Tuesday because the previous weekend's games are done and the next week's
+// times have settled, and 5 AM to stay clear of any live game.
+cron.schedule('0 5 * * 2', async () => {
+  try {
+    await refreshSchedule();
+  } catch (err) {
+    console.error('[Schedule cron]', err.message);
+  }
+}, { timezone: 'America/New_York' });
+
 // Every 5 seconds — auto-pick for expired draft timers
 setInterval(async () => {
   try {
@@ -101,5 +118,6 @@ app.listen(PORT, () => {
   console.log('  */20 * * * *  CFBD lines ingestion');
   console.log('  0 6  * * *    Backfill recent games');
   console.log('  0 8  * * *    Update team records');
+  console.log('  0 5  * * 2    Schedule refresh (CFBD)');
   console.log('  every 15s     Draft auto-pick');
 });
