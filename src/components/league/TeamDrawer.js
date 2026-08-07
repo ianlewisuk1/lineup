@@ -5,6 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useLeague } from "../../context/LeagueContext";
 import { useDraftContext } from "../../context/DraftContext";
 import { useModalState } from "../../hooks/useModalState";
+import { usePreseasonStats } from "../../hooks/usePreseasonStats";
 import { parseGamesPlayed, parseRecord, calculateAverage } from "../../utils/teamStats";
 import { SEASON_YEAR } from "../../utils/season";
 import TeamLogoImage from "./TeamLogoImage";
@@ -123,6 +124,8 @@ export default function TeamDrawer({ teamName, onClose }) {
   const [showDropdown, setShowDropdown] = useState(false);
 
   const { showSuccessModal, showErrorModal, modalTitle, modalMessage, showSuccess, showError, closeModals } = useModalState();
+
+  const { preseasonData } = usePreseasonStats();
 
   const team = teamName ? allTeams[normalizeTeamName(teamName)] : null;
 
@@ -391,6 +394,12 @@ export default function TeamDrawer({ teamName, onClose }) {
   if (!teamName) return null;
 
   const cs = team?.currentSeason || {};
+
+  // The drawer opens from Scouting (pre-draft) as well as the in-season pages.
+  // team_season_stats.sos_rank is empty until the season job populates it, so
+  // fall back to the preseason projection rather than showing an em dash on
+  // every team during the draft.
+  const sosRank = cs.sosRank ?? preseasonData[team?.id]?.sos_rank ?? "—";
   const gamesPlayed = parseGamesPlayed(cs.record);
   const avgPts = calculateAverage(cs.gamePoints || 0, gamesPlayed);
 
@@ -452,7 +461,7 @@ export default function TeamDrawer({ teamName, onClose }) {
                 { label: "Fantasy Pts", value: cs.gamePoints ?? "—", color: "text-green-600" },
                 { label: "Avg Weekly", value: avgPts, color: "text-blue-600" },
                 { label: "ATS Record", value: cs.atsRecord || "—", color: "text-gray-900" },
-                { label: "SOS Rank", value: cs.sosRank ?? "—", color: "text-gray-900" },
+                { label: "SOS Rank", value: sosRank, color: "text-gray-900" },
                 { label: "Conf Record", value: cs.confRecord || "—", color: "text-gray-900" },
                 { label: "Games Played", value: gamesPlayed || "—", color: "text-gray-900" },
               ].map(({ label, value, color }) => (

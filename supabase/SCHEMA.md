@@ -87,6 +87,11 @@ curl -s "$SUPABASE_URL/rest/v1/" -H "apikey: $SUPABASE_SERVICE_KEY"
 | predicted_wins | numeric |
 | prev_year_record | text |
 | prev_year_ats | text |
+| sos_rank | integer |
+
+`team_preseason_stats.sos_rank` is the pre-draft projection over the full
+published schedule and is distinct from `team_season_stats.sos_rank`, which
+moves during the season. Added by migration 025.
 
 ## games
 

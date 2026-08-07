@@ -45,7 +45,9 @@ function Scouting() {
           ...t,
           isDrafted:           pickedTeamIds.has(t.id),
           boardRank:           rankOf(t.id),
-          sos_rank:            t.currentSeason?.sosRank ?? null,
+          // Preseason SOS, not the in-season one on team_season_stats — this
+          // page is pre-draft, and the two diverge once games are played.
+          sos_rank:            pre.sos_rank ?? null,
           prev_year_record:    pre.prev_year_record ?? null,
           prev_year_ats:       pre.prev_year_ats ?? null,
           confOdds:            pre.conf_odds ?? null,
