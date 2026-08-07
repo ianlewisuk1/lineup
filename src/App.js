@@ -4,8 +4,10 @@ import {
   BrowserRouter as Router,
   Routes,
   Route,
+  useNavigate,
 } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
+import { supabase, initialAuthLink } from "./supabase/supabase";
 
 import SignUp from "./pages/SignUp";
 import VerifyEmail from "./pages/VerifyEmail";
@@ -47,11 +49,36 @@ function AppWrapper() {
 function App() {
   const { loading: authLoading } = useAuth();
   const [minDelayDone, setMinDelayDone] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const timer = setTimeout(() => setMinDelayDone(true), 1500);
     return () => clearTimeout(timer);
   }, []);
+
+  // A recovery link can land on any route, so route it to the reset form from
+  // wherever it arrives. Signup verification uses a code rather than a link, so
+  // an expired-link error is treated as a failed recovery too — /reset-password
+  // explains it and offers a fresh link. `navigate` is stable, so this runs once.
+  useEffect(() => {
+    const fromRecoveryLink =
+      initialAuthLink.isRecovery || initialAuthLink.errorCode === "otp_expired";
+
+    if (fromRecoveryLink && window.location.pathname !== "/reset-password") {
+      navigate("/reset-password", { replace: true });
+    }
+  }, [navigate]);
+
+  // Backstop: fires when the client exchanges a recovery token, covering links
+  // whose fragment was already consumed before the check above could read it.
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        navigate("/reset-password", { replace: true });
+      }
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [navigate]);
 
   if (!minDelayDone || authLoading) return <SplashScreen />;
 

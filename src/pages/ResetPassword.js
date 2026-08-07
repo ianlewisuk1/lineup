@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "../supabase/supabase";
+import { supabase, initialAuthLink } from "../supabase/supabase";
 import logoWordmark from "../assets/logo-wordmark-transparent.png";
 
 const inputStyle = {
@@ -112,7 +112,9 @@ function ResetPassword() {
             <div style={{ textAlign: 'center' }}>
               <h1 style={{ fontSize: 26, fontWeight: 900, color: '#111827', marginBottom: 8 }}>Link expired</h1>
               <p style={{ fontSize: 15, color: '#6B7280', marginBottom: 24 }}>
-                This reset link is no longer valid. Request a new one.
+                {initialAuthLink.errorDescription
+                  ? `${initialAuthLink.errorDescription}. Reset links can only be used once.`
+                  : "This reset link is no longer valid. Request a new one."}
               </p>
               <Link
                 to="/forgot-password"
