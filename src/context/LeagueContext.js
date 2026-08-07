@@ -11,6 +11,10 @@ export function LeagueProvider({ children }) {
   const [leagueData, setLeagueData] = useState(null);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
+  // True once a load has finished without finding the league. RLS hides leagues
+  // the user is not a member of, so "deleted" and "not yours" look identical
+  // here — both mean this route is a dead end.
+  const [unavailable, setUnavailable] = useState(false);
 
   // currentWeek comes from session-level seasonConfig in AuthContext — no extra DB query needed
   const week = seasonConfig?.currentWeek ?? 1;
@@ -19,14 +23,17 @@ export function LeagueProvider({ children }) {
   const load = useCallback(async () => {
     if (!leagueId) return;
 
+    // maybeSingle, not single: single() rejects with PGRST116 when the row is
+    // hidden or absent, and the rejection used to surface as a raw 406 body.
     const [{ data: league }, { data: memberRows }] = await Promise.all([
-      supabase.from("leagues").select("*").eq("id", leagueId).single(),
+      supabase.from("leagues").select("*").eq("id", leagueId).maybeSingle(),
       supabase.from("league_members")
         .select("id, user_id, team_name, points, avatar_url, users(first_name, last_name)")
         .eq("league_id", leagueId),
     ]);
 
-    if (league) setLeagueData(league);
+    setLeagueData(league ?? null);
+    setUnavailable(!league);
 
     setMembers((memberRows || []).map((m) => ({
       ...m,
@@ -41,6 +48,7 @@ export function LeagueProvider({ children }) {
     setLoading(true);
     setLeagueData(null);
     setMembers([]);
+    setUnavailable(false);
     load();
 
     const channel = supabase
@@ -68,7 +76,7 @@ export function LeagueProvider({ children }) {
     : null;
 
   return (
-    <LeagueContext.Provider value={{ leagueId, leagueData, members, isAdmin, isDraftComplete, currentUserId, currentMemberId, currentWeek, loading }}>
+    <LeagueContext.Provider value={{ leagueId, leagueData, members, isAdmin, isDraftComplete, currentUserId, currentMemberId, currentWeek, loading, unavailable }}>
       {children}
     </LeagueContext.Provider>
   );

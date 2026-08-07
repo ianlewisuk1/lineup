@@ -23,6 +23,17 @@ const labelStyle = {
   marginBottom: 6,
 };
 
+// Reads and clears the stored post-login destination. The value is always
+// consumed, so a stale entry cannot follow the user into later sessions, and
+// only same-origin paths are honoured — a stored absolute URL would otherwise
+// redirect off the site after a successful login.
+function safeRedirect() {
+  const stored = sessionStorage.getItem("authRedirect");
+  sessionStorage.removeItem("authRedirect");
+  if (!stored) return null;
+  return /^\/(?!\/)/.test(stored) ? stored : null;
+}
+
 function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -38,12 +49,10 @@ function Login() {
       const { data: { user }, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
 
-      const { data: userData } = await supabase.from("users").select("is_admin").eq("id", user.id).single();
+      const { data: userData } = await supabase.from("users").select("is_admin").eq("id", user.id).maybeSingle();
       if (userData?.is_admin) return navigate("/admin");
 
-      const redirect = sessionStorage.getItem("authRedirect");
-      sessionStorage.removeItem("authRedirect");
-      navigate(redirect || "/home");
+      navigate(safeRedirect() || "/home");
     } catch (err) {
       setError("Invalid email or password.");
     } finally {

@@ -61,8 +61,11 @@ export function AuthProvider({ children }) {
         { data: configRow },
         { data: teamsData },
       ] = await Promise.all([
-        supabase.from("users").select("*").eq("id", userId).single(),
-        supabase.from("config").select("value").eq("key", "season").single(),
+        // maybeSingle keeps a missing profile or config row from rejecting the
+        // whole Promise.all, which previously left teams empty and the app in a
+        // half-loaded state on any account without a users row.
+        supabase.from("users").select("*").eq("id", userId).maybeSingle(),
+        supabase.from("config").select("value").eq("key", "season").maybeSingle(),
         supabase.from("teams").select("*, team_season_stats(*)"),
       ]);
 
