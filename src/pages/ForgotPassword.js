@@ -33,7 +33,9 @@ function ForgotPassword() {
     e.preventDefault();
     setLoading(true);
     try {
-      await supabase.auth.resetPasswordForEmail(email);
+      await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
     } catch (err) {
       // Always show success — don't reveal if email exists
     } finally {
