@@ -1,6 +1,11 @@
 import React from "react";
 import { getCurrentWeekNumber } from "../../utils/leagueUtils";
 
+// 13-week season: Weeks 1-10 regular season, Weeks 11-13 playoffs.
+// Must stay in step with the season timeline on the League Settings page.
+const TOTAL_WEEKS = 13;
+const FIRST_PLAYOFF_WEEK = 11;
+
 const WeekSelector = ({
   currentWeek,
   viewMode,
@@ -22,7 +27,7 @@ const WeekSelector = ({
       <div className="bg-gradient-to-r from-transparent via-yellow-500/20 to-transparent border-b border-yellow-400/30 px-3 py-1.5 flex items-center justify-between">
         <div className="text-[10px] font-semibold text-white/60">Week:</div>
         <div className="text-[10px] font-bold text-yellow-400 flex items-center gap-1">
-          <span>🏆</span> Weeks 12-14: Playoffs
+          <span>🏆</span> Weeks {FIRST_PLAYOFF_WEEK}-{TOTAL_WEEKS}: Playoffs
         </div>
       </div>
 
@@ -44,12 +49,12 @@ const WeekSelector = ({
         }} />
 
         <div className="flex gap-1 p-2" style={{ minWidth: 'max-content' }}>
-          {[...Array(14)].map((_, index) => {
+          {[...Array(TOTAL_WEEKS)].map((_, index) => {
             const week = index + 1;
             const isCurrentWeek = week === currentWeekNum;
             const isSelected = isCurrentWeek ? viewMode === 'current' : (viewMode === 'historical' && selectedWeek === week);
             const hasData = weeksWithData.has(week);
-            const isPlayoffWeek = week >= 12;
+            const isPlayoffWeek = week >= FIRST_PLAYOFF_WEEK;
 
             return (
               <button

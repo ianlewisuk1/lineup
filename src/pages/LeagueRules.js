@@ -252,42 +252,27 @@ function LeagueRules() {
     );
   }
 
+  // 13-week season: Weeks 1-10 regular season, Weeks 11-13 playoffs. Fixed for
+  // every league size — the bracket format varies by manager count, the
+  // calendar does not.
   const weeks = [
     "Aug 23 - Sep 1", "Sep 2 - 7", "Sep 8 - 14", "Sep 15 - 21", "Sep 22 - 28",
     "Sep 29 - Oct 5", "Oct 6 - 12", "Oct 13 - 19", "Oct 20 - 26", "Oct 27 - Nov 2",
-    "Nov 3 - 9", "Nov 10 - 16", "Nov 17 - 23", "Nov 24 - 30",
+    "Nov 3 - 9", "Nov 10 - 16", "Nov 17 - 23",
   ];
 
-  const getWeekLabel = (i) => {
-    const m = formState.maxManagers;
-    if (m === 8 && i >= 12) return i === 12 ? "Playoffs • Free Agency Closed" : "Championship • Free Agency Closed";
-    if ((m === 10 || m === 12) && i >= 11)
-      return i === 11 ? "Playoffs • Free Agency Closed" : i === 12 ? "Semifinals • Free Agency Closed" : "Championship • Free Agency Closed";
-    return "Regular Season";
-  };
-
-  const getWeekColor = (i) => {
-    const m = formState.maxManagers;
-    const isPlayoff = (m === 8 && i >= 12) || ((m === 10 || m === 12) && i >= 11);
-    if (i < 3) return "from-red-100 to-red-50 border-red-200";
-    if (isPlayoff) return "from-blue-100 to-blue-50 border-blue-200";
-    return "from-green-100 to-green-50 border-green-200";
-  };
+  const REGULAR_SEASON_WEEKS = 10;      // weeks 1-10
+  const LAST_FREE_AGENCY_WEEK = 9;      // FA closes for the final regular week and all playoff weeks
 
   const inputClass = "w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition-colors disabled:opacity-50 disabled:bg-gray-50";
   const labelClass = "block text-sm font-medium text-gray-600 mb-2";
   const cardClass = "bg-white rounded-2xl p-6 border border-gray-200 shadow-sm w-full";
 
   const getWeekPhase = (i) => {
-    const m = formState.maxManagers;
-    const isPlayoff = (m === 8 && i >= 12) || ((m === 10 || m === 12) && i >= 11);
-    if (i < 3) return { label: 'Pre-Season', color: 'bg-orange-100 text-orange-700' };
-    if (isPlayoff) {
-      if ((m === 8 && i === 13) || ((m === 10 || m === 12) && i === 13)) return { label: 'Championship', color: 'bg-blue-100 text-blue-700' };
-      if ((m === 10 || m === 12) && i === 12) return { label: 'Semifinals', color: 'bg-blue-100 text-blue-700' };
-      return { label: 'Playoffs', color: 'bg-blue-100 text-blue-700' };
-    }
-    return { label: 'Regular Season', color: 'bg-green-100 text-green-700' };
+    if (i < REGULAR_SEASON_WEEKS) return { label: 'Regular Season', color: 'bg-green-100 text-green-700' };
+    if (i === 12) return { label: 'Championship', color: 'bg-blue-100 text-blue-700' };
+    if (i === 11) return { label: 'Semifinals',   color: 'bg-blue-100 text-blue-700' };
+    return { label: 'Playoffs', color: 'bg-blue-100 text-blue-700' };
   };
 
   return (
@@ -569,13 +554,13 @@ function LeagueRules() {
               {/* Legend */}
               <div className="flex flex-wrap gap-3 mb-4">
                 <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                  <span className="w-2.5 h-2.5 rounded-full bg-orange-400 inline-block" />Pre-Season (no captain bonus)
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Regular Season (Wk 1-10)
                 </span>
                 <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Regular Season
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />Playoffs / Championship (Wk 11-13)
                 </span>
                 <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />Playoffs / Championship
+                  <span className="w-2.5 h-2.5 rounded-full bg-gray-400 inline-block" />No captain bonus (Wk 1 only)
                 </span>
               </div>
 
@@ -583,8 +568,8 @@ function LeagueRules() {
               <div className="divide-y divide-gray-100 -mx-6">
                 {weeks.map((date, i) => {
                   const phase = getWeekPhase(i);
-                  const isFreeAgencyClose = i === 9;
-                  const isNoFreeAgency = getWeekLabel(i).includes('Free Agency Closed');
+                  const isFreeAgencyClose = i === LAST_FREE_AGENCY_WEEK - 1;
+                  const isNoFreeAgency = i >= LAST_FREE_AGENCY_WEEK;
                   return (
                     <div key={i} className="flex items-center gap-4 px-6 py-3 hover:bg-gray-50 transition-colors">
                       <div className="w-12 flex-shrink-0">
@@ -684,7 +669,7 @@ function LeagueRules() {
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900 mb-1.5">When does free agency close?</h3>
                   <p className="text-gray-500 text-sm leading-relaxed">
-                    Free agency closes at the start of playoff weeks. Week 10 is the last week you can add or drop teams.
+                    Free agency is closed for the final week of the regular season (Week 10) and all three playoff weeks. Week 9 is the last week you can add or drop teams.
                   </p>
                 </div>
 
