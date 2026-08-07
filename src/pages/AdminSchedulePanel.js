@@ -18,33 +18,19 @@ function AdminSchedulePanel() {
   // Function to fetch team classifications
   const fetchTeamClassifications = async () => {
     try {
-      const { data: teamsData } = await supabase.from("teams").select("*");
+      const { data: teamsData } = await supabase
+        .from("teams")
+        .select("id, classification, alternate_names");
+
+      // games.home_team and games.away_team hold slugs (teams.id), so the slug
+      // is the only key this map needs. The previous version also indexed
+      // teamData.alternateNames1 / alternateNames2 — Firebase-era camelCase
+      // fields that do not exist in Postgres, so both were always undefined —
+      // plus de-slugged spellings ("alabama a m") that nothing ever looks up.
       const classifications = {};
       (teamsData || []).forEach(teamData => {
-        // Store by document ID
         classifications[teamData.id] = teamData.classification || 'fbs';
-
-        // Store by alternate names if they exist
-        if (teamData.alternateNames1) {
-          classifications[teamData.alternateNames1] = teamData.classification || 'fbs';
-        }
-        if (teamData.alternateNames2) {
-          classifications[teamData.alternateNames2] = teamData.classification || 'fbs';
-        }
-
-        // Also try common variations
-        const docIdVariations = [
-          teamData.id,
-          teamData.id.replace(/-/g, ' '), // "alabama-a-m" -> "alabama a m"
-          teamData.id.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), // "Alabama A M"
-        ];
-        docIdVariations.forEach(variation => {
-          classifications[variation] = teamData.classification || 'fbs';
-        });
       });
-
-      console.log('Team Classifications loaded:', Object.keys(classifications).length, 'entries');
-      console.log('Sample FCS teams found:', Object.entries(classifications).filter(([name, cls]) => cls === 'fcs').slice(0, 5));
 
       setTeamClassifications(classifications);
       return classifications;

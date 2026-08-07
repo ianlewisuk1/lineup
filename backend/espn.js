@@ -39,27 +39,28 @@ async function fetchESPN(url) {
 }
 
 // ---------------------------------------------------------------------------
-// Team name normalization (ESPN → our team ids)
+// ESPN event id → our game row
+//
+// Two earlier versions of this matched on the team instead of the game:
+// first by slugging ESPN's team.location (which stripped "&", so Texas A&M
+// never matched and the Aggies scored zero all season), then by teams.espn_id.
+//
+// Both were wrong in the same deeper way. Keying by team means any team in
+// ESPN's current slate matches our row for that team in whatever week we happen
+// to be querying. Run it in August with the config week set to 3 and it writes
+// week 1 scores onto week 3 rows — observed, 78 rows corrupted.
+//
+// ESPN's event id is the same integer CFBD publishes as its game id, so
+// games.cfbd_game_id already holds it (verified: 99 of 99 events on the current
+// scoreboard match a row). Keying on it identifies one specific game, which is
+// what we actually need — no team lookup, no week arithmetic, no ambiguity.
 // ---------------------------------------------------------------------------
-function normalizeESPNName(name) {
-  if (!name) return '';
-  return name
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
-
 function buildEventIndex(events) {
   const index = new Map();
   for (const event of events) {
     const competition = event.competitions?.[0];
-    if (!competition) continue;
-    for (const competitor of competition.competitors || []) {
-      const slug = normalizeESPNName(competitor.team?.location || '');
-      if (slug) index.set(slug, { event, competition, competitor });
-    }
+    if (!competition || !event.id) continue;
+    index.set(String(event.id), competition);
   }
   return index;
 }
@@ -108,19 +109,27 @@ async function ingestESPNScores() {
 
   const eventIndex  = buildEventIndex(events);
   const teamUpdates = [];
+  const unmatched   = [];
   let updatedGames  = 0;
 
   for (const game of games) {
     if (game.game_complete) continue;
 
-    const homeSlug = normalizeESPNName(game.home_team);
-    const match = eventIndex.get(homeSlug);
-    if (!match) continue;
-
-    const { competition } = match;
+    // Match this exact game, not merely a team that happens to be playing.
+    const competition = game.cfbd_game_id ? eventIndex.get(game.cfbd_game_id) : null;
+    if (!competition) {
+      unmatched.push(`${game.away_team}@${game.home_team}`);
+      continue;
+    }
     const status    = competition.status?.type?.name || '';
     const completed = status === 'STATUS_FINAL';
     const inProgress = status === 'STATUS_IN_PROGRESS' || status === 'STATUS_HALFTIME';
+
+    // ESPN reports a score of "0" for games that have not kicked off, so a
+    // scoreboard entry alone is not evidence of a score. Writing it turns a
+    // null into a 0-0 that reads as a real result — observed on 75 rows.
+    // Only games that have actually started have scores worth storing.
+    if (!completed && !inProgress) continue;
 
     let homeScore = null;
     let awayScore = null;
@@ -215,6 +224,16 @@ async function ingestESPNScores() {
   }
 
   console.log(`[ESPN] Updated ${updatedGames} games, ${teamUpdates.length} team point updates`);
+
+  // A scheduled game with no ESPN event is normal early in the week — the
+  // scoreboard only carries the current slate. A game that stays unmatched
+  // through kickoff means an espn_id is missing or wrong, which otherwise
+  // looks exactly like a bye week.
+  if (unmatched.length) {
+    const sample = unmatched.slice(0, 10).join(', ');
+    const more = unmatched.length > 10 ? `, +${unmatched.length - 10} more` : '';
+    console.log(`[ESPN] ${unmatched.length} games had no scoreboard event: ${sample}${more}`);
+  }
 
   if (teamUpdates.length > 0) {
     await recalculateAllMemberPoints(currentWeek);

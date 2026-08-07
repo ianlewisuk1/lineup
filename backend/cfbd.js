@@ -21,6 +21,35 @@ async function fetchCFBD(path) {
 }
 
 // ---------------------------------------------------------------------------
+// Spreads are matched to games by cfbd_game_id, not by team name.
+//
+// The previous version slugged line.homeTeam with a local regex and did an
+// ilike against games.home_team. That regex stripped "&", so Texas A&M never
+// matched, and an ilike on a slug would have hit both Miami rows had they
+// collided. CFBD's /lines payload carries the same game id as /games, which
+// backend/schedule.js already stored in games.cfbd_game_id.
+// ---------------------------------------------------------------------------
+
+// Provider preference. CFBD used to expose a "consensus" provider and this code
+// asked for it first; it no longer exists, so that branch never matched and the
+// spread fell through to Bovada or to whatever happened to be first in the
+// array. That meant the spread — which drives the underdog bonus in scoring.js
+// — came from a different sportsbook game to game.
+//
+// On 2025 week 5, ESPN Bet covered all 106 games while DraftKings and Bovada
+// each covered 53, so ESPN Bet leads. The rest are fallbacks.
+const PROVIDER_PREFERENCE = ['ESPN Bet', 'DraftKings', 'Bovada'];
+
+function pickLine(lines) {
+  if (!lines?.length) return null;
+  for (const provider of PROVIDER_PREFERENCE) {
+    const match = lines.find((l) => l.provider === provider && l.spread != null);
+    if (match) return match;
+  }
+  return lines.find((l) => l.spread != null) || null;
+}
+
+// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 async function ingestCFBDLines() {
@@ -50,32 +79,39 @@ async function ingestCFBDLines() {
     const lines = await fetchCFBD(`/lines?year=${year}&week=${weekNum}&seasonType=regular`);
 
     let updated = 0;
+    let unmatched = 0;
+
     for (const line of lines) {
-      if (!line.homeTeam || !line.awayTeam) continue;
+      if (!line.id) continue;
 
-      const lineData =
-        line.lines?.find((l) => l.provider === 'consensus') ||
-        line.lines?.find((l) => l.provider === 'Bovada') ||
-        line.lines?.[0];
-
-      if (!lineData?.spread) continue;
+      const lineData = pickLine(line.lines);
+      if (!lineData) continue;
 
       const spread = parseFloat(lineData.spread);
       if (isNaN(spread)) continue;
 
-      const homeSlug = line.homeTeam.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-
-      await supabase
+      const { data, error } = await supabase
         .from('games')
         .update({ home_spread: spread })
-        .eq('year', year)
-        .eq('week', weekNum)
-        .ilike('home_team', homeSlug);
+        .eq('cfbd_game_id', String(line.id))
+        .select('id');
 
-      updated++;
+      if (error) {
+        console.error(`[CFBD] game ${line.id}: ${error.message}`);
+        continue;
+      }
+
+      if (data?.length) updated++;
+      else unmatched++;
     }
 
     console.log(`[CFBD] Updated spreads for ${updated} games`);
+
+    // A line with no matching game row means the schedule import has not run
+    // for this week, or CFBD added a game after the last import.
+    if (unmatched) {
+      console.log(`[CFBD] ${unmatched} lines had no matching game row — re-run the schedule import`);
+    }
   } catch (err) {
     console.error('[CFBD] Failed to fetch lines:', err.message);
   }
