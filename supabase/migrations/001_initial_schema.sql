@@ -2,6 +2,23 @@
 -- Lineup CFB - Initial Schema
 -- Migrated from Firestore to PostgreSQL via Supabase
 -- ============================================================
+--
+-- HISTORICAL. Do not read this file as a description of the live database.
+-- Every table below has drifted. Current column lists: supabase/SCHEMA.md.
+--
+-- Some drift is accounted for by later migrations (004/005 rewrote drafts,
+-- 007 added preseason stats, 018 added big boards). The rest traces to a
+-- "migration_2026_03_24.sql" that 015 references but which was never committed
+-- to supabase/migrations/. That change rebuilt teams and games leaner:
+--
+--   teams   lost 25 of the columns declared here (stats moved to
+--           team_season_stats; location and logo fields dropped outright)
+--   games   lost cfbd_game_id, period, clock, last_score_update and the
+--           default on id — all restored by 021 and 022 — and carries four
+--           columns never declared here
+--
+-- That gap cost five separate round trips during the 2026 schedule import.
+-- Probe the live database before writing against these definitions.
 
 -- ------------------------------------------------------------
 -- Global app config (replaces config/season document)
@@ -102,6 +119,11 @@ CREATE POLICY "teams_public_read" ON teams FOR SELECT USING (true);
 
 -- ------------------------------------------------------------
 -- Games / Schedule (replaces schedule/2025/weeks/{n}/games)
+--
+-- STALE. The live table differs substantially — see supabase/SCHEMA.md.
+-- Notably: id is TEXT (not UUID), week is INT (not TEXT), kickoff lives in
+-- "date" (not game_time, which 023 dropped), and season_type, start_time_tbd
+-- and conference_game exist but are not declared here.
 -- ------------------------------------------------------------
 CREATE TABLE games (
   id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
