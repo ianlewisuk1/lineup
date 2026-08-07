@@ -10,7 +10,7 @@
  */
 
 const { supabase } = require('./db');
-const { calculateTeamFantasyPoints, recalculateAllMemberPoints } = require('./scoring');
+const { WEEK_ZERO, calculateTeamFantasyPoints, recalculateAllMemberPoints } = require('./scoring');
 
 const ESPN_URL =
   'https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80';
@@ -206,7 +206,12 @@ async function ingestESPNScores() {
 
     const weeklyPoints = existing?.weekly_points || {};
     weeklyPoints[wk] = points;
-    const gamePoints = Object.values(weeklyPoints).reduce((a, b) => a + b, 0);
+
+    // Week 0 is kept in weekly_points so the dress-rehearsal result is visible,
+    // but excluded from the season total — it does not count.
+    const gamePoints = Object.entries(weeklyPoints)
+      .filter(([week]) => week !== WEEK_ZERO)
+      .reduce((sum, [, pts]) => sum + pts, 0);
 
     await supabase
       .from('team_season_stats')

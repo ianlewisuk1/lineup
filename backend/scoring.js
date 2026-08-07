@@ -18,6 +18,12 @@
 
 const { supabase } = require('./db');
 
+// Week 0 — the late-August opening weekend, split out from CFBD's week 1 by
+// backend/schedule.js. Those games ingest and display like any other, so the
+// live pipeline gets a real run before anything counts, but they award no
+// fantasy points: no member scoring, and excluded from team season totals.
+const WEEK_ZERO = '0';
+
 // ---------------------------------------------------------------------------
 // Extract a numeric week from a config week value ("Week 3", "3", 3 → "3")
 // ---------------------------------------------------------------------------
@@ -78,6 +84,11 @@ async function recalculateAllMemberPoints(currentWeek) {
   const weekKey = normalizeWeekKey(currentWeek);
   if (!weekKey) {
     console.warn('[Scoring] Invalid week, skipping:', currentWeek);
+    return;
+  }
+
+  if (weekKey === WEEK_ZERO) {
+    console.log('[Scoring] Week 0 is a dress rehearsal — no fantasy points awarded');
     return;
   }
 
@@ -247,6 +258,7 @@ async function updateTeamRecords() {
 }
 
 module.exports = {
+  WEEK_ZERO,
   calculateTeamFantasyPoints,
   recalculateAllMemberPoints,
   backfillRecentGames,

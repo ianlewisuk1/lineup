@@ -5,8 +5,13 @@ import AdminUserPanel from "../components/AdminUserPanel";
 import AdminLeaguePanel from "../components/AdminLeaguePanel";
 import { useSeasonConfig } from "../hooks/useSeasonConfig";
 
+// Week 0 is the late-August opening weekend. Those games are ingested and
+// displayed like any other, but they do not score — see WEEK_ZERO in
+// backend/scoring.js. It exists so the live pipeline gets a real dress
+// rehearsal before week 1 counts.
 const WEEK_OPTIONS = [
   "Preseason",
+  "0",
   ...Array.from({ length: 15 }, (_, i) => String(i + 1)),
   "Bowl Season",
   "Playoffs",

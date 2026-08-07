@@ -47,6 +47,41 @@ async function loadTeamIndex() {
   return new Map(data.map((t) => [t.cfbd_id, t.id]));
 }
 
+// Week 0 — the late-August opening weekend.
+//
+// CFBD does not have a week 0. It files those games as week 1 alongside the
+// Labor Day weekend openers, so CFBD week 1 spans 2026-08-29 to 2026-09-07.
+// We split them out: week 0 games are ingested and displayed normally but do
+// not score, giving the live pipeline a dress rehearsal before results count.
+//
+// The rule is "kicks off before September", which is unambiguous because
+// college football's opening weekend is always the last weekend of August.
+// Applying it here rather than as a one-time UPDATE matters — the weekly
+// refresh re-upserts every game, and would otherwise reset these to week 1.
+//
+// The month is read in US Eastern, not UTC. Kickoff times are stored as UTC
+// instants, and a late kickoff on the US west coast rolls past midnight UTC —
+// memphis at unlv opens at 7pm Pacific on August 29 and is stored as
+// 2026-08-30T02:00Z. Eastern is what college football schedules against, so
+// reading the date there is what makes "an August game" mean the same thing
+// the schedule does.
+//
+// UTC happens to give the right answer for 2026, where opening weekend is
+// August 29. It would not for a season opening on August 30 or 31, where a
+// west-coast night game crosses into September UTC and would score for real.
+const EASTERN_MONTH = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  month: 'numeric',
+});
+
+function resolveWeek(game, seasonType) {
+  if (seasonType === 'regular' && game.week === 1 && game.startDate) {
+    const month = EASTERN_MONTH.format(new Date(game.startDate));
+    if (month === '8') return 0; // August
+  }
+  return game.week;
+}
+
 // ---------------------------------------------------------------------------
 // CFBD game -> games row
 //
@@ -82,7 +117,7 @@ function toGameRow(game, teamIndex, seasonType) {
     row: {
       cfbd_game_id:    String(game.id),
       year:            game.season,
-      week:            String(game.week),
+      week:            String(resolveWeek(game, seasonType)),
       season_type:     seasonType,
       home_team:       homeSlug,
       away_team:       awaySlug,
