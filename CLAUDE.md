@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Frontend (React):**
 ```bash
-npm start          # Dev server on port 3000
+npm start          # Dev server on port 5173
 npm run build      # Production build (required before mobile sync)
 npm test           # Run tests
 ```
@@ -33,7 +33,57 @@ npx cap open android             # Open in Android Studio
 
 **Frontend** — React 19 SPA deployed on Vercel. Talks directly to Supabase using the anon key (RLS enforced). Packaged for iOS/Android via Capacitor.
 
-**Backend** — Express.js + node-cron worker deployed on Render. Uses the Supabase service role key (bypasses RLS). Runs cron jobs every 2 min (ESPN score ingestion), every 20 min (CFBD spread data), daily (records/backfill), and every 5 seconds (draft auto-pick/auto-start). Exposes `/admin/*` endpoints and a `/health` endpoint pinged by UptimeRobot to keep the Render free tier alive.
+**Backend** — Express.js + node-cron service deployed on Render. Uses the Supabase service role key (bypasses RLS). Runs cron jobs every 2 min (ESPN score ingestion), every 20 min (CFBD spread data), weekly (schedule refresh), daily (records/backfill), and every 5 seconds (draft auto-pick/auto-start). Exposes `/admin/*` endpoints and a `/health` endpoint pinged by UptimeRobot to keep the Render free tier alive.
+
+### Deployment
+
+Both services build from **`main`**. The `supabase-migration` branch is historical — it was the production branch for both until the migration was merged, and it now points at the same commit. Do not push to it.
+
+| Service | Builds | Config |
+|---|---|---|
+| Vercel (frontend) | `main` | Settings → Git → Branch Tracking. Domains `www.lineupcfb.com`, `lineup-henna.vercel.app` |
+| Render (backend) | `main` | `render.yaml`, plus the dashboard — see below |
+
+`render.yaml` documents the Render service but **does not drive it**. The live service was created by hand, so changing that file has no effect until the service is adopted as a Blueprint. Change the branch or build settings in the dashboard, and mirror them into `render.yaml`.
+
+Render needs `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `CFB_KEY`, `ADMIN_SECRET`. `CFB_KEY` is required by both the schedule import and the lines ingestion; both throw without it rather than failing quietly.
+
+To confirm a Render deploy actually took, check the boot log for the cron table — it lists every scheduled job, so a missing line means stale code:
+
+```
+Cron jobs scheduled:
+  */2  * * * *  ESPN score ingestion
+  */20 * * * *  CFBD lines ingestion
+  0 6  * * *    Backfill recent games
+  0 8  * * *    Update team records
+  0 5  * * 2    Schedule refresh (CFBD)
+```
+
+### Season data pipeline
+
+`games` is populated by `backend/schedule.js` from the CFBD API — nothing else creates game rows. `espn.js` and `cfbd.js` only UPDATE, so if `games` is empty both cron jobs iterate an empty list and log success while doing nothing.
+
+```bash
+cd backend
+node scripts/import-schedule.js 2026          # dry run
+node scripts/import-schedule.js 2026 --write  # apply
+```
+
+Safe to re-run: it upserts on `cfbd_game_id` and writes schedule columns only, never scores. It re-runs weekly on its own, because roughly half of kickoff times are TBD until ~12 days out and the postseason schedule isn't published until December.
+
+**External IDs are the join key, never team names.** `teams.cfbd_id` and `teams.espn_id` (migration 017) map to both providers; CFBD sources its IDs from ESPN so they're currently identical, but the columns are kept separate so divergence is visible rather than silent. `games.cfbd_game_id` is *also* the ESPN event id, which is how `espn.js` matches a scoreboard entry to a specific game.
+
+Matching on names caused two separate bugs: the old slug regex stripped `&`, so Texas A&M never matched and scored zero all season; and keying the ESPN index by team rather than by game wrote one week's scores onto another week's rows. Repopulate IDs with `node scripts/backfill-team-ids.js`.
+
+**Week 0** is the late-August opening weekend, split out of CFBD's week 1 by `resolveWeek()` in `schedule.js` (CFBD has no week 0). Those games ingest and display normally but award no fantasy points — `recalculateAllMemberPoints` returns early, and `espn.js` excludes week 0 from `game_points`. The week is derived from the **Eastern** month, not UTC: a west-coast night game is stored past midnight UTC and would otherwise be misfiled.
+
+### Schema drift
+
+**`supabase/migrations/001_initial_schema.sql` does not describe the live database.** Every table has drifted, largely via a `migration_2026_03_24.sql` that migration 015 references but which was never committed. Trusting it over the live schema cost five debugging cycles during the 2026 schedule import.
+
+Current column names and types: `supabase/SCHEMA.md`. That file does **not** cover defaults, constraints, indexes, or RLS — and those were the expensive misses (a missing `UNIQUE` on `cfbd_game_id`, a missing `DEFAULT` on `games.id`). Probe the live database before writing anything that depends on them.
+
+Note `teams.classification` is lowercase (`'fbs'`/`'fcs'`), so `.eq('classification', 'FBS')` silently matches zero rows.
 
 ### Three-layer context hierarchy
 

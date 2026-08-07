@@ -4,8 +4,10 @@
  * Replaces Firebase Cloud Functions with a persistent Node.js process
  * that runs scheduled cron jobs and exposes admin REST endpoints.
  *
- * Deployed to Render.com as a Background Worker (always-on).
- * UptimeRobot pings /health every 5 minutes to prevent free-tier sleep.
+ * Deployed to Render.com as a Web Service (always-on) from the main branch.
+ * A Web Service rather than a Background Worker because it needs a public URL:
+ * UptimeRobot pings /health every 5 minutes to prevent free-tier sleep, which
+ * would otherwise stall the cron jobs. See render.yaml.
  */
 
 require('dotenv').config();
@@ -119,5 +121,5 @@ app.listen(PORT, () => {
   console.log('  0 6  * * *    Backfill recent games');
   console.log('  0 8  * * *    Update team records');
   console.log('  0 5  * * 2    Schedule refresh (CFBD)');
-  console.log('  every 15s     Draft auto-pick');
+  console.log('  every 5s      Draft auto-pick + auto-start');
 });

@@ -1,0 +1,40 @@
+# Render deployment for the backend cron service.
+#
+# The live service was created by hand in the Render dashboard, so this file
+# does not currently drive it — editing it changes nothing until the service is
+# adopted as a Blueprint (Render dashboard → Blueprints → New Blueprint Instance
+# → point at this repo). Until then it is documentation: the deploy target used
+# to live only in the dashboard, which meant nobody could answer "which branch
+# does Render build?" without logging in.
+#
+# It is a Web Service rather than a Background Worker despite the always-on cron
+# jobs, because it needs a public URL: UptimeRobot pings /health every 5 minutes
+# to stop Render's free tier from sleeping the instance and stalling the crons.
+#
+# Live service: lineup-backend-bmoe.onrender.com
+
+services:
+  - type: web
+    name: lineup-backend
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node index.js
+    healthCheckPath: /health
+    envVars:
+      # Secrets are set in the dashboard, never committed. sync: false tells
+      # Render to prompt for them rather than expecting a value here.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      # College Football Data API key. Required by the schedule import and the
+      # lines ingestion; both throw without it rather than failing quietly.
+      - key: CFB_KEY
+        sync: false
+      # Shared secret for the /admin/* routes.
+      - key: ADMIN_SECRET
+        sync: false
